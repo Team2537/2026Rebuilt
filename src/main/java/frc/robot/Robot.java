@@ -81,46 +81,59 @@ public final class Robot extends LoggedRobot {
         CommandScheduler.getInstance()
                 .onCommandFinish(command -> Logger.recordOutput("commands/" + command.getName(), false));
 
+        boolean visionOnlyMode = Constants.VISION_ONLY_MODE;
+
         // Initialize drive subsystem
-        switch (RobotType.MODE) {
-            case REAL ->
+        if (visionOnlyMode) {
+            drive = new Drive(
+                    new GyroIO() {},
+                    new ModuleIO() {},
+                    new ModuleIO() {},
+                    new ModuleIO() {},
+                    new ModuleIO() {});
+        } else {
+            switch (RobotType.MODE) {
+                case REAL ->
+                        drive = new Drive(
+                                new GyroIOPigeon2(),
+                                new ModuleIOHybridFXS(TunerConstants.FrontLeft),
+                                new ModuleIOHybridFXS(TunerConstants.FrontRight),
+                                new ModuleIOHybridFXS(TunerConstants.BackLeft),
+                                new ModuleIOHybridFXS(TunerConstants.BackRight));
+                case SIMULATION -> {
+                    GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
                     drive = new Drive(
-                            new GyroIOPigeon2(),
-                            new ModuleIOHybridFXS(TunerConstants.FrontLeft),
-                            new ModuleIOHybridFXS(TunerConstants.FrontRight),
-                            new ModuleIOHybridFXS(TunerConstants.BackLeft),
-                            new ModuleIOHybridFXS(TunerConstants.BackRight));
-            case SIMULATION -> {
-                GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
-                drive = new Drive(
-                        gyroIOSim,
-                        new ModuleIOSim(TunerConstants.FrontLeft),
-                        new ModuleIOSim(TunerConstants.FrontRight),
-                        new ModuleIOSim(TunerConstants.BackLeft),
-                        new ModuleIOSim(TunerConstants.BackRight));
-                gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
+                            gyroIOSim,
+                            new ModuleIOSim(TunerConstants.FrontLeft),
+                            new ModuleIOSim(TunerConstants.FrontRight),
+                            new ModuleIOSim(TunerConstants.BackLeft),
+                            new ModuleIOSim(TunerConstants.BackRight));
+                    gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
+                }
+                default ->
+                        drive = new Drive(
+                                new GyroIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {});
             }
-            default ->
-                    drive = new Drive(
-                            new GyroIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {});
         }
 
         alignmentState = new AlignmentState();
         vision = new Vision(drive);
 
-        // Initialize turret subsystem
-        switch (RobotType.MODE) {
-            case SIMULATION -> turret = new Turret(new TurretIOSim(), vision::getHubYawRad);
-            case REAL, REPLAY -> turret = new Turret(new TurretIO() {}, vision::getHubYawRad);
+        if (!visionOnlyMode) {
+            // Initialize turret subsystem
+            switch (RobotType.MODE) {
+                case SIMULATION -> turret = new Turret(new TurretIOSim(), vision::getHubYawRad);
+                case REAL, REPLAY -> turret = new Turret(new TurretIO() {}, vision::getHubYawRad);
+            }
+
+            autos = new Autos(drive);
+
+            configureBindings();
         }
-
-        autos = new Autos(drive);
-
-        configureBindings();
     }
 
     private void configureBindings() {
@@ -159,7 +172,9 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void autonomousInit() {
-        autos.getSelectedRoutine().schedule();
+        if (autos != null) {
+            autos.getSelectedRoutine().schedule();
+        }
     }
 
     @Override
