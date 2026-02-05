@@ -19,6 +19,7 @@ import frc.robot.subsystems.drive.GyroIOSim;
 import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOHybridFXS;
 import frc.robot.subsystems.drive.ModuleIOSim;
+import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.turret.Turret;
 import frc.robot.subsystems.turret.TurretIO;
 import frc.robot.subsystems.turret.TurretIOSim;
@@ -38,6 +39,7 @@ public final class Robot extends LoggedRobot {
     private static AlignmentState alignmentState;
     private static Vision vision;
     private static Turret turret;
+    // private static Shooter shooter;
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -123,6 +125,9 @@ public final class Robot extends LoggedRobot {
         alignmentState = new AlignmentState();
         vision = new Vision(drive);
 
+        // Initialize shooter subsystem
+        // shooter = new Shooter();
+
         if (!visionOnlyMode) {
             // Initialize turret subsystem
             switch (RobotType.MODE) {
@@ -160,6 +165,9 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void disabledInit() {
+        // if (shooter != null) {
+        //     shooter.stop();
+        // }
     }
 
     @Override
@@ -188,6 +196,9 @@ public final class Robot extends LoggedRobot {
     @Override
     public void teleopInit() {
         CommandScheduler.getInstance().cancelAll();
+        // if (shooter != null) {
+        //     shooter.start();
+        // }
     }
 
     @Override
@@ -196,6 +207,9 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopExit() {
+        // if (shooter != null) {
+        //     shooter.stop();
+        // }
     }
 
     @Override
@@ -234,4 +248,8 @@ public final class Robot extends LoggedRobot {
     public static Turret getTurret() {
         return turret;
     }
+
+    // public static Shooter getShooter() {
+    //     return shooter;
+    // }
 }
