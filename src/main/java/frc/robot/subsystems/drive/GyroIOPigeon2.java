@@ -16,6 +16,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.generated.TunerConstants;
 import java.util.Queue;
 
@@ -29,6 +30,7 @@ public class GyroIOPigeon2 implements GyroIO {
     private final StatusSignal<AngularVelocity> yawVelocity = pigeon.getAngularVelocityZWorld();
 
     public GyroIOPigeon2() {
+        DriverStation.reportError("hi", null);
         if (TunerConstants.DrivetrainConstants.Pigeon2Configs != null) {
             pigeon.getConfigurator().apply(TunerConstants.DrivetrainConstants.Pigeon2Configs);
         } else {
