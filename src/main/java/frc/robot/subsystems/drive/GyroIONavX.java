@@ -1,6 +1,7 @@
 package frc.robot.subsystems.drive;
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import com.kauailabs.navx.frc.AHRS;
 import com.kauailabs.navx.frc.AHRS.SerialDataType;
@@ -12,6 +13,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 public class GyroIONavX implements GyroIO {
 
     private AHRS ahrs;
+    private double last_yaw;
 
     public GyroIONavX() {
         System.out.println("GyroIONavx constructor");
@@ -34,6 +36,7 @@ public class GyroIONavX implements GyroIO {
             DriverStation.reportError("Error instantiating navX MXP:  " + ex.getMessage(), true);
         }
         Timer.delay(1.0);
+        last_yaw = 0.0;
     }
 
     @Override
@@ -45,7 +48,11 @@ public class GyroIONavX implements GyroIO {
         SmartDashboard.putBoolean("IMU_IsCalibrating", ahrs.isCalibrating());
         SmartDashboard.putNumber("IMU_Yaw", ahrs.getYaw());
         inputs.yawPosition = ahrs.getRotation2d();
-        inputs.yawVelocityRadPerSec = 0.0;
+
+        double yaw = ahrs.getYaw();
+        double yaw_velocity = Units.degreesToRadians(yaw - last_yaw) / 0.2;
+        last_yaw = yaw;
+        inputs.yawVelocityRadPerSec = yaw_velocity;
         // inputs.odometryYawPositions = ahrs.getRotation2d()
         SmartDashboard.putNumber("IMU_Pitch", ahrs.getPitch());
         SmartDashboard.putNumber("IMU_Roll", ahrs.getRoll());
