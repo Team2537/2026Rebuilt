@@ -32,6 +32,9 @@ import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public final class Robot extends LoggedRobot {
     public static final double UPDATE_RATE_SECONDS = 0.02;
@@ -62,12 +65,12 @@ public final class Robot extends LoggedRobot {
         switch (RobotType.MODE) {
             case REAL -> {
                 Logger.addDataReceiver(new NT4Publisher());
-                Logger.addDataReceiver(new WPILOGWriter());
+                Logger.addDataReceiver(createWpiLogWriter());
                 new PowerDistribution(1, PowerDistribution.ModuleType.kRev);
             }
             case SIMULATION -> {
                 Logger.addDataReceiver(new NT4Publisher());
-                Logger.addDataReceiver(new WPILOGWriter());
+                Logger.addDataReceiver(createWpiLogWriter());
             }
             case REPLAY -> {
                 setUseTiming(false);
@@ -140,6 +143,25 @@ public final class Robot extends LoggedRobot {
 
             configureBindings();
         }
+    }
+
+    private static WPILOGWriter createWpiLogWriter() {
+        if (RobotType.MODE != RobotType.MODE.REAL) {
+            return new WPILOGWriter();
+        }
+
+        Path usbLogDir = Path.of("/U/logs");
+        if (Files.isDirectory(usbLogDir) && Files.isWritable(usbLogDir)) {
+            return new WPILOGWriter(usbLogDir.toString());
+        }
+
+        Path onboardLogDir = Path.of("/home/lvuser/logs");
+        try {
+            Files.createDirectories(onboardLogDir);
+        } catch (IOException ignored) {
+            // Writer creation below will report an explicit AdvantageKit error if this still fails.
+        }
+        return new WPILOGWriter(onboardLogDir.toString());
     }
 
     private void configureBindings() {
