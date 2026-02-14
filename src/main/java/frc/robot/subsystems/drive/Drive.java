@@ -66,6 +66,7 @@ public class Drive extends SubsystemBase {
     private static final double ROBOT_MASS_KG = 74.088;
     private static final double ROBOT_MOI = 6.883;
     private static final double WHEEL_COF = 1.2;
+    private static final double DRIVER_LINEAR_SPEED_LIMIT_MPS = 4.0;
     private static final RobotConfig PP_CONFIG = new RobotConfig(
             ROBOT_MASS_KG,
             ROBOT_MOI,
@@ -356,8 +357,7 @@ public class Drive extends SubsystemBase {
 
     /** Returns the maximum linear speed in meters per sec. */
     public double getMaxLinearSpeedMetersPerSec() {
-        // use artificial speed limit
-        return slowMode ? TunerConstants.kSpeedLimit.in(MetersPerSecond) / 2.0 : TunerConstants.kSpeedLimit.in(MetersPerSecond);
+        return slowMode ? DRIVER_LINEAR_SPEED_LIMIT_MPS / 2.0 : DRIVER_LINEAR_SPEED_LIMIT_MPS;
     }
 
     /** Returns the maximum angular speed in radians per sec. */
