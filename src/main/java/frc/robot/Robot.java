@@ -14,11 +14,10 @@ import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.AlignmentState;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
-import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.GyroIONavX;
 import frc.robot.subsystems.drive.GyroIOSim;
 import frc.robot.subsystems.drive.ModuleIO;
-import frc.robot.subsystems.drive.ModuleIOHybridFXS;
+import frc.robot.subsystems.drive.ModuleIOTalonFX;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.turret.Turret;
@@ -102,10 +101,10 @@ public final class Robot extends LoggedRobot {
                 case REAL ->
                         drive = new Drive(
                                 new GyroIONavX(),
-                                new ModuleIOHybridFXS(TunerConstants.FrontLeft),
-                                new ModuleIOHybridFXS(TunerConstants.FrontRight),
-                                new ModuleIOHybridFXS(TunerConstants.BackLeft),
-                                new ModuleIOHybridFXS(TunerConstants.BackRight));
+                                new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                                new ModuleIOTalonFX(TunerConstants.FrontRight),
+                                new ModuleIOTalonFX(TunerConstants.BackLeft),
+                                new ModuleIOTalonFX(TunerConstants.BackRight));
                 case SIMULATION -> {
                     GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
                     drive = new Drive(
