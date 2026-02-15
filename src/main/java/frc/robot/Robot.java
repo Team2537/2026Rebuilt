@@ -127,16 +127,14 @@ public final class Robot extends LoggedRobot {
         alignmentState = new AlignmentState();
         vision = new Vision(drive);
 
-        // Initialize shooter subsystem
-        if (!visionOnlyMode) {
-            switch (RobotType.MODE) {
-                case REAL -> shooter = new Shooter(new ShooterIOReal());
-                case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {});
-            }
-        }
-
         if (!visionOnlyMode) {
             autos = new Autos(drive);
+
+            switch (RobotType.MODE) {
+                case REAL -> shooter = new Shooter(new ShooterIOReal());
+                case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {
+                });
+            }
 
             configureBindings();
         }
