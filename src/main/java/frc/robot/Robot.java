@@ -6,6 +6,7 @@ import edu.wpi.first.hal.HAL;
 import edu.wpi.first.hal.HALUtil;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import frc.robot.commands.Autos;
@@ -185,9 +186,17 @@ public final class Robot extends LoggedRobot {
 
         if (shooter != null) {
             DoubleSupplier hubDistanceSupplier = Shooter.hubDistanceMetersSupplier(drive::getPose);
+            var autoAlignToHub = DriveCommands.autoAlignToHub(
+                    drive,
+                    vision,
+                    driverController::getLeftY,
+                    driverController::getLeftX,
+                    () -> -driverController.getRightX());
 
-            // Driver hold-to-shoot while driving.
-            driverController.rightTrigger().whileTrue(shooter.shoot(hubDistanceSupplier));
+            // Driver hold-to-shoot while auto-aligning to the hub.
+            driverController.rightTrigger().whileTrue(Commands.parallel(
+                    autoAlignToHub,
+                    shooter.shoot(hubDistanceSupplier)));
             driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
 
             // Operator panel: action fires, stow stops shooter outputs.

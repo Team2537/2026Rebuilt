@@ -23,6 +23,7 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.vision.Vision;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.LinkedList;
@@ -36,6 +37,10 @@ public class DriveCommands {
     private static final double ANGLE_KD = 0.4;
     private static final double ANGLE_MAX_VELOCITY = 8.0;
     private static final double ANGLE_MAX_ACCELERATION = 20.0;
+    private static final double HUB_ALIGN_KP = 5.0;
+    private static final double HUB_ALIGN_KD = 0.4;
+    private static final double HUB_ALIGN_MAX_VELOCITY = 8.0;
+    private static final double HUB_ALIGN_MAX_ACCELERATION = 20.0;
     private static final double FF_START_DELAY = 2.0; // Secs
     private static final double FF_RAMP_RATE = 0.1; // Volts/Sec
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 0.25; // Rad/Sec
@@ -161,6 +166,63 @@ public class DriveCommands {
 
                 // Reset PID controller when command starts
                 .beforeStarting(() -> angleController.reset(drive.getRotation().getRadians()));
+    }
+
+    /**
+     * Drive command that keeps translational joystick control and auto-rotates to
+     * face the hub using only observed hub AprilTag transforms.
+     */
+    public static Command autoAlignToHub(
+            Drive drive,
+            Vision vision,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier) {
+        ProfiledPIDController hubYawController = new ProfiledPIDController(
+                HUB_ALIGN_KP,
+                0.0,
+                HUB_ALIGN_KD,
+                new TrapezoidProfile.Constraints(HUB_ALIGN_MAX_VELOCITY, HUB_ALIGN_MAX_ACCELERATION));
+        hubYawController.enableContinuousInput(-Math.PI, Math.PI);
+
+        return Commands.run(
+                () -> {
+                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
+                            -ySupplier.getAsDouble());
+
+                    double hubYawRad = vision.getHubYawRad();
+                    double omega;
+                    if (Double.isFinite(hubYawRad)) {
+                        omega = hubYawController.calculate(-hubYawRad, 0.0);
+                    } else {
+                        double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
+                        fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
+                        omega = fallbackOmega * drive.getMaxAngularSpeedRadPerSec();
+                        hubYawController.reset(0.0);
+                    }
+
+                    ChassisSpeeds speeds = new ChassisSpeeds(
+                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
+                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
+                            omega);
+
+                    boolean isFlipped = DriverStation.getAlliance().isPresent()
+                            && DriverStation.getAlliance().get() == Alliance.Red;
+                    Rotation2d heading = isFlipped
+                            ? drive.getRotation().plus(new Rotation2d(Math.PI))
+                            : drive.getRotation();
+
+                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading)
+                            : speeds;
+
+                    drive.runVelocity(commandSpeeds);
+                },
+                drive).beforeStarting(() -> {
+                    double initialHubYaw = vision.getHubYawRad();
+                    hubYawController.reset(Double.isFinite(initialHubYaw) ? -initialHubYaw : 0.0);
+                })
+                .withName("DriveAutoAlignToHub");
     }
 
     /**

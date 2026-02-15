@@ -3,7 +3,6 @@ package frc.robot.subsystems.vision;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
-import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
@@ -11,9 +10,13 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotType;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.FieldConstants;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
+import frc.robot.subsystems.vision.VisionIO.TargetTransform;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
@@ -32,9 +35,9 @@ public final class Vision extends SubsystemBase {
     private static final double MAX_Z_ERROR = 0.75;
     private static final double LINEAR_STD_DEV_BASELINE = 0.08;
     private static final double ANGULAR_STD_DEV_BASELINE = 0.18;
-    private static final double HUB_YAW_POSE_Z_METERS = 1.0;
-    private static final double HUB_TARGET_X_OFFSET_METERS = Units.inchesToMeters(26.0);
-    private static final int HUB_TAG_ID = 26;
+    private static final double HUB_TAG_CLUSTER_RADIUS_METERS = Units.inchesToMeters(30.0);
+    private static final int HUB_TAG_ID = ShooterConstants.HUB_TAG_ID;
+    private static final Set<Integer> HUB_TAG_IDS = determineHubTagIds();
 
     private final Drive drive;
     private final Supplier<Pose2d> robotPoseSupplier;
@@ -84,7 +87,7 @@ public final class Vision extends SubsystemBase {
                         .map(transform -> new Pose3d(currentPose).transformBy(transform))
                         .toArray(Pose3d[]::new));
 
-        logHubYaw(currentPose);
+        updateHubYawFromTags();
     }
 
     private List<VisionIO> createIOs() {
@@ -158,66 +161,46 @@ public final class Vision extends SubsystemBase {
         return true;
     }
 
-    private void logHubYaw(Pose2d robotPose) {
-        FieldConstants.TAG_LAYOUT.getTagPose(HUB_TAG_ID)
-                .ifPresentOrElse(
-                        tagPose -> {
-                            Pose3d targetPose = new Pose3d(
-                                    tagPose.getTranslation().plus(new Translation3d(HUB_TARGET_X_OFFSET_METERS, 0.0, 0.0)),
-                                    tagPose.getRotation());
-                            double dx = targetPose.getX() - robotPose.getX();
-                            double dy = targetPose.getY() - robotPose.getY();
-                            Rotation2d fieldYaw = new Rotation2d(Math.atan2(dy, dx));
-                            double yawErrorRad = fieldYaw.minus(robotPose.getRotation()).getRadians();
-                            Pose3d robotPose3d = new Pose3d(
-                                    robotPose.getX(),
-                                    robotPose.getY(),
-                                    0.0,
-                                    new Rotation3d(0.0, 0.0, robotPose.getRotation().getRadians()));
-                            Pose3d hubRelativePose = targetPose.relativeTo(robotPose3d);
-                            Pose3d hubAbsolutePose = robotPose3d
-                                    .transformBy(new Transform3d(hubRelativePose.getTranslation(), hubRelativePose.getRotation()));
-                            Transform3d hubAbsoluteTransform = new Transform3d(
-                                    hubAbsolutePose.getTranslation().plus(new Translation3d(0.0, 0.0, HUB_YAW_POSE_Z_METERS)),
-                                    hubAbsolutePose.getRotation());
-                            Logger.recordOutput(
-                                    "vision/hubYawPose",
-                                    new Pose3d(
-                                            new Translation3d(
-                                                    robotPose.getX(), robotPose.getY(), HUB_YAW_POSE_Z_METERS),
-                                            new Rotation3d(0.0, 0.0, fieldYaw.getRadians())));
-                            Logger.recordOutput(
-                                    "vision/hubYawRobotPose",
-                                    new Pose3d(
-                                            new Translation3d(
-                                                    robotPose.getX(), robotPose.getY(), HUB_YAW_POSE_Z_METERS),
-                                            new Rotation3d(
-                                                    0.0,
-                                                    0.0,
-                                                    robotPose.getRotation().getRadians() + yawErrorRad)));
-                            Logger.recordOutput("vision/hubRelativePose", hubRelativePose);
-                            Logger.recordOutput("vision/hubAbsoluteTransform", hubAbsoluteTransform);
-                            Logger.recordOutput("vision/hubYawRobotRad", yawErrorRad);
-                            hubYawRad = yawErrorRad;
-                        },
-                        () -> {
-                            Logger.recordOutput(
-                                    "vision/hubYawPose",
-                                    new Pose3d(
-                                            new Translation3d(
-                                                    robotPose.getX(), robotPose.getY(), HUB_YAW_POSE_Z_METERS),
-                                            new Rotation3d()));
-                            Logger.recordOutput(
-                                    "vision/hubYawRobotPose",
-                                    new Pose3d(
-                                            new Translation3d(
-                                                    robotPose.getX(), robotPose.getY(), HUB_YAW_POSE_Z_METERS),
-                                            new Rotation3d()));
-                            Logger.recordOutput("vision/hubRelativePose", new Pose3d());
-                            Logger.recordOutput("vision/hubAbsoluteTransform", new Transform3d());
-                            Logger.recordOutput("vision/hubYawRobotRad", Double.NaN);
-                            hubYawRad = Double.NaN;
-                        });
+    private void updateHubYawFromTags() {
+        TargetTransform bestHubTarget = null;
+        for (VisionIOInputsAutoLogged input : inputs) {
+            for (TargetTransform target : input.targetTransforms) {
+                if (!HUB_TAG_IDS.contains(target.fiducialId())) {
+                    continue;
+                }
+                if (bestHubTarget == null || target.distanceMeters() < bestHubTarget.distanceMeters()) {
+                    bestHubTarget = target;
+                }
+            }
+        }
+
+        if (bestHubTarget == null
+                || bestHubTarget.cameraIndex() < 0
+                || bestHubTarget.cameraIndex() >= ROBOT_TO_CAMERAS.size()) {
+            hubYawRad = Double.NaN;
+            Logger.recordOutput("vision/hubYawRobotRad", Double.NaN);
+            Logger.recordOutput("vision/hubYawTagId", -1);
+            Logger.recordOutput("vision/hubRelativePose", new Pose3d());
+            return;
+        }
+
+        Transform3d robotToTarget = ROBOT_TO_CAMERAS.get(bestHubTarget.cameraIndex()).plus(bestHubTarget.cameraToTarget());
+        hubYawRad = Math.atan2(robotToTarget.getY(), robotToTarget.getX());
+        Logger.recordOutput("vision/hubYawRobotRad", hubYawRad);
+        Logger.recordOutput("vision/hubYawTagId", bestHubTarget.fiducialId());
+        Logger.recordOutput(
+                "vision/hubRelativePose",
+                new Pose3d(robotToTarget.getTranslation(), new Rotation3d()));
+    }
+
+    private static Set<Integer> determineHubTagIds() {
+        return FieldConstants.TAG_LAYOUT.getTagPose(HUB_TAG_ID)
+                .map(referenceTagPose -> FieldConstants.TAG_LAYOUT.getTags().stream()
+                        .filter(tag -> tag.pose.getTranslation()
+                                .getDistance(referenceTagPose.getTranslation()) <= HUB_TAG_CLUSTER_RADIUS_METERS)
+                        .map(tag -> tag.ID)
+                        .collect(Collectors.toUnmodifiableSet()))
+                .orElse(Set.of(HUB_TAG_ID));
     }
 
     private static final class NullVisionIO implements VisionIO {

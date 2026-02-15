@@ -33,8 +33,7 @@ public class Shooter extends SubsystemBase {
     private double targetLeftRpm = 0.0;
     private double targetRightRpm = 0.0;
     private double targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
-    private double kickerTorqueAmps = 0.0;
-    private double kickerVoltage = 0.0;
+    private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
 
     public Shooter(ShooterIO io) {
@@ -50,26 +49,33 @@ public class Shooter extends SubsystemBase {
 
         if (DriverStation.isDisabled()) {
             io.stop();
-            kickerControlMode = KickerControlMode.OFF;
+            stopKicker();
         } else {
-            io.setLeftVelocity(targetLeftRpm);
-            io.setRightVelocity(targetRightRpm);
-            io.setHoodAngle(targetHoodAngleRad);
-
-            switch (kickerControlMode) {
-                case TORQUE -> io.setKickerTorque(kickerTorqueAmps);
-                case VOLTAGE -> io.setKickerVoltage(kickerVoltage);
-                case OFF -> io.setKickerTorque(0.0);
-            }
+            applyShooterTargets();
+            applyKickerOutput();
         }
 
         Logger.recordOutput("Shooter/TargetLeftRpm", targetLeftRpm);
         Logger.recordOutput("Shooter/TargetRightRpm", targetRightRpm);
         Logger.recordOutput("Shooter/TargetHoodDeg", Units.radiansToDegrees(targetHoodAngleRad));
-        Logger.recordOutput("Shooter/KickerTorqueAmps", kickerTorqueAmps);
-        Logger.recordOutput("Shooter/KickerVoltage", kickerVoltage);
+        Logger.recordOutput("Shooter/KickerTorqueAmps", kickerControlMode == KickerControlMode.TORQUE ? kickerOutput : 0.0);
+        Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/AtSetpoint", atSetpoint());
         Logger.recordOutput("Shooter/ReadyToFire", readyToFire());
+    }
+
+    private void applyShooterTargets() {
+        io.setLeftVelocity(targetLeftRpm);
+        io.setRightVelocity(targetRightRpm);
+        io.setHoodAngle(targetHoodAngleRad);
+    }
+
+    private void applyKickerOutput() {
+        switch (kickerControlMode) {
+            case TORQUE -> io.setKickerTorque(kickerOutput);
+            case VOLTAGE -> io.setKickerVoltage(kickerOutput);
+            case OFF -> io.setKickerTorque(0.0);
+        }
     }
 
     public void setTargets(ShotSetpoint setpoint) {
@@ -100,7 +106,7 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setKickerTorqueAmps(double torqueAmps) {
-        kickerTorqueAmps = MathUtil.clamp(
+        kickerOutput = MathUtil.clamp(
                 torqueAmps,
                 -ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
                 ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS);
@@ -108,14 +114,13 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setKickerVoltage(double voltage) {
-        kickerVoltage = MathUtil.clamp(voltage, -ShooterConstants.MAX_OUTPUT_VOLTS, ShooterConstants.MAX_OUTPUT_VOLTS);
+        kickerOutput = MathUtil.clamp(voltage, -ShooterConstants.MAX_OUTPUT_VOLTS, ShooterConstants.MAX_OUTPUT_VOLTS);
         kickerControlMode = KickerControlMode.VOLTAGE;
     }
 
     public void stopKicker() {
         kickerControlMode = KickerControlMode.OFF;
-        kickerTorqueAmps = 0.0;
-        kickerVoltage = 0.0;
+        kickerOutput = 0.0;
     }
 
     public void stopAll() {
