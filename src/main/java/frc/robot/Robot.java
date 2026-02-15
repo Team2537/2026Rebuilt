@@ -20,9 +20,6 @@ import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOTalonFX;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.shooter.Shooter;
-import frc.robot.subsystems.turret.Turret;
-import frc.robot.subsystems.turret.TurretIO;
-import frc.robot.subsystems.turret.TurretIOSim;
 import frc.robot.subsystems.vision.Vision;
 import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
@@ -41,7 +38,6 @@ public final class Robot extends LoggedRobot {
     private static Drive drive;
     private static AlignmentState alignmentState;
     private static Vision vision;
-    private static Turret turret;
     // private static Shooter shooter;
 
     // Controller setup from 2025Reefscape
@@ -132,12 +128,6 @@ public final class Robot extends LoggedRobot {
         // shooter = new Shooter();
 
         if (!visionOnlyMode) {
-            // Initialize turret subsystem
-            switch (RobotType.MODE) {
-                case SIMULATION -> turret = new Turret(new TurretIOSim(), vision::getHubYawRad);
-                case REAL, REPLAY -> turret = new Turret(new TurretIO() {}, vision::getHubYawRad);
-            }
-
             autos = new Autos(drive);
 
             configureBindings();
@@ -265,10 +255,6 @@ public final class Robot extends LoggedRobot {
 
     public static Vision getVision() {
         return vision;
-    }
-
-    public static Turret getTurret() {
-        return turret;
     }
 
     // public static Shooter getShooter() {
