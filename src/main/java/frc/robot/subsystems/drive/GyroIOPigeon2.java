@@ -30,7 +30,6 @@ public class GyroIOPigeon2 implements GyroIO {
     private final StatusSignal<AngularVelocity> yawVelocity = pigeon.getAngularVelocityZWorld();
 
     public GyroIOPigeon2() {
-        DriverStation.reportError("hi", null);
         if (TunerConstants.DrivetrainConstants.Pigeon2Configs != null) {
             pigeon.getConfigurator().apply(TunerConstants.DrivetrainConstants.Pigeon2Configs);
         } else {
