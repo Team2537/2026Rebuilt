@@ -58,8 +58,8 @@ public interface ShooterIO {
 
     }
 
-    // set torque of kicker motor
-    public default void setKickerTorque(double torque) {
+    // set torque-current command (amps) for kicker motor
+    public default void setKickerTorque(double torqueCurrentAmps) {
 
     }
     
