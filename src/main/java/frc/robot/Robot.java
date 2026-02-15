@@ -22,6 +22,9 @@ import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
+import frc.robot.subsystems.transfer.Transfer;
+import frc.robot.subsystems.transfer.TransferIO;
+import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.vision.Vision;
 import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
@@ -42,6 +45,7 @@ public final class Robot extends LoggedRobot {
     private static AlignmentState alignmentState;
     private static Vision vision;
     private static Shooter shooter;
+    private static Transfer transfer;
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -136,6 +140,12 @@ public final class Robot extends LoggedRobot {
                 });
             }
 
+            switch (RobotType.MODE) {
+                case REAL -> transfer = new Transfer(new TransferIOReal());
+                case SIMULATION, REPLAY -> transfer = new Transfer(new TransferIO() {
+                });
+            }
+
             configureBindings();
         }
     }
@@ -167,6 +177,9 @@ public final class Robot extends LoggedRobot {
 
         // Driver controller bindings
         driverController.leftBumper().onTrue(drive.toggleSlowMode());
+        if (transfer != null) {
+            driverController.rightBumper().onTrue(transfer.toggleCommand());
+        }
         driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
         driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
 
@@ -195,9 +208,7 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void disabledInit() {
-        if (shooter != null) {
-            shooter.stopAll();
-        }
+        stopManipulators();
     }
 
     @Override
@@ -234,9 +245,7 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopExit() {
-        if (shooter != null) {
-            shooter.stopAll();
-        }
+        stopManipulators();
     }
 
     @Override
@@ -274,5 +283,18 @@ public final class Robot extends LoggedRobot {
 
     public static Shooter getShooter() {
         return shooter;
+    }
+
+    public static Transfer getTransfer() {
+        return transfer;
+    }
+
+    private void stopManipulators() {
+        if (shooter != null) {
+            shooter.stopAll();
+        }
+        if (transfer != null) {
+            transfer.stopAll();
+        }
     }
 }
