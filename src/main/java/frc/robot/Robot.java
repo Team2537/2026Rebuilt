@@ -20,6 +20,8 @@ import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOTalonFX;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.ShooterIO;
+import frc.robot.subsystems.shooter.ShooterIOReal;
 import frc.robot.subsystems.vision.Vision;
 import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
@@ -31,6 +33,7 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.DoubleSupplier;
 
 public final class Robot extends LoggedRobot {
     public static final double UPDATE_RATE_SECONDS = 0.02;
@@ -38,7 +41,7 @@ public final class Robot extends LoggedRobot {
     private static Drive drive;
     private static AlignmentState alignmentState;
     private static Vision vision;
-    // private static Shooter shooter;
+    private static Shooter shooter;
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -125,7 +128,12 @@ public final class Robot extends LoggedRobot {
         vision = new Vision(drive);
 
         // Initialize shooter subsystem
-        // shooter = new Shooter();
+        if (!visionOnlyMode) {
+            switch (RobotType.MODE) {
+                case REAL -> shooter = new Shooter(new ShooterIOReal());
+                case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {});
+            }
+        }
 
         if (!visionOnlyMode) {
             autos = new Autos(drive);
@@ -164,6 +172,18 @@ public final class Robot extends LoggedRobot {
         driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
         driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
 
+        if (shooter != null) {
+            DoubleSupplier hubDistanceSupplier = Shooter.hubDistanceMetersSupplier(drive::getPose);
+
+            // Driver hold-to-shoot while driving.
+            driverController.rightTrigger().whileTrue(shooter.shoot(hubDistanceSupplier));
+            driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
+
+            // Operator panel: action fires, stow stops shooter outputs.
+            operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
+            operatorController.getStowButton().onTrue(shooter.stopCommand());
+        }
+
         // God controller can also toggle slow mode and reset heading
         godController.leftBumper().onTrue(drive.toggleSlowMode());
         godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
@@ -177,9 +197,9 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void disabledInit() {
-        // if (shooter != null) {
-        //     shooter.stop();
-        // }
+        if (shooter != null) {
+            shooter.stopAll();
+        }
     }
 
     @Override
@@ -208,9 +228,6 @@ public final class Robot extends LoggedRobot {
     @Override
     public void teleopInit() {
         CommandScheduler.getInstance().cancelAll();
-        // if (shooter != null) {
-        //     shooter.start();
-        // }
     }
 
     @Override
@@ -219,9 +236,9 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopExit() {
-        // if (shooter != null) {
-        //     shooter.stop();
-        // }
+        if (shooter != null) {
+            shooter.stopAll();
+        }
     }
 
     @Override
@@ -257,7 +274,7 @@ public final class Robot extends LoggedRobot {
         return vision;
     }
 
-    // public static Shooter getShooter() {
-    //     return shooter;
-    // }
+    public static Shooter getShooter() {
+        return shooter;
+    }
 }
