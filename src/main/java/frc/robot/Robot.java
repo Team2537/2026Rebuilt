@@ -91,7 +91,9 @@ public final class Robot extends LoggedRobot {
         CommandScheduler.getInstance()
                 .onCommandFinish(command -> Logger.recordOutput("commands/" + command.getName(), false));
 
-        boolean visionOnlyMode = Constants.VISION_ONLY_MODE;
+        boolean enableVision = Constants.isMechanismEnabled(Constants.Mechanism.VISION);
+        boolean enableShooter = Constants.isMechanismEnabled(Constants.Mechanism.SHOOTER);
+        boolean enableTransfer = Constants.isMechanismEnabled(Constants.Mechanism.TRANSFER);
 
         // Initialize drive subsystem
         switch (RobotType.MODE) {
@@ -122,16 +124,18 @@ public final class Robot extends LoggedRobot {
         }
 
         alignmentState = new AlignmentState();
-        vision = new Vision(drive);
+        vision = enableVision ? new Vision(drive) : null;
         autos = new Autos(drive);
 
-        if (!visionOnlyMode) {
+        if (enableShooter) {
             switch (RobotType.MODE) {
                 case REAL -> shooter = new Shooter(new ShooterIOReal());
                 case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {
                 });
             }
+        }
 
+        if (enableTransfer) {
             switch (RobotType.MODE) {
                 case REAL -> transfer = new Transfer(new TransferIOReal());
                 case SIMULATION, REPLAY -> transfer = new Transfer(new TransferIO() {
@@ -176,18 +180,23 @@ public final class Robot extends LoggedRobot {
 
         if (shooter != null) {
             DoubleSupplier hubDistanceSupplier = Shooter.hubDistanceMetersSupplier(drive::getPose);
-            var autoAlignToHub = DriveCommands.autoAlignToHub(
-                    drive,
-                    vision,
-                    () -> driverController.getLeftY(),
-                    driverController::getLeftX,
-                    () -> -driverController.getRightX());
+            if (vision != null) {
+                var autoAlignToHub = DriveCommands.autoAlignToHub(
+                        drive,
+                        vision,
+                        () -> driverController.getLeftY(),
+                        driverController::getLeftX,
+                        () -> -driverController.getRightX());
 
-            // Driver hold-to-shoot while auto-aligning to the hub.
-            driverController.rightTrigger().whileTrue(Commands.parallel(
-                    autoAlignToHub,
-                    shooter.shoot(hubDistanceSupplier)));
-            driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
+                // Driver hold-to-shoot while auto-aligning to the hub.
+                driverController.rightTrigger().whileTrue(Commands.parallel(
+                        autoAlignToHub,
+                        shooter.shoot(hubDistanceSupplier)));
+                driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
+            } else {
+                driverController.rightTrigger().whileTrue(shooter.shoot(hubDistanceSupplier));
+                driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
+            }
 
             // Operator panel: action fires, stow stops shooter outputs.
             // operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
