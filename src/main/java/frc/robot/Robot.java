@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.Autos;
 import frc.robot.commands.DriveCommands;
 import frc.robot.generated.TunerConstants;
@@ -50,7 +51,7 @@ public final class Robot extends LoggedRobot {
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
-    private final CommandButtonBoard operatorController = new CommandButtonBoard(1, 2);
+    // private final CommandButtonBoard operatorController = new CommandButtonBoard(1, 2);
     private final CommandXboxController godController = new CommandXboxController(5);
 
     private Autos autos;
@@ -93,48 +94,38 @@ public final class Robot extends LoggedRobot {
         boolean visionOnlyMode = Constants.VISION_ONLY_MODE;
 
         // Initialize drive subsystem
-        if (visionOnlyMode) {
-            drive = new Drive(
-                    new GyroIO() {},
-                    new ModuleIO() {},
-                    new ModuleIO() {},
-                    new ModuleIO() {},
-                    new ModuleIO() {});
-        } else {
-            switch (RobotType.MODE) {
-                case REAL ->
-                        drive = new Drive(
-                                new GyroIOPigeon2(),
-                                new ModuleIOTalonFX(TunerConstants.FrontLeft),
-                                new ModuleIOTalonFX(TunerConstants.FrontRight),
-                                new ModuleIOTalonFX(TunerConstants.BackLeft),
-                                new ModuleIOTalonFX(TunerConstants.BackRight));
-                case SIMULATION -> {
-                    GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
+        switch (RobotType.MODE) {
+            case REAL ->
                     drive = new Drive(
-                            gyroIOSim,
-                            new ModuleIOSim(TunerConstants.FrontLeft),
-                            new ModuleIOSim(TunerConstants.FrontRight),
-                            new ModuleIOSim(TunerConstants.BackLeft),
-                            new ModuleIOSim(TunerConstants.BackRight));
-                    gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
-                }
-                default ->
-                        drive = new Drive(
-                                new GyroIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {});
+                            new GyroIOPigeon2(),
+                            new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                            new ModuleIOTalonFX(TunerConstants.FrontRight),
+                            new ModuleIOTalonFX(TunerConstants.BackLeft),
+                            new ModuleIOTalonFX(TunerConstants.BackRight));
+            case SIMULATION -> {
+                GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
+                drive = new Drive(
+                        gyroIOSim,
+                        new ModuleIOSim(TunerConstants.FrontLeft),
+                        new ModuleIOSim(TunerConstants.FrontRight),
+                        new ModuleIOSim(TunerConstants.BackLeft),
+                        new ModuleIOSim(TunerConstants.BackRight));
+                gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
             }
+            default ->
+                    drive = new Drive(
+                            new GyroIO() {},
+                            new ModuleIO() {},
+                            new ModuleIO() {},
+                            new ModuleIO() {},
+                            new ModuleIO() {});
         }
 
         alignmentState = new AlignmentState();
         vision = new Vision(drive);
+        autos = new Autos(drive);
 
         if (!visionOnlyMode) {
-            autos = new Autos(drive);
-
             switch (RobotType.MODE) {
                 case REAL -> shooter = new Shooter(new ShooterIOReal());
                 case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {
@@ -146,9 +137,8 @@ public final class Robot extends LoggedRobot {
                 case SIMULATION, REPLAY -> transfer = new Transfer(new TransferIO() {
                 });
             }
-
-            configureBindings();
         }
+        configureBindings();
     }
 
     private static WPILOGWriter createWpiLogWriter() {
@@ -174,7 +164,7 @@ public final class Robot extends LoggedRobot {
         // Default drive command
         drive.setDefaultCommand(
                 DriveCommands.joystickDrive(
-                        drive, driverController::getLeftY, driverController::getLeftX, () -> -driverController.getRightX()));
+                        drive, () -> driverController.getLeftY(), driverController::getLeftX, () -> -driverController.getRightX()));
 
         // Driver controller bindings
         driverController.leftBumper().onTrue(drive.toggleSlowMode());
@@ -189,7 +179,7 @@ public final class Robot extends LoggedRobot {
             var autoAlignToHub = DriveCommands.autoAlignToHub(
                     drive,
                     vision,
-                    driverController::getLeftY,
+                    () -> driverController.getLeftY(),
                     driverController::getLeftX,
                     () -> -driverController.getRightX());
 
@@ -200,13 +190,17 @@ public final class Robot extends LoggedRobot {
             driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
 
             // Operator panel: action fires, stow stops shooter outputs.
-            operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
-            operatorController.getStowButton().onTrue(shooter.stopCommand());
+            // operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
+            // operatorController.getStowButton().onTrue(shooter.stopCommand());
         }
 
         // God controller can also toggle slow mode and reset heading
         godController.leftBumper().onTrue(drive.toggleSlowMode());
         godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+        godController.a().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+        godController.b().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+        godController.x().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
+        godController.y().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
     }
 
     @Override

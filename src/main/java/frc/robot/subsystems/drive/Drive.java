@@ -33,8 +33,10 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.util.datalog.StringLogEntry;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
+import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -87,6 +89,8 @@ public class Drive extends SubsystemBase {
     private final SysIdRoutine sysId;
     private final Alert gyroDisconnectedAlert = new Alert("Disconnected gyro, using kinematics as fallback.",
             AlertType.kError);
+    private StringLogEntry sysIdStateLogEntry;
+    private double characterizationVolts = 0.0;
     private boolean slowMode = false;
     private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
     private Rotation2d rawGyroRotation = Rotation2d.kZero;
@@ -147,9 +151,35 @@ public class Drive extends SubsystemBase {
                         null,
                         null,
                         null,
-                        (state) -> Logger.recordOutput("Drive/SysIdState", state.toString())),
+                        (state) -> {
+                            String stateString = state.toString();
+                            if (sysIdStateLogEntry == null) {
+                                sysIdStateLogEntry =
+                                        new StringLogEntry(DataLogManager.getLog(), "sysid-test-state-" + getName());
+                            }
+                            sysIdStateLogEntry.append(stateString);
+                            Logger.recordOutput("Drive/SysIdState", stateString);
+                            System.out.println("[Drive SysId] " + stateString);
+                        }),
                 new SysIdRoutine.Mechanism(
-                        (voltage) -> runCharacterization(voltage.in(Volts)), null, this));
+                        (voltage) -> {
+                            characterizationVolts = voltage.in(Volts);
+                            runCharacterization(characterizationVolts);
+                        },
+                        (log) -> {
+                            double avgPositionMeters = 0.0;
+                            double avgVelocityMetersPerSec = 0.0;
+                            for (int i = 0; i < 4; i++) {
+                                avgPositionMeters += modules[i].getPositionMeters() / 4.0;
+                                avgVelocityMetersPerSec += modules[i].getVelocityMetersPerSec() / 4.0;
+                            }
+
+                            log.motor("drive")
+                                    .voltage(Volts.of(characterizationVolts))
+                                    .linearPosition(Meters.of(avgPositionMeters))
+                                    .linearVelocity(MetersPerSecond.of(avgVelocityMetersPerSec));
+                        },
+                        this));
     }
 
     @Override
@@ -158,52 +188,52 @@ public class Drive extends SubsystemBase {
         gyroIO.updateInputs(gyroInputs);
         Logger.processInputs("Drive/Gyro", gyroInputs);
         for (var module : modules) {
-            // module.periodic();
+            module.periodic();
         }
         odometryLock.unlock();
 
-        // // Stop moving when disabled
-        // if (DriverStation.isDisabled()) {
-        //     for (var module : modules) {
-        //         module.stop();
-        //     }
-        // }
+        // Stop moving when disabled
+        if (DriverStation.isDisabled()) {
+            for (var module : modules) {
+                module.stop();
+            }
+        }
 
-        // // Log empty setpoint states when disabled
-        // if (DriverStation.isDisabled()) {
-        //     Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
-        //     Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
-        // }
+        // Log empty setpoint states when disabled
+        if (DriverStation.isDisabled()) {
+            Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
+            Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
+        }
 
-        // // Update odometry
-        // double[] sampleTimestamps = modules[0].getOdometryTimestamps(); // All signals are sampled together
-        // int sampleCount = sampleTimestamps.length;
-        // for (int i = 0; i < sampleCount; i++) {
-        //     // Read wheel positions and deltas from each module
-        //     SwerveModulePosition[] modulePositions = new SwerveModulePosition[4];
-        //     SwerveModulePosition[] moduleDeltas = new SwerveModulePosition[4];
-        //     for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
-        //         modulePositions[moduleIndex] = modules[moduleIndex].getOdometryPositions()[i];
-        //         moduleDeltas[moduleIndex] = new SwerveModulePosition(
-        //                 modulePositions[moduleIndex].distanceMeters
-        //                         - lastModulePositions[moduleIndex].distanceMeters,
-        //                 modulePositions[moduleIndex].angle);
-        //         lastModulePositions[moduleIndex] = modulePositions[moduleIndex];
-        //     }
+        // Update odometry
+        double[] sampleTimestamps = modules[0].getOdometryTimestamps(); // All signals are sampled together
+        int sampleCount = sampleTimestamps.length;
+        for (int i = 0; i < sampleCount; i++) {
+            // Read wheel positions and deltas from each module
+            SwerveModulePosition[] modulePositions = new SwerveModulePosition[4];
+            SwerveModulePosition[] moduleDeltas = new SwerveModulePosition[4];
+            for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
+                modulePositions[moduleIndex] = modules[moduleIndex].getOdometryPositions()[i];
+                moduleDeltas[moduleIndex] = new SwerveModulePosition(
+                        modulePositions[moduleIndex].distanceMeters
+                                - lastModulePositions[moduleIndex].distanceMeters,
+                        modulePositions[moduleIndex].angle);
+                lastModulePositions[moduleIndex] = modulePositions[moduleIndex];
+            }
 
-        //     // Update gyro angle
-        //     if (gyroInputs.connected) {
-        //         // Use the real gyro angle
-        //         rawGyroRotation = gyroInputs.odometryYawPositions[i];
-        //     } else {
-        //         // Use the angle delta from the kinematics and module deltas
-        //         Twist2d twist = kinematics.toTwist2d(moduleDeltas);
-        //         rawGyroRotation = rawGyroRotation.plus(new Rotation2d(twist.dtheta));
-        //     }
+            // Update gyro angle
+            if (gyroInputs.connected) {
+                // Use the real gyro angle
+                rawGyroRotation = gyroInputs.odometryYawPositions[i];
+            } else {
+                // Use the angle delta from the kinematics and module deltas
+                Twist2d twist = kinematics.toTwist2d(moduleDeltas);
+                rawGyroRotation = rawGyroRotation.plus(new Rotation2d(twist.dtheta));
+            }
 
-        //     // Apply update
-        //     poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, modulePositions);
-        // }
+            // Apply update
+            poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, modulePositions);
+        }
 
         // Update gyro alert
         gyroDisconnectedAlert.set(!gyroInputs.connected && RobotType.MODE != RobotType.Mode.SIMULATION);
