@@ -3,6 +3,7 @@ package frc.robot.subsystems.shooter;
 import static frc.robot.util.PhoenixUtil.tryUntilOk;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -17,15 +18,17 @@ import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
-import frc.robot.generated.TunerConstants;
+import frc.robot.Constants;
 
 public class ShooterIOReal implements ShooterIO {
+    private static final CANBus MECHANISM_CAN_BUS = new CANBus(Constants.MECHANISM_CAN_BUS);
+
     private final TalonFX leftShooterMotor =
-            new TalonFX(ShooterConstants.LEFT_SHOOTER_MOTOR_ID, TunerConstants.kCANBus);
+            new TalonFX(ShooterConstants.LEFT_SHOOTER_MOTOR_ID, MECHANISM_CAN_BUS);
     private final TalonFX rightShooterMotor =
-            new TalonFX(ShooterConstants.RIGHT_SHOOTER_MOTOR_ID, TunerConstants.kCANBus);
-    private final TalonFX hoodMotor = new TalonFX(ShooterConstants.HOOD_MOTOR_ID, TunerConstants.kCANBus);
-    private final TalonFX kickerMotor = new TalonFX(ShooterConstants.KICKER_MOTOR_ID, TunerConstants.kCANBus);
+            new TalonFX(ShooterConstants.RIGHT_SHOOTER_MOTOR_ID, MECHANISM_CAN_BUS);
+    private final TalonFX hoodMotor = new TalonFX(ShooterConstants.HOOD_MOTOR_ID, MECHANISM_CAN_BUS);
+    private final TalonFX kickerMotor = new TalonFX(ShooterConstants.KICKER_MOTOR_ID, MECHANISM_CAN_BUS);
 
     private final VelocityTorqueCurrentFOC leftVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final VelocityTorqueCurrentFOC rightVelocityRequest = new VelocityTorqueCurrentFOC(0.0);

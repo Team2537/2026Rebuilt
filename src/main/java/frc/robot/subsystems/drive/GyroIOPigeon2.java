@@ -8,6 +8,7 @@
 package frc.robot.subsystems.drive;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
@@ -22,8 +23,11 @@ import java.util.Queue;
 
 /** IO implementation for Pigeon 2. */
 public class GyroIOPigeon2 implements GyroIO {
+    private static final CANBus DRIVETRAIN_CAN_BUS = new CANBus(TunerConstants.DrivetrainConstants.CANBusName);
+
     private final Pigeon2 pigeon = new Pigeon2(
-            TunerConstants.DrivetrainConstants.Pigeon2Id);
+            TunerConstants.DrivetrainConstants.Pigeon2Id,
+            DRIVETRAIN_CAN_BUS);
     private final StatusSignal<Angle> yaw = pigeon.getYaw();
     private final Queue<Double> yawPositionQueue;
     private final Queue<Double> yawTimestampQueue;

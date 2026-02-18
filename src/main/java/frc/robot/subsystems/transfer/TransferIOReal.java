@@ -3,6 +3,7 @@ package frc.robot.subsystems.transfer;
 import static frc.robot.util.PhoenixUtil.tryUntilOk;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
@@ -13,10 +14,12 @@ import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
-import frc.robot.generated.TunerConstants;
+import frc.robot.Constants;
 
 public class TransferIOReal implements TransferIO {
-    private final TalonFX transferMotor = new TalonFX(TransferConstants.TRANSFER_MOTOR_ID, TunerConstants.kCANBus);
+    private static final CANBus MECHANISM_CAN_BUS = new CANBus(Constants.MECHANISM_CAN_BUS);
+
+    private final TalonFX transferMotor = new TalonFX(TransferConstants.TRANSFER_MOTOR_ID, MECHANISM_CAN_BUS);
 
     private final DutyCycleOut percentRequest = new DutyCycleOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
