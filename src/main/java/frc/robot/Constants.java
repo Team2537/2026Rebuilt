@@ -8,7 +8,8 @@ public final class Constants {
         DRIVE,
         VISION,
         SHOOTER,
-        TRANSFER
+        TRANSFER,
+        INTAKE
     }
 
     private Constants() {}

@@ -22,6 +22,9 @@ import frc.robot.subsystems.drive.GyroIOSim;
 import frc.robot.subsystems.drive.ModuleIO;
 import frc.robot.subsystems.drive.ModuleIOTalonFX;
 import frc.robot.subsystems.drive.ModuleIOSim;
+import frc.robot.subsystems.intake.Intake;
+import frc.robot.subsystems.intake.IntakeIO;
+import frc.robot.subsystems.intake.IntakeIOReal;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
@@ -49,6 +52,7 @@ public final class Robot extends LoggedRobot {
     private static Vision vision;
     private static Shooter shooter;
     private static Transfer transfer;
+    private static Intake intake;
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -95,6 +99,7 @@ public final class Robot extends LoggedRobot {
         boolean enableVision = Constants.isMechanismEnabled(Constants.Mechanism.VISION);
         boolean enableShooter = Constants.isMechanismEnabled(Constants.Mechanism.SHOOTER);
         boolean enableTransfer = Constants.isMechanismEnabled(Constants.Mechanism.TRANSFER);
+        boolean enableIntake = Constants.isMechanismEnabled(Constants.Mechanism.INTAKE);
 
         // Initialize drive subsystem
         switch (RobotType.MODE) {
@@ -143,6 +148,14 @@ public final class Robot extends LoggedRobot {
                 });
             }
         }
+
+        if (enableIntake) {
+            switch (RobotType.MODE) {
+                case REAL -> intake = new Intake(new IntakeIOReal());
+                case SIMULATION, REPLAY -> intake = new Intake(new IntakeIO() {
+                });
+            }
+        }
         configureBindings();
     }
 
@@ -175,6 +188,11 @@ public final class Robot extends LoggedRobot {
         driverController.leftBumper().onTrue(drive.toggleSlowMode());
         if (transfer != null) {
             driverController.rightBumper().onTrue(transfer.toggleCommand());
+        }
+        if (intake != null) {
+            driverController.x().onTrue(intake.extendCommand());
+            driverController.y().onTrue(intake.retractCommand());
+            driverController.a().whileTrue(intake.spinRoller());
         }
         driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
         driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
@@ -304,12 +322,19 @@ public final class Robot extends LoggedRobot {
         return transfer;
     }
 
+    public static Intake getIntake() {
+        return intake;
+    }
+
     private void stopManipulators() {
         if (shooter != null) {
             shooter.stopAll();
         }
         if (transfer != null) {
             transfer.stopAll();
+        }
+        if (intake != null) {
+            intake.stopAll();
         }
     }
 }
