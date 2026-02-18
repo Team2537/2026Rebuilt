@@ -138,14 +138,23 @@ public class Shooter extends SubsystemBase {
         return atSetpoint() && (Math.abs(targetLeftRpm) > 1.0 || Math.abs(targetRightRpm) > 1.0);
     }
 
+    private Command runCommandWithCleanup(Runnable action, Runnable cleanup, String name) {
+        return Commands.run(action, this).finallyDo(cleanup).withName(name);
+    }
+
+    private Command runTargetingCommand(Runnable action, String name) {
+        return runCommandWithCleanup(action, this::stopAll, name);
+    }
+
     public Command aimForDistance(DoubleSupplier distanceMetersSupplier) {
-        return Commands.run(() -> setTargetsForDistance(distanceMetersSupplier.getAsDouble()), this)
-                .withName("ShooterAimForDistance");
+        return runTargetingCommand(
+                () -> setTargetsForDistance(distanceMetersSupplier.getAsDouble()),
+                "ShooterAimForDistance");
     }
 
     public Command shoot(
             DoubleSupplier distanceMetersSupplier, DoubleSupplier kickerTorqueAmpsSupplier) {
-        return Commands.run(
+        return runCommandWithCleanup(
                         () -> {
                             setTargetsForDistance(distanceMetersSupplier.getAsDouble());
                             if (readyToFire()) {
@@ -154,9 +163,8 @@ public class Shooter extends SubsystemBase {
                                 stopKicker();
                             }
                         },
-                        this)
-                .finallyDo(this::stopKicker)
-                .withName("ShooterShoot");
+                        this::stopAll,
+                        "ShooterShoot");
     }
 
     public Command shoot(DoubleSupplier distanceMetersSupplier) {
@@ -166,29 +174,34 @@ public class Shooter extends SubsystemBase {
 
     public Command runSetpoint(
             DoubleSupplier leftRpmSupplier, DoubleSupplier rightRpmSupplier, DoubleSupplier hoodAngleRadSupplier) {
-        return Commands.run(
-                        () -> setTargets(
-                                leftRpmSupplier.getAsDouble(),
-                                rightRpmSupplier.getAsDouble(),
-                                hoodAngleRadSupplier.getAsDouble()),
-                        this)
-                .withName("ShooterRunSetpoint");
+        return runTargetingCommand(
+                () -> setTargets(
+                        leftRpmSupplier.getAsDouble(),
+                        rightRpmSupplier.getAsDouble(),
+                        hoodAngleRadSupplier.getAsDouble()),
+                "ShooterRunSetpoint");
     }
 
     public Command runKickerTorque(DoubleSupplier kickerTorqueAmpsSupplier) {
-        return Commands.run(() -> setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble()), this)
-                .finallyDo(this::stopKicker)
-                .withName("ShooterRunKickerTorque");
+        return runCommandWithCleanup(
+                () -> setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble()),
+                this::stopKicker,
+                "ShooterRunKickerTorque");
     }
 
     public Command runKickerVoltage(DoubleSupplier kickerVoltageSupplier) {
-        return Commands.run(() -> setKickerVoltage(kickerVoltageSupplier.getAsDouble()), this)
-                .finallyDo(this::stopKicker)
-                .withName("ShooterRunKickerVoltage");
+        return runCommandWithCleanup(
+                () -> setKickerVoltage(kickerVoltageSupplier.getAsDouble()),
+                this::stopKicker,
+                "ShooterRunKickerVoltage");
     }
 
     public Command stopCommand() {
         return Commands.runOnce(this::stopAll, this).withName("ShooterStop");
+    }
+
+    public Command idleCommand() {
+        return Commands.run(this::stopAll, this).withName("ShooterIdle");
     }
 
     public void setShotMapPoint(double distanceMeters, double leftRpm, double rightRpm, double hoodAngleDeg) {

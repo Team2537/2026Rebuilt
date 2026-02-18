@@ -7,6 +7,7 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotType;
 import frc.robot.subsystems.drive.Drive;
@@ -14,10 +15,10 @@ import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.FieldConstants;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
+import java.util.function.Supplier;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 /** Vision subsystem responsible for pose updates from PhotonVision. */
@@ -36,6 +37,9 @@ public final class Vision extends SubsystemBase {
     private static final double LINEAR_STD_DEV_BASELINE = 0.08;
     private static final double ANGULAR_STD_DEV_BASELINE = 0.18;
     private static final double HUB_TAG_CLUSTER_RADIUS_METERS = Units.inchesToMeters(30.0);
+    private static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
+    private static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
+    private static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
     private static final int HUB_TAG_ID = ShooterConstants.HUB_TAG_ID;
     private static final Set<Integer> HUB_TAG_IDS = determineHubTagIds();
 
@@ -162,17 +166,8 @@ public final class Vision extends SubsystemBase {
     }
 
     private void updateHubYawFromTags() {
-        TargetTransform bestHubTarget = null;
-        for (VisionIOInputsAutoLogged input : inputs) {
-            for (TargetTransform target : input.targetTransforms) {
-                if (!HUB_TAG_IDS.contains(target.fiducialId())) {
-                    continue;
-                }
-                if (bestHubTarget == null || target.distanceMeters() < bestHubTarget.distanceMeters()) {
-                    bestHubTarget = target;
-                }
-            }
-        }
+        double nowSeconds = Timer.getFPGATimestamp();
+        TargetTransform bestHubTarget = findBestHubTarget(nowSeconds);
 
         if (bestHubTarget == null
                 || bestHubTarget.cameraIndex() < 0
@@ -191,6 +186,36 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput(
                 "vision/hubRelativePose",
                 new Pose3d(robotToTarget.getTranslation(), new Rotation3d()));
+    }
+
+    private TargetTransform findBestHubTarget(double nowSeconds) {
+        TargetTransform bestHubTarget = null;
+        for (VisionIOInputsAutoLogged input : inputs) {
+            for (TargetTransform target : input.targetTransforms) {
+                if (!HUB_TAG_IDS.contains(target.fiducialId())) {
+                    continue;
+                }
+                if (!isHubTargetReliable(target, nowSeconds)) {
+                    continue;
+                }
+                if (bestHubTarget == null || target.distanceMeters() < bestHubTarget.distanceMeters()) {
+                    bestHubTarget = target;
+                }
+            }
+        }
+        return bestHubTarget;
+    }
+
+    private boolean isHubTargetReliable(TargetTransform target, double nowSeconds) {
+        if (!Double.isFinite(target.distanceMeters()) || target.distanceMeters() > HUB_YAW_MAX_DISTANCE_METERS) {
+            return false;
+        }
+        if (!Double.isFinite(target.ambiguity()) || target.ambiguity() > HUB_YAW_MAX_AMBIGUITY) {
+            return false;
+        }
+
+        double ageSeconds = nowSeconds - target.timestampSeconds();
+        return Double.isFinite(ageSeconds) && ageSeconds >= 0.0 && ageSeconds <= HUB_YAW_MAX_AGE_SECONDS;
     }
 
     private static Set<Integer> determineHubTagIds() {

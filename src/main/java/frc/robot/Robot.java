@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.commands.Autos;
 import frc.robot.commands.DriveCommands;
@@ -179,7 +180,13 @@ public final class Robot extends LoggedRobot {
         driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
 
         if (shooter != null) {
+            shooter.setDefaultCommand(shooter.idleCommand());
             DoubleSupplier hubDistanceSupplier = Shooter.hubDistanceMetersSupplier(drive::getPose);
+            Trigger shootTrigger = driverController.rightTrigger();
+            Trigger aimTrigger = driverController.leftTrigger().and(shootTrigger.negate());
+
+            var shootCommand = shooter.shoot(hubDistanceSupplier);
+            var aimCommand = shooter.aimForDistance(hubDistanceSupplier);
             if (vision != null) {
                 var autoAlignToHub = DriveCommands.autoAlignToHub(
                         drive,
@@ -188,15 +195,11 @@ public final class Robot extends LoggedRobot {
                         driverController::getLeftX,
                         () -> -driverController.getRightX());
 
-                // Driver hold-to-shoot while auto-aligning to the hub.
-                driverController.rightTrigger().whileTrue(Commands.parallel(
-                        autoAlignToHub,
-                        shooter.shoot(hubDistanceSupplier)));
-                driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
-            } else {
-                driverController.rightTrigger().whileTrue(shooter.shoot(hubDistanceSupplier));
-                driverController.leftTrigger().whileTrue(shooter.aimForDistance(hubDistanceSupplier));
+                // Shooting has priority over aim-only mode to avoid command interruption thrash.
+                shootCommand = Commands.parallel(autoAlignToHub, shootCommand);
             }
+            shootTrigger.whileTrue(shootCommand);
+            aimTrigger.whileTrue(aimCommand);
 
             // Operator panel: action fires, stow stops shooter outputs.
             // operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));

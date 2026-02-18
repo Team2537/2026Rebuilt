@@ -27,6 +27,7 @@ public class VisionIOPhotonVision implements VisionIO {
     @Override
     public void updateInputs(VisionIOInputs inputs) {
         inputs.isConnected = camera.isConnected();
+        inputs.latestTargetObservation = new TargetObservation(Rotation2d.kZero, Rotation2d.kZero);
 
         Set<Integer> tagIds = new HashSet<>();
         List<PoseObservation> poseObservations = new ArrayList<>();

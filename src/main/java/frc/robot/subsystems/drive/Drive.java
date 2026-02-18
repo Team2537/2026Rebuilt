@@ -287,7 +287,18 @@ public class Drive extends SubsystemBase {
             headings[i] = getModuleTranslations()[i].getAngle();
         }
         kinematics.resetHeadings(headings);
-        stop();
+
+        // Immediately apply zero-speed setpoints with the new headings.
+        // resetHeadings() keeps these angles as the preferred headings for future zero-speed commands.
+        SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(new ChassisSpeeds());
+        SwerveModuleState[] rawSetpointStates = copyModuleStates(setpointStates);
+        for (int i = 0; i < 4; i++) {
+            modules[i].runSetpoint(setpointStates[i]);
+        }
+
+        Logger.recordOutput("SwerveStates/Setpoints", rawSetpointStates);
+        Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+        Logger.recordOutput("SwerveChassisSpeeds/Setpoints", new ChassisSpeeds());
     }
 
     /** Returns a command to run a quasistatic test in the specified direction. */
@@ -373,7 +384,24 @@ public class Drive extends SubsystemBase {
 
     /** Resets the current odometry pose. */
     public void setPose(Pose2d pose) {
-        poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
+        Rotation2d rotation = pose.getRotation();
+        odometryLock.lock();
+        try {
+            rawGyroRotation = rotation;
+            gyroInputs.yawPosition = rotation;
+            gyroIO.setYaw(rotation);
+            poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
+        } finally {
+            odometryLock.unlock();
+        }
+    }
+
+    private static SwerveModuleState[] copyModuleStates(SwerveModuleState[] states) {
+        SwerveModuleState[] copy = new SwerveModuleState[states.length];
+        for (int i = 0; i < states.length; i++) {
+            copy[i] = new SwerveModuleState(states[i].speedMetersPerSecond, states[i].angle);
+        }
+        return copy;
     }
 
     /** Adds a new timestamped vision measurement. */
