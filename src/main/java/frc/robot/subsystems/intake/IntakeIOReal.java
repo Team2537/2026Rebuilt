@@ -53,6 +53,7 @@ public class IntakeIOReal implements IntakeIO {
         configureRollerMotor();
 
         leftIntakeMotor.setPosition(0.0);
+        rightIntakeMotor.setPosition(0.0);
         
         leftPosition = leftIntakeMotor.getPosition();
         leftVelocity = leftIntakeMotor.getVelocity();
