@@ -10,6 +10,7 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -17,7 +18,6 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.controls.Follower;
 
-import main.java.frc.robot.subsystems.intake.IntakeConstants;
 
 public class IntakeIOReal implements IntakeIO {
     private final TalonFX rollerMotor = new TalonFX(IntakeConstants.ROLLER_MOTOR_ID);
