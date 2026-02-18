@@ -25,12 +25,15 @@ import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.intake.IntakeIOReal;
+import frc.robot.subsystems.intake.IntakeIOSim;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
+import frc.robot.subsystems.shooter.ShooterIOSim;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
+import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
 import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
@@ -136,7 +139,8 @@ public final class Robot extends LoggedRobot {
         if (enableShooter) {
             switch (RobotType.MODE) {
                 case REAL -> shooter = new Shooter(new ShooterIOReal());
-                case SIMULATION, REPLAY -> shooter = new Shooter(new ShooterIO() {
+                case SIMULATION -> shooter = new Shooter(new ShooterIOSim());
+                case REPLAY -> shooter = new Shooter(new ShooterIO() {
                 });
             }
         }
@@ -144,7 +148,8 @@ public final class Robot extends LoggedRobot {
         if (enableTransfer) {
             switch (RobotType.MODE) {
                 case REAL -> transfer = new Transfer(new TransferIOReal());
-                case SIMULATION, REPLAY -> transfer = new Transfer(new TransferIO() {
+                case SIMULATION -> transfer = new Transfer(new TransferIOSim());
+                case REPLAY -> transfer = new Transfer(new TransferIO() {
                 });
             }
         }
@@ -152,7 +157,8 @@ public final class Robot extends LoggedRobot {
         if (enableIntake) {
             switch (RobotType.MODE) {
                 case REAL -> intake = new Intake(new IntakeIOReal());
-                case SIMULATION, REPLAY -> intake = new Intake(new IntakeIO() {
+                case SIMULATION -> intake = new Intake(new IntakeIOSim());
+                case REPLAY -> intake = new Intake(new IntakeIO() {
                 });
             }
         }
