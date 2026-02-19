@@ -24,7 +24,7 @@ public final class Constants {
      * Add/remove entries here to control startup of non-essential mechanisms.
      */
     public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
-            EnumSet.of(Mechanism.DRIVE, Mechanism.VISION);
+            EnumSet.of(Mechanism.INTAKE);
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {
         return ENABLED_MECHANISMS.contains(mechanism);

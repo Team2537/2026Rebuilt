@@ -17,6 +17,7 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
 import frc.robot.Constants;
 
@@ -50,6 +51,8 @@ public class IntakeIOReal implements IntakeIO {
         configureLeftMotor();
         configureRightMotor();
         configureRollerMotor();
+
+        rollerVelocityRequest.Slot = 0;
 
         leftIntakeMotor.setPosition(0.0);
         rightIntakeMotor.setPosition(0.0);
@@ -120,7 +123,8 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void setRollerRpm(double rpm) {
-        rollerMotor.setControl(rollerVelocityRequest.withVelocity(rpm / 60.0));
+        double clampedRpm = MathUtil.clamp(rpm, -IntakeConstants.ROLLER_MAX_RPM, IntakeConstants.ROLLER_MAX_RPM);
+        rollerMotor.setControl(rollerVelocityRequest.withVelocity(clampedRpm / 60.0));
     }
 
     @Override
@@ -136,7 +140,6 @@ public class IntakeIOReal implements IntakeIO {
     @Override
     public void stop() {
         leftIntakeMotor.setControl(neutralRequest);
-        rightIntakeMotor.setControl(neutralRequest);
         rollerMotor.setControl(neutralRequest);
     }
 
@@ -177,6 +180,13 @@ public class IntakeIOReal implements IntakeIO {
         config.MotorOutput.Inverted = IntakeConstants.ROLLER_INVERTED
                 ? InvertedValue.Clockwise_Positive
                 : InvertedValue.CounterClockwise_Positive;
+        config.Feedback.SensorToMechanismRatio = IntakeConstants.ROLLER_SENSOR_TO_MECHANISM_RATIO;
+        config.Slot0 = new Slot0Configs()
+                .withKP(IntakeConstants.ROLLER_KP)
+                .withKI(IntakeConstants.ROLLER_KI)
+                .withKD(IntakeConstants.ROLLER_KD)
+                .withKS(IntakeConstants.ROLLER_KS)
+                .withKV(IntakeConstants.ROLLER_KV);
         config.CurrentLimits.StatorCurrentLimit = IntakeConstants.ROLLER_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.ROLLER_SUPPLY_CURRENT_LIMIT_AMPS;
