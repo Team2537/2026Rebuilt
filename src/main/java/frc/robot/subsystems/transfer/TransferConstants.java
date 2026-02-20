@@ -6,7 +6,7 @@ public final class TransferConstants {
     public static final int TRANSFER_MOTOR_ID = 14;
 
     public static final boolean TRANSFER_INVERTED = false;
-    public static final double SENSOR_TO_MECHANISM_RATIO = 1.0;
+    public static final double SENSOR_TO_MECHANISM_RATIO = 1.333;
 
     public static final double DEFAULT_TRANSFER_PERCENT = 0.0;
     public static final double RUN_TRANSFER_PERCENT = 0.35;

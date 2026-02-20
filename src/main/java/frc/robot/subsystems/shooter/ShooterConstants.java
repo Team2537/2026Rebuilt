@@ -15,9 +15,9 @@ public final class ShooterConstants {
     public static final boolean HOOD_INVERTED = false;
     public static final boolean KICKER_INVERTED = false;
 
-    public static final double SHOOTER_SENSOR_TO_MECHANISM_RATIO = 0.889;
+    public static final double SHOOTER_SENSOR_TO_MECHANISM_RATIO = 1.125;
     public static final double HOOD_SENSOR_TO_MECHANISM_RATIO = 72.0;
-    public static final double KICKER_SENSOR_TO_MECHANISM_RATIO = 0.375;
+    public static final double KICKER_SENSOR_TO_MECHANISM_RATIO = 2.667;
 
     public static final double SHOOTER_MAX_RPM = 6200.0;
     public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 70.0;

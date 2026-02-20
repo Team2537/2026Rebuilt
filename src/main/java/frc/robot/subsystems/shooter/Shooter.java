@@ -1,6 +1,5 @@
 package frc.robot.subsystems.shooter;
 
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -22,6 +21,7 @@ import org.littletonrobotics.junction.Logger;
 public class Shooter extends SubsystemBase {
     private static final String LOG_COMP_ROBOT_POSE_KEY = "Shooter/Comp/RobotPose";
     private static final String LOG_COMP_TARGET_POSE_KEY = "Shooter/Comp/TargetPose";
+    private static final String LOG_COMP_FAILURE_KEY = "Shooter/Comp/LastFailure";
     private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
     private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
     private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
@@ -63,6 +63,8 @@ public class Shooter extends SubsystemBase {
     private final InterpolatingDoubleTreeMap rightRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap hoodAngleRadByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap timeInAirSecondsByDistance = new InterpolatingDoubleTreeMap();
+    private double shotMapMinDistanceMeters = Double.NaN;
+    private double shotMapMaxDistanceMeters = Double.NaN;
 
     private double targetLeftRpm = 0.0;
     private double targetRightRpm = 0.0;
@@ -116,16 +118,19 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setTargets(ShotSetpoint setpoint) {
+        if (setpoint == null) {
+            throw new IllegalArgumentException("setpoint must not be null");
+        }
         setTargets(setpoint.leftRpm(), setpoint.rightRpm(), setpoint.hoodAngleRad());
     }
 
     public void setTargets(double leftRpm, double rightRpm, double hoodAngleRad) {
-        targetLeftRpm = MathUtil.clamp(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        targetRightRpm = MathUtil.clamp(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        targetHoodAngleRad = MathUtil.clamp(
-                hoodAngleRad,
-                ShooterConstants.HOOD_MIN_ANGLE_RAD,
-                ShooterConstants.HOOD_MAX_ANGLE_RAD);
+        targetLeftRpm = requireInRange(
+                leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "leftRpm");
+        targetRightRpm = requireInRange(
+                rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "rightRpm");
+        targetHoodAngleRad = requireInRange(
+                hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD, "hoodAngleRad");
     }
 
     public void setTargetsForDistance(double distanceMeters) {
@@ -143,15 +148,20 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setKickerTorqueAmps(double torqueAmps) {
-        kickerOutput = MathUtil.clamp(
+        kickerOutput = requireInRange(
                 torqueAmps,
                 -ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
-                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS);
+                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
+                "torqueAmps");
         kickerControlMode = KickerControlMode.TORQUE;
     }
 
     public void setKickerVoltage(double voltage) {
-        kickerOutput = MathUtil.clamp(voltage, -ShooterConstants.MAX_OUTPUT_VOLTS, ShooterConstants.MAX_OUTPUT_VOLTS);
+        kickerOutput = requireInRange(
+                voltage,
+                -ShooterConstants.MAX_OUTPUT_VOLTS,
+                ShooterConstants.MAX_OUTPUT_VOLTS,
+                "voltage");
         kickerControlMode = KickerControlMode.VOLTAGE;
     }
 
@@ -210,13 +220,9 @@ public class Shooter extends SubsystemBase {
     public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
         double rawDistanceMeters = getHubDistanceMeters(robotPose);
         Translation2d hubTarget = getHubTargetTranslation();
+        Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
         if (!Double.isFinite(rawDistanceMeters) || hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
-            Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
-            Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
-            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
-            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
-            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
-            SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
+            publishCompensationTargetInvalid();
             return publishMotionCompensation(
                     rawDistanceMeters,
                     rawDistanceMeters,
@@ -229,6 +235,7 @@ public class Shooter extends SubsystemBase {
         Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
         double rangeMeters = toHubVector.getNorm();
         if (rangeMeters <= 1e-6) {
+            publishCompensationTargetInvalid();
             return publishMotionCompensation(
                     rawDistanceMeters,
                     rawDistanceMeters,
@@ -250,43 +257,95 @@ public class Shooter extends SubsystemBase {
                 robotFieldVelocity.getX() * perpendicularUnit.getX()
                         + robotFieldVelocity.getY() * perpendicularUnit.getY();
 
-        double clampedRawDistance = clampToShotMapRange(rawDistanceMeters);
-        double firstPassTimeSec = timeInAirSecondsByDistance.get(clampedRawDistance);
+        if (!isDistanceWithinShotMapRange(rawDistanceMeters)) {
+            reportCompensationFailure(String.format(
+                    "Raw distance %.3f m out of shot map range [%.3f, %.3f]",
+                    rawDistanceMeters,
+                    shotMapMinDistanceMeters,
+                    shotMapMaxDistanceMeters));
+            publishCompensationTargetInvalid();
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
+                    velocityTowardHubMetersPerSec,
+                    velocityPerpendicularHubMetersPerSec,
+                    null);
+        }
+
+        double firstPassTimeSec = timeInAirSecondsByDistance.get(rawDistanceMeters);
+        if (!Double.isFinite(firstPassTimeSec)) {
+            reportCompensationFailure(String.format(
+                    "Time-in-air lookup invalid for raw distance %.3f m",
+                    rawDistanceMeters));
+            publishCompensationTargetInvalid();
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
+                    velocityTowardHubMetersPerSec,
+                    velocityPerpendicularHubMetersPerSec,
+                    null);
+        }
         Translation2d firstPassVector = toHubVector
                 .minus(robotFieldVelocity.times(firstPassTimeSec));
-        double firstPassDistance = clampToShotMapRange(firstPassVector.getNorm());
+        double firstPassDistance = firstPassVector.getNorm();
+        if (!isDistanceWithinShotMapRange(firstPassDistance)) {
+            reportCompensationFailure(String.format(
+                    "First-pass distance %.3f m out of shot map range [%.3f, %.3f]",
+                    firstPassDistance,
+                    shotMapMinDistanceMeters,
+                    shotMapMaxDistanceMeters));
+            publishCompensationTargetInvalid();
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
+                    velocityTowardHubMetersPerSec,
+                    velocityPerpendicularHubMetersPerSec,
+                    null);
+        }
 
         double timeInAirSec = timeInAirSecondsByDistance.get(firstPassDistance);
+        if (!Double.isFinite(timeInAirSec)) {
+            reportCompensationFailure(String.format(
+                    "Time-in-air lookup invalid for first-pass distance %.3f m",
+                    firstPassDistance));
+            publishCompensationTargetInvalid();
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
+                    velocityTowardHubMetersPerSec,
+                    velocityPerpendicularHubMetersPerSec,
+                    null);
+        }
         Translation2d compensatedVector = toHubVector
                 .minus(robotFieldVelocity.times(timeInAirSec));
-        double compensatedDistanceMeters = clampToShotMapRange(compensatedVector.getNorm());
+        double compensatedDistanceMeters = compensatedVector.getNorm();
+        if (!isDistanceWithinShotMapRange(compensatedDistanceMeters)) {
+            reportCompensationFailure(String.format(
+                    "Compensated distance %.3f m out of shot map range [%.3f, %.3f]",
+                    compensatedDistanceMeters,
+                    shotMapMinDistanceMeters,
+                    shotMapMaxDistanceMeters));
+            publishCompensationTargetInvalid();
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    Double.NaN,
+                    timeInAirSec,
+                    velocityTowardHubMetersPerSec,
+                    velocityPerpendicularHubMetersPerSec,
+                    null);
+        }
+
         Rotation2d compensatedHeading = compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : null;
         Translation2d compensatedRobot = robotPose.getTranslation()
                 .plus(robotFieldVelocity.times(timeInAirSec));
         Rotation2d compensatedRobotHeading =
                 new Rotation2d(robotPose.getRotation().getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
         boolean hasValidTarget = compensatedHeading != null;
-        Logger.recordOutput(
-                LOG_COMP_ROBOT_POSE_KEY,
-                new Pose3d(
-                        compensatedRobot.getX(),
-                        compensatedRobot.getY(),
-                        0.0,
-                        new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians())));
-        // Keep legacy key for existing widgets, but it now represents compensated robot pose.
-        Logger.recordOutput(
-                LOG_COMP_TARGET_POSE_KEY,
-                new Pose3d(
-                        compensatedRobot.getX(),
-                        compensatedRobot.getY(),
-                        0.0,
-                        new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians())));
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, compensatedRobot.getX());
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, compensatedRobot.getY());
-        SmartDashboard.putNumber(
-                DASHBOARD_COMP_TARGET_HEADING_KEY,
-                compensatedRobotHeading.getDegrees());
-        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, hasValidTarget);
+        publishCompensationTarget(compensatedRobot, compensatedRobotHeading, hasValidTarget);
 
         return publishMotionCompensation(
                 rawDistanceMeters,
@@ -329,11 +388,57 @@ public class Shooter extends SubsystemBase {
                 compensatedHeading);
     }
 
-    private static double clampToShotMapRange(double distanceMeters) {
-        return MathUtil.clamp(
-                distanceMeters,
-                ShooterConstants.SHOT_MAP_DISTANCE_METERS[0],
-                ShooterConstants.SHOT_MAP_DISTANCE_METERS[ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1]);
+    private boolean isDistanceWithinShotMapRange(double distanceMeters) {
+        return Double.isFinite(distanceMeters)
+                && Double.isFinite(shotMapMinDistanceMeters)
+                && Double.isFinite(shotMapMaxDistanceMeters)
+                && distanceMeters >= shotMapMinDistanceMeters
+                && distanceMeters <= shotMapMaxDistanceMeters;
+    }
+
+    private void publishCompensationTarget(Translation2d compensatedRobot, Rotation2d compensatedRobotHeading, boolean hasValidTarget) {
+        Pose3d robotPose = new Pose3d(
+                compensatedRobot.getX(),
+                compensatedRobot.getY(),
+                0.0,
+                new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians()));
+        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, robotPose);
+        // Keep legacy key for existing widgets; it mirrors the compensated robot pose.
+        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, robotPose);
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, compensatedRobot.getX());
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, compensatedRobot.getY());
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, compensatedRobotHeading.getDegrees());
+        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, hasValidTarget);
+    }
+
+    private void publishCompensationTargetInvalid() {
+        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
+        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
+        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
+    }
+
+    private void reportCompensationFailure(String reason) {
+        Logger.recordOutput(LOG_COMP_FAILURE_KEY, reason);
+        DriverStation.reportError("[Shooter] Compensation invalid: " + reason, false);
+    }
+
+    private static double requireInRange(double value, double minInclusive, double maxInclusive, String name) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(name + " must be finite, got " + value);
+        }
+        if (value < minInclusive || value > maxInclusive) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "%s out of range: %.3f not in [%.3f, %.3f]",
+                            name,
+                            value,
+                            minInclusive,
+                            maxInclusive));
+        }
+        return value;
     }
 
     public Command dashboardTuneCommand() {
@@ -419,9 +524,26 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setShotMapPoint(double distanceMeters, double leftRpm, double rightRpm, double hoodAngleDeg) {
+        if (!Double.isFinite(distanceMeters)) {
+            throw new IllegalArgumentException("distanceMeters must be finite");
+        }
+        requireInRange(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "leftRpm");
+        requireInRange(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "rightRpm");
+        double hoodAngleRad = Units.degreesToRadians(hoodAngleDeg);
+        requireInRange(
+                hoodAngleRad,
+                ShooterConstants.HOOD_MIN_ANGLE_RAD,
+                ShooterConstants.HOOD_MAX_ANGLE_RAD,
+                "hoodAngleRad");
         leftRpmByDistance.put(distanceMeters, leftRpm);
         rightRpmByDistance.put(distanceMeters, rightRpm);
-        hoodAngleRadByDistance.put(distanceMeters, Units.degreesToRadians(hoodAngleDeg));
+        hoodAngleRadByDistance.put(distanceMeters, hoodAngleRad);
+        if (!Double.isFinite(shotMapMinDistanceMeters) || distanceMeters < shotMapMinDistanceMeters) {
+            shotMapMinDistanceMeters = distanceMeters;
+        }
+        if (!Double.isFinite(shotMapMaxDistanceMeters) || distanceMeters > shotMapMaxDistanceMeters) {
+            shotMapMaxDistanceMeters = distanceMeters;
+        }
     }
 
     public void setShotMap(
@@ -434,10 +556,13 @@ public class Shooter extends SubsystemBase {
                 || distancesMeters.length != hoodAngleDeg.length) {
             throw new IllegalArgumentException("Shot map arrays must have equal length.");
         }
+        validateDistancesStrictlyIncreasing(distancesMeters, "Shot map");
 
         leftRpmByDistance.clear();
         rightRpmByDistance.clear();
         hoodAngleRadByDistance.clear();
+        shotMapMinDistanceMeters = Double.NaN;
+        shotMapMaxDistanceMeters = Double.NaN;
 
         for (int i = 0; i < distancesMeters.length; i++) {
             setShotMapPoint(distancesMeters[i], leftRpm[i], rightRpm[i], hoodAngleDeg[i]);
@@ -451,10 +576,33 @@ public class Shooter extends SubsystemBase {
         if (distancesMeters.length != timeInAirSec.length) {
             throw new IllegalArgumentException("Time-in-air map arrays must have equal length.");
         }
+        validateDistancesStrictlyIncreasing(distancesMeters, "Time-in-air map");
 
         timeInAirSecondsByDistance.clear();
         for (int i = 0; i < distancesMeters.length; i++) {
+            if (!Double.isFinite(timeInAirSec[i]) || timeInAirSec[i] < 0.0) {
+                throw new IllegalArgumentException(
+                        String.format("Time-in-air map value at index %d must be finite and >= 0.0, got %.3f", i, timeInAirSec[i]));
+            }
             timeInAirSecondsByDistance.put(distancesMeters[i], timeInAirSec[i]);
+        }
+    }
+
+    private static void validateDistancesStrictlyIncreasing(double[] distancesMeters, String mapName) {
+        for (int i = 0; i < distancesMeters.length; i++) {
+            if (!Double.isFinite(distancesMeters[i])) {
+                throw new IllegalArgumentException(
+                        String.format("%s distance at index %d must be finite, got %s", mapName, i, distancesMeters[i]));
+            }
+            if (i > 0 && distancesMeters[i] <= distancesMeters[i - 1]) {
+                throw new IllegalArgumentException(
+                        String.format(
+                                "%s distances must be strictly increasing: index %d value %.3f <= previous %.3f",
+                                mapName,
+                                i,
+                                distancesMeters[i],
+                                distancesMeters[i - 1]));
+            }
         }
     }
 

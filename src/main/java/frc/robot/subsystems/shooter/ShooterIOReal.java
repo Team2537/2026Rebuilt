@@ -16,7 +16,6 @@ import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
 import frc.robot.Constants;
 
@@ -174,41 +173,27 @@ public class ShooterIOReal implements ShooterIO {
 
     @Override
     public void setLeftVelocity(double rpm) {
-        double clampedRpm = MathUtil.clamp(rpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        leftShooterMotor.setControl(leftVelocityRequest.withVelocity(clampedRpm / 60.0));
+        leftShooterMotor.setControl(leftVelocityRequest.withVelocity(rpm / 60.0));
     }
 
     @Override
     public void setRightVelocity(double rpm) {
-        double clampedRpm = MathUtil.clamp(rpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        rightShooterMotor.setControl(rightVelocityRequest.withVelocity(clampedRpm / 60.0));
+        rightShooterMotor.setControl(rightVelocityRequest.withVelocity(rpm / 60.0));
     }
 
     @Override
     public void setHoodAngle(double angle) {
-        double clampedAngle = MathUtil.clamp(
-                angle,
-                ShooterConstants.HOOD_MIN_ANGLE_RAD,
-                ShooterConstants.HOOD_MAX_ANGLE_RAD);
-        hoodMotor.setControl(hoodPositionRequest.withPosition(Units.radiansToRotations(clampedAngle)));
+        hoodMotor.setControl(hoodPositionRequest.withPosition(Units.radiansToRotations(angle)));
     }
 
     @Override
     public void setKickerTorque(double torque) {
-        double clampedTorque = MathUtil.clamp(
-                torque,
-                -ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
-                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS);
-        kickerMotor.setControl(kickerTorqueRequest.withOutput(clampedTorque));
+        kickerMotor.setControl(kickerTorqueRequest.withOutput(torque));
     }
 
     @Override
     public void setKickerVoltage(double volts) {
-        double clampedVolts = MathUtil.clamp(
-                volts,
-                -ShooterConstants.MAX_OUTPUT_VOLTS,
-                ShooterConstants.MAX_OUTPUT_VOLTS);
-        kickerMotor.setControl(kickerVoltageRequest.withOutput(clampedVolts));
+        kickerMotor.setControl(kickerVoltageRequest.withOutput(volts));
     }
 
     @Override

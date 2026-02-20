@@ -1,6 +1,5 @@
 package frc.robot.subsystems.shooter;
 
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
@@ -69,38 +68,23 @@ public class ShooterIOSim implements ShooterIO {
     @Override
     public void updateInputs(ShooterIOInputs inputs) {
         leftAppliedVolts = leftClosedLoop
-                ? MathUtil.clamp(
-                        SHOOTER_KV_VOLTS_PER_RPM * targetLeftRpm
-                                + leftVelocityController.calculate(leftShooterSim.getAngularVelocityRPM(), targetLeftRpm),
-                        -ShooterConstants.MAX_OUTPUT_VOLTS,
-                        ShooterConstants.MAX_OUTPUT_VOLTS)
+                ? SHOOTER_KV_VOLTS_PER_RPM * targetLeftRpm
+                        + leftVelocityController.calculate(leftShooterSim.getAngularVelocityRPM(), targetLeftRpm)
                 : 0.0;
 
         rightAppliedVolts = rightClosedLoop
-                ? MathUtil.clamp(
-                        SHOOTER_KV_VOLTS_PER_RPM * targetRightRpm
-                                + rightVelocityController.calculate(rightShooterSim.getAngularVelocityRPM(), targetRightRpm),
-                        -ShooterConstants.MAX_OUTPUT_VOLTS,
-                        ShooterConstants.MAX_OUTPUT_VOLTS)
+                ? SHOOTER_KV_VOLTS_PER_RPM * targetRightRpm
+                        + rightVelocityController.calculate(rightShooterSim.getAngularVelocityRPM(), targetRightRpm)
                 : 0.0;
 
         hoodAppliedVolts = hoodClosedLoop
-                ? MathUtil.clamp(
-                        hoodPositionController.calculate(hoodSim.getAngularPositionRad(), targetHoodAngleRad),
-                        -ShooterConstants.MAX_OUTPUT_VOLTS,
-                        ShooterConstants.MAX_OUTPUT_VOLTS)
+                ? hoodPositionController.calculate(hoodSim.getAngularPositionRad(), targetHoodAngleRad)
                 : 0.0;
 
         kickerAppliedVolts = switch (kickerMode) {
             case OFF -> 0.0;
-            case TORQUE -> MathUtil.clamp(
-                    kickerOutput / ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS * ShooterConstants.MAX_OUTPUT_VOLTS,
-                    -ShooterConstants.MAX_OUTPUT_VOLTS,
-                    ShooterConstants.MAX_OUTPUT_VOLTS);
-            case VOLTAGE -> MathUtil.clamp(
-                    kickerOutput,
-                    -ShooterConstants.MAX_OUTPUT_VOLTS,
-                    ShooterConstants.MAX_OUTPUT_VOLTS);
+            case TORQUE -> kickerOutput / ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS * ShooterConstants.MAX_OUTPUT_VOLTS;
+            case VOLTAGE -> kickerOutput;
         };
 
         leftShooterSim.setInputVoltage(leftAppliedVolts);
@@ -140,40 +124,31 @@ public class ShooterIOSim implements ShooterIO {
 
     @Override
     public void setLeftVelocity(double rpm) {
-        targetLeftRpm = MathUtil.clamp(rpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        targetLeftRpm = rpm;
         leftClosedLoop = true;
     }
 
     @Override
     public void setRightVelocity(double rpm) {
-        targetRightRpm = MathUtil.clamp(rpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        targetRightRpm = rpm;
         rightClosedLoop = true;
     }
 
     @Override
     public void setHoodAngle(double angle) {
-        targetHoodAngleRad = MathUtil.clamp(
-                angle,
-                ShooterConstants.HOOD_MIN_ANGLE_RAD,
-                ShooterConstants.HOOD_MAX_ANGLE_RAD);
+        targetHoodAngleRad = angle;
         hoodClosedLoop = true;
     }
 
     @Override
     public void setKickerTorque(double torqueCurrentAmps) {
-        kickerOutput = MathUtil.clamp(
-                torqueCurrentAmps,
-                -ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
-                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS);
+        kickerOutput = torqueCurrentAmps;
         kickerMode = KickerControlMode.TORQUE;
     }
 
     @Override
     public void setKickerVoltage(double volts) {
-        kickerOutput = MathUtil.clamp(
-                volts,
-                -ShooterConstants.MAX_OUTPUT_VOLTS,
-                ShooterConstants.MAX_OUTPUT_VOLTS);
+        kickerOutput = volts;
         kickerMode = KickerControlMode.VOLTAGE;
     }
 
