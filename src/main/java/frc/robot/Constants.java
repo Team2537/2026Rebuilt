@@ -19,12 +19,9 @@ public final class Constants {
 
     /**
      * Enable/disable robot mechanisms at init time.
-     *
-     * <p>Drive and vision are enabled to support baseline movement and localization.
-     * Add/remove entries here to control startup of non-essential mechanisms.
      */
     public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
-            EnumSet.of(Mechanism.INTAKE);
+            EnumSet.of(Mechanism.INTAKE, Mechanism.DRIVE, Mechanism.SHOOTER);
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {
         return ENABLED_MECHANISMS.contains(mechanism);
