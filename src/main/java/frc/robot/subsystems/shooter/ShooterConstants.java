@@ -42,7 +42,7 @@ public final class ShooterConstants {
     public static final double[] SHOT_MAP_LEFT_RPM = {1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
     public static final double[] SHOT_MAP_RIGHT_RPM = { 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
     public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
-    public static final double[] SHOT_TIME_IN_AIR_SECONDS = {0.55, 0.66, 0.78, 0.93, 1.21, 1.55};
+    public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
 
     // Closed-loop gains (starting points, tune on robot).
     public static final double SHOOTER_KP = 10.0;

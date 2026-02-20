@@ -2,6 +2,9 @@ package frc.robot.subsystems.shooter;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
@@ -17,6 +20,8 @@ import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Shooter extends SubsystemBase {
+    private static final String LOG_COMP_ROBOT_POSE_KEY = "Shooter/Comp/RobotPose";
+    private static final String LOG_COMP_TARGET_POSE_KEY = "Shooter/Comp/TargetPose";
     private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
     private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
     private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
@@ -26,11 +31,24 @@ public class Shooter extends SubsystemBase {
     private static final String DASHBOARD_RAW_DISTANCE_KEY = "Shooter/Comp/RawHubDistanceMeters";
     private static final String DASHBOARD_COMP_DISTANCE_KEY = "Shooter/Comp/CompensatedDistanceMeters";
     private static final String DASHBOARD_VELOCITY_TOWARD_HUB_KEY = "Shooter/Comp/VelocityTowardHubMps";
+    private static final String DASHBOARD_VELOCITY_PERP_HUB_KEY = "Shooter/Comp/VelocityPerpendicularHubMps";
     private static final String DASHBOARD_TIME_IN_AIR_KEY = "Shooter/Comp/TimeInAirSec";
+    private static final String DASHBOARD_COMP_HEADING_DEG_KEY = "Shooter/Comp/CompensatedHeadingDeg";
+    private static final String DASHBOARD_COMP_TARGET_X_KEY = "Shooter/Comp/TargetX";
+    private static final String DASHBOARD_COMP_TARGET_Y_KEY = "Shooter/Comp/TargetY";
+    private static final String DASHBOARD_COMP_TARGET_HEADING_KEY = "Shooter/Comp/TargetHeadingDeg";
+    private static final String DASHBOARD_COMP_TARGET_VALID_KEY = "Shooter/Comp/TargetValid";
     private static final String DASHBOARD_MAP_DISTANCE_KEY = "Shooter/Comp/MapDistanceMeters";
     private static final String DASHBOARD_MAP_TIME_KEY = "Shooter/Comp/MapTimeInAirSec";
 
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
+    public record MotionCompensation(
+            double rawDistanceMeters,
+            double compensatedDistanceMeters,
+            double timeInAirSec,
+            double velocityTowardHubMps,
+            double velocityPerpendicularHubMps,
+            Rotation2d compensatedHeading) {}
 
     private enum KickerControlMode {
         OFF,
@@ -182,51 +200,140 @@ public class Shooter extends SubsystemBase {
     }
 
     public double getMotionCompensatedHubDistanceMeters(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
-        double rawDistanceMeters = getHubDistanceMeters(robotPose);
-        if (!Double.isFinite(rawDistanceMeters) || robotRelativeSpeeds == null) {
-            SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
-            SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, rawDistanceMeters);
-            SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, Double.NaN);
-            SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
-            return rawDistanceMeters;
-        }
+        return getMotionCompensationToHub(robotPose, robotRelativeSpeeds).compensatedDistanceMeters();
+    }
 
+    public Rotation2d getMotionCompensatedHubHeading(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
+        return getMotionCompensationToHub(robotPose, robotRelativeSpeeds).compensatedHeading();
+    }
+
+    public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
+        double rawDistanceMeters = getHubDistanceMeters(robotPose);
         Translation2d hubTarget = getHubTargetTranslation();
-        if (hubTarget == null) {
-            SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
-            SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, rawDistanceMeters);
-            SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, Double.NaN);
-            SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
-            return rawDistanceMeters;
+        if (!Double.isFinite(rawDistanceMeters) || hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
+            Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
+            Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
+            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
+            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
+            SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
+            SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
+                    Double.NaN,
+                    null);
         }
 
         Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
         double rangeMeters = toHubVector.getNorm();
         if (rangeMeters <= 1e-6) {
-            return rawDistanceMeters;
+            return publishMotionCompensation(
+                    rawDistanceMeters,
+                    rawDistanceMeters,
+                    0.0,
+                    0.0,
+                    0.0,
+                    null);
         }
 
         ChassisSpeeds fieldRelativeSpeeds =
                 ChassisSpeeds.fromRobotRelativeSpeeds(robotRelativeSpeeds, robotPose.getRotation());
+        Translation2d robotFieldVelocity =
+                new Translation2d(fieldRelativeSpeeds.vxMetersPerSecond, fieldRelativeSpeeds.vyMetersPerSecond);
+        Translation2d towardUnit = new Translation2d(toHubVector.getX() / rangeMeters, toHubVector.getY() / rangeMeters);
+        Translation2d perpendicularUnit = new Translation2d(-towardUnit.getY(), towardUnit.getX());
         double velocityTowardHubMetersPerSec =
-                (fieldRelativeSpeeds.vxMetersPerSecond * toHubVector.getX()
-                        + fieldRelativeSpeeds.vyMetersPerSecond * toHubVector.getY()) / rangeMeters;
-        double timeInAirSec = timeInAirSecondsByDistance.get(rawDistanceMeters);
-        double compensatedDistanceMeters = rawDistanceMeters - velocityTowardHubMetersPerSec * timeInAirSec;
-        double clampedDistanceMeters = MathUtil.clamp(
+                robotFieldVelocity.getX() * towardUnit.getX() + robotFieldVelocity.getY() * towardUnit.getY();
+        double velocityPerpendicularHubMetersPerSec =
+                robotFieldVelocity.getX() * perpendicularUnit.getX()
+                        + robotFieldVelocity.getY() * perpendicularUnit.getY();
+
+        double clampedRawDistance = clampToShotMapRange(rawDistanceMeters);
+        double firstPassTimeSec = timeInAirSecondsByDistance.get(clampedRawDistance);
+        Translation2d firstPassVector = toHubVector
+                .minus(robotFieldVelocity.times(firstPassTimeSec));
+        double firstPassDistance = clampToShotMapRange(firstPassVector.getNorm());
+
+        double timeInAirSec = timeInAirSecondsByDistance.get(firstPassDistance);
+        Translation2d compensatedVector = toHubVector
+                .minus(robotFieldVelocity.times(timeInAirSec));
+        double compensatedDistanceMeters = clampToShotMapRange(compensatedVector.getNorm());
+        Rotation2d compensatedHeading = compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : null;
+        Translation2d compensatedRobot = robotPose.getTranslation()
+                .plus(robotFieldVelocity.times(timeInAirSec));
+        Rotation2d compensatedRobotHeading =
+                new Rotation2d(robotPose.getRotation().getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
+        boolean hasValidTarget = compensatedHeading != null;
+        Logger.recordOutput(
+                LOG_COMP_ROBOT_POSE_KEY,
+                new Pose3d(
+                        compensatedRobot.getX(),
+                        compensatedRobot.getY(),
+                        0.0,
+                        new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians())));
+        // Keep legacy key for existing widgets, but it now represents compensated robot pose.
+        Logger.recordOutput(
+                LOG_COMP_TARGET_POSE_KEY,
+                new Pose3d(
+                        compensatedRobot.getX(),
+                        compensatedRobot.getY(),
+                        0.0,
+                        new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians())));
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, compensatedRobot.getX());
+        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, compensatedRobot.getY());
+        SmartDashboard.putNumber(
+                DASHBOARD_COMP_TARGET_HEADING_KEY,
+                compensatedRobotHeading.getDegrees());
+        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, hasValidTarget);
+
+        return publishMotionCompensation(
+                rawDistanceMeters,
                 compensatedDistanceMeters,
-                ShooterConstants.SHOT_MAP_DISTANCE_METERS[0],
-                ShooterConstants.SHOT_MAP_DISTANCE_METERS[ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1]);
+                timeInAirSec,
+                velocityTowardHubMetersPerSec,
+                velocityPerpendicularHubMetersPerSec,
+                compensatedHeading);
+    }
+
+    private MotionCompensation publishMotionCompensation(
+            double rawDistanceMeters,
+            double compensatedDistanceMeters,
+            double timeInAirSec,
+            double velocityTowardHubMps,
+            double velocityPerpendicularHubMps,
+            Rotation2d compensatedHeading) {
+        double headingDeg = compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN;
 
         Logger.recordOutput("Shooter/RawHubDistanceMeters", rawDistanceMeters);
-        Logger.recordOutput("Shooter/VelocityTowardHubMps", velocityTowardHubMetersPerSec);
+        Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", compensatedDistanceMeters);
+        Logger.recordOutput("Shooter/VelocityTowardHubMps", velocityTowardHubMps);
+        Logger.recordOutput("Shooter/VelocityPerpendicularHubMps", velocityPerpendicularHubMps);
         Logger.recordOutput("Shooter/TimeInAirSec", timeInAirSec);
-        Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", clampedDistanceMeters);
+        Logger.recordOutput("Shooter/CompensatedHubHeadingDeg", headingDeg);
+
         SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
-        SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, clampedDistanceMeters);
-        SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, velocityTowardHubMetersPerSec);
+        SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, compensatedDistanceMeters);
+        SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, velocityTowardHubMps);
+        SmartDashboard.putNumber(DASHBOARD_VELOCITY_PERP_HUB_KEY, velocityPerpendicularHubMps);
         SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, timeInAirSec);
-        return clampedDistanceMeters;
+        SmartDashboard.putNumber(DASHBOARD_COMP_HEADING_DEG_KEY, headingDeg);
+
+        return new MotionCompensation(
+                rawDistanceMeters,
+                compensatedDistanceMeters,
+                timeInAirSec,
+                velocityTowardHubMps,
+                velocityPerpendicularHubMps,
+                compensatedHeading);
+    }
+
+    private static double clampToShotMapRange(double distanceMeters) {
+        return MathUtil.clamp(
+                distanceMeters,
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS[0],
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS[ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1]);
     }
 
     public Command dashboardTuneCommand() {
@@ -390,7 +497,13 @@ public class Shooter extends SubsystemBase {
         SmartDashboard.setDefaultNumber(DASHBOARD_RAW_DISTANCE_KEY, Double.NaN);
         SmartDashboard.setDefaultNumber(DASHBOARD_COMP_DISTANCE_KEY, Double.NaN);
         SmartDashboard.setDefaultNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, 0.0);
+        SmartDashboard.setDefaultNumber(DASHBOARD_VELOCITY_PERP_HUB_KEY, 0.0);
         SmartDashboard.setDefaultNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_HEADING_DEG_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
         SmartDashboard.putNumberArray(DASHBOARD_MAP_DISTANCE_KEY, ShooterConstants.SHOT_MAP_DISTANCE_METERS);
         SmartDashboard.putNumberArray(DASHBOARD_MAP_TIME_KEY, ShooterConstants.SHOT_TIME_IN_AIR_SECONDS);
     }

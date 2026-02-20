@@ -47,6 +47,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
+import edu.wpi.first.math.geometry.Rotation2d;
 
 public final class Robot extends LoggedRobot {
     public static final double UPDATE_RATE_SECONDS = 0.02;
@@ -222,22 +224,30 @@ public final class Robot extends LoggedRobot {
                         () -> shooter.getMotionCompensatedHubDistanceMeters(
                                 drive.getPose(),
                                 drive.getMeasuredChassisSpeeds());
+                Supplier<Rotation2d> hubHeadingSupplier =
+                        () -> shooter.getMotionCompensatedHubHeading(
+                                drive.getPose(),
+                                drive.getMeasuredChassisSpeeds());
                 Trigger shootTrigger = driverController.rightTrigger().and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
                 Trigger aimTrigger = driverController.leftTrigger().and(shootTrigger.negate());
 
                 var shootCommand = shooter.shoot(hubDistanceSupplier);
                 var aimCommand = shooter.aimForDistance(hubDistanceSupplier);
-                if (vision != null) {
-                    var autoAlignToHub = DriveCommands.autoAlignToHub(
-                            drive,
-                            vision,
-                            () -> driverController.getLeftY(),
-                            driverController::getLeftX,
-                            () -> -driverController.getRightX());
-
-                    // Shooting has priority over aim-only mode to avoid command interruption thrash.
-                    shootCommand = Commands.parallel(autoAlignToHub, shootCommand);
-                }
+                var alignToHubPose = DriveCommands.autoAlignToHubPose(
+                        drive,
+                        () -> driverController.getLeftY(),
+                        driverController::getLeftX,
+                        () -> -driverController.getRightX(),
+                        hubHeadingSupplier);
+                aimCommand = Commands.parallel(alignToHubPose, aimCommand);
+                shootCommand = Commands.parallel(
+                        DriveCommands.autoAlignToHubPose(
+                                drive,
+                                () -> driverController.getLeftY(),
+                                driverController::getLeftX,
+                                () -> -driverController.getRightX(),
+                                hubHeadingSupplier),
+                        shootCommand);
                 shootTrigger.whileTrue(shootCommand);
                 aimTrigger.whileTrue(aimCommand);
             }
@@ -262,6 +272,9 @@ public final class Robot extends LoggedRobot {
     @Override
     public void robotPeriodic() {
         CommandScheduler.getInstance().run();
+        if (shooter != null && drive != null) {
+            shooter.getMotionCompensationToHub(drive.getPose(), drive.getMeasuredChassisSpeeds());
+        }
         MechanismVisualizer.updatePoses();
     }
 

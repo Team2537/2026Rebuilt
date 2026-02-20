@@ -23,7 +23,9 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.subsystems.vision.Vision;
+import frc.robot.util.FieldConstants;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.LinkedList;
@@ -41,6 +43,12 @@ public class DriveCommands {
     private static final double HUB_ALIGN_KD = 0.4;
     private static final double HUB_ALIGN_MAX_VELOCITY = 8.0;
     private static final double HUB_ALIGN_MAX_ACCELERATION = 20.0;
+    private static final double HUB_POSE_ALIGN_KP = 3.0;
+    private static final double HUB_POSE_ALIGN_KD = 0.2;
+    private static final double HUB_POSE_ALIGN_MAX_VELOCITY = 6.0;
+    private static final double HUB_POSE_ALIGN_MAX_ACCELERATION = 14.0;
+    private static final double HUB_POSE_ALIGN_TOLERANCE_RAD = Units.degreesToRadians(1.25);
+    private static final double HUB_POSE_TARGET_FILTER_ALPHA = 0.2;
     private static final double FF_START_DELAY = 2.0; // Secs
     private static final double FF_RAMP_RATE = 0.1; // Volts/Sec
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 0.25; // Rad/Sec
@@ -223,6 +231,124 @@ public class DriveCommands {
                     hubYawController.reset(Double.isFinite(initialHubYaw) ? -initialHubYaw : 0.0);
                 })
                 .withName("DriveAutoAlignToHub");
+    }
+
+    /**
+     * Drive command that keeps translational joystick control and auto-rotates to
+     * face the hub using odometry + field layout.
+     */
+    public static Command autoAlignToHubPose(
+            Drive drive,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier) {
+        return autoAlignToHubPose(
+                drive,
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                () -> getHubFacingHeading(drive.getPose()));
+    }
+
+    /**
+     * Drive command that keeps translational joystick control and auto-rotates to
+     * a supplied field heading.
+     */
+    public static Command autoAlignToHubPose(
+            Drive drive,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<Rotation2d> headingSupplier) {
+        class HubPoseAlignState {
+            private Rotation2d filteredTargetHeading = null;
+        }
+        HubPoseAlignState state = new HubPoseAlignState();
+
+        ProfiledPIDController angleController = new ProfiledPIDController(
+                HUB_POSE_ALIGN_KP,
+                0.0,
+                HUB_POSE_ALIGN_KD,
+                new TrapezoidProfile.Constraints(HUB_POSE_ALIGN_MAX_VELOCITY, HUB_POSE_ALIGN_MAX_ACCELERATION));
+        angleController.enableContinuousInput(-Math.PI, Math.PI);
+        angleController.setTolerance(HUB_POSE_ALIGN_TOLERANCE_RAD);
+
+        return Commands.run(
+                () -> {
+                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
+                            -ySupplier.getAsDouble());
+
+                    Rotation2d targetHeading = headingSupplier.get();
+                    double omega;
+                    if (targetHeading != null) {
+                        if (state.filteredTargetHeading == null) {
+                            state.filteredTargetHeading = targetHeading;
+                            angleController.reset(drive.getRotation().getRadians());
+                        } else {
+                            double targetDelta = MathUtil.angleModulus(
+                                    targetHeading.getRadians() - state.filteredTargetHeading.getRadians());
+                            state.filteredTargetHeading = new Rotation2d(
+                                    state.filteredTargetHeading.getRadians() + targetDelta * HUB_POSE_TARGET_FILTER_ALPHA);
+                        }
+
+                        double currentHeadingRad = drive.getRotation().getRadians();
+                        double filteredTargetHeadingRad = state.filteredTargetHeading.getRadians();
+                        double headingErrorRad = MathUtil.angleModulus(filteredTargetHeadingRad - currentHeadingRad);
+                        if (Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_TOLERANCE_RAD) {
+                            omega = 0.0;
+                            angleController.reset(currentHeadingRad);
+                        } else {
+                            omega = angleController.calculate(currentHeadingRad, filteredTargetHeadingRad);
+                        }
+                    } else {
+                        state.filteredTargetHeading = null;
+                        double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
+                        fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
+                        omega = fallbackOmega * drive.getMaxAngularSpeedRadPerSec();
+                        angleController.reset(drive.getRotation().getRadians());
+                    }
+
+                    ChassisSpeeds speeds = new ChassisSpeeds(
+                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
+                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
+                            omega);
+
+                    boolean isFlipped = DriverStation.getAlliance().isPresent()
+                            && DriverStation.getAlliance().get() == Alliance.Red;
+                    Rotation2d heading = isFlipped
+                            ? drive.getRotation().plus(new Rotation2d(Math.PI))
+                            : drive.getRotation();
+
+                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading)
+                            : speeds;
+
+                    drive.runVelocity(commandSpeeds);
+                },
+                drive)
+                .beforeStarting(() -> {
+                    state.filteredTargetHeading = headingSupplier.get();
+                    angleController.reset(drive.getRotation().getRadians());
+                })
+                .withName("DriveAutoAlignToHubPose");
+    }
+
+    private static Rotation2d getHubFacingHeading(Pose2d robotPose) {
+        if (robotPose == null) {
+            return null;
+        }
+        return FieldConstants.TAG_LAYOUT.getTagPose(ShooterConstants.HUB_TAG_ID)
+                .map(tagPose -> {
+                    Translation2d hubTarget = new Translation2d(
+                            tagPose.getX() + ShooterConstants.HUB_TARGET_X_OFFSET_METERS,
+                            tagPose.getY());
+                    Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
+                    if (toHub.getNorm() <= 1e-6) {
+                        return null;
+                    }
+                    return toHub.getAngle();
+                })
+                .orElse(null);
     }
 
     /**
