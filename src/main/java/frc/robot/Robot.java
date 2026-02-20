@@ -35,6 +35,7 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
+import frc.robot.sim.FuelSim;
 import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
@@ -61,6 +62,7 @@ public final class Robot extends LoggedRobot {
     private final CommandXboxController driverController = new CommandXboxController(0);
     // private final CommandButtonBoard operatorController = new CommandButtonBoard(1, 2);
     private final CommandXboxController godController = new CommandXboxController(5);
+    private final FuelSim fuelSim = new FuelSim();
 
     private Autos autos;
 
@@ -99,42 +101,45 @@ public final class Robot extends LoggedRobot {
         CommandScheduler.getInstance()
                 .onCommandFinish(command -> Logger.recordOutput("commands/" + command.getName(), false));
 
+        boolean enableDrive = Constants.isMechanismEnabled(Constants.Mechanism.DRIVE);
         boolean enableVision = Constants.isMechanismEnabled(Constants.Mechanism.VISION);
         boolean enableShooter = Constants.isMechanismEnabled(Constants.Mechanism.SHOOTER);
         boolean enableTransfer = Constants.isMechanismEnabled(Constants.Mechanism.TRANSFER);
         boolean enableIntake = Constants.isMechanismEnabled(Constants.Mechanism.INTAKE);
 
-        // Initialize drive subsystem
-        switch (RobotType.MODE) {
-            case REAL ->
+        if (enableDrive) {
+            // Initialize drive subsystem
+            switch (RobotType.MODE) {
+                case REAL ->
+                        drive = new Drive(
+                                new GyroIOPigeon2(),
+                                new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                                new ModuleIOTalonFX(TunerConstants.FrontRight),
+                                new ModuleIOTalonFX(TunerConstants.BackLeft),
+                                new ModuleIOTalonFX(TunerConstants.BackRight));
+                case SIMULATION -> {
+                    GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
                     drive = new Drive(
-                            new GyroIOPigeon2(),
-                            new ModuleIOTalonFX(TunerConstants.FrontLeft),
-                            new ModuleIOTalonFX(TunerConstants.FrontRight),
-                            new ModuleIOTalonFX(TunerConstants.BackLeft),
-                            new ModuleIOTalonFX(TunerConstants.BackRight));
-            case SIMULATION -> {
-                GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
-                drive = new Drive(
-                        gyroIOSim,
-                        new ModuleIOSim(TunerConstants.FrontLeft),
-                        new ModuleIOSim(TunerConstants.FrontRight),
-                        new ModuleIOSim(TunerConstants.BackLeft),
-                        new ModuleIOSim(TunerConstants.BackRight));
-                gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
+                            gyroIOSim,
+                            new ModuleIOSim(TunerConstants.FrontLeft),
+                            new ModuleIOSim(TunerConstants.FrontRight),
+                            new ModuleIOSim(TunerConstants.BackLeft),
+                            new ModuleIOSim(TunerConstants.BackRight));
+                    gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
+                }
+                default ->
+                        drive = new Drive(
+                                new GyroIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {},
+                                new ModuleIO() {});
             }
-            default ->
-                    drive = new Drive(
-                            new GyroIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {},
-                            new ModuleIO() {});
         }
 
         alignmentState = new AlignmentState();
-        vision = enableVision ? new Vision(drive) : null;
-        autos = new Autos(drive);
+        vision = enableDrive && enableVision ? new Vision(drive) : null;
+        autos = enableDrive ? new Autos(drive) : null;
 
         if (enableShooter) {
             switch (RobotType.MODE) {
@@ -185,13 +190,17 @@ public final class Robot extends LoggedRobot {
     }
 
     private void configureBindings() {
-        // Default drive command
-        drive.setDefaultCommand(
-                DriveCommands.joystickDrive(
-                        drive, () -> driverController.getLeftY(), driverController::getLeftX, () -> -driverController.getRightX()));
+        if (drive != null) {
+            // Default drive command
+            drive.setDefaultCommand(
+                    DriveCommands.joystickDrive(
+                            drive, () -> driverController.getLeftY(), driverController::getLeftX, () -> -driverController.getRightX()));
+        }
 
         // Driver controller bindings
-        driverController.leftBumper().onTrue(drive.toggleSlowMode());
+        if (drive != null) {
+            driverController.leftBumper().onTrue(drive.toggleSlowMode());
+        }
         if (transfer != null) {
             driverController.rightBumper().onTrue(transfer.toggleCommand());
         }
@@ -200,30 +209,39 @@ public final class Robot extends LoggedRobot {
             driverController.y().onTrue(intake.retractCommand());
             driverController.a().whileTrue(intake.spinRoller());
         }
-        driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
-        driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+        if (drive != null) {
+            driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
+            driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+        }
 
         if (shooter != null) {
             shooter.setDefaultCommand(shooter.idleCommand());
-            DoubleSupplier hubDistanceSupplier = Shooter.hubDistanceMetersSupplier(drive::getPose);
-            Trigger shootTrigger = driverController.rightTrigger();
-            Trigger aimTrigger = driverController.leftTrigger().and(shootTrigger.negate());
+            Trigger dashboardTuneTrigger = driverController.rightTrigger().and(new Trigger(shooter::isDashboardTuningEnabled));
+            if (drive != null) {
+                DoubleSupplier hubDistanceSupplier =
+                        () -> shooter.getMotionCompensatedHubDistanceMeters(
+                                drive.getPose(),
+                                drive.getMeasuredChassisSpeeds());
+                Trigger shootTrigger = driverController.rightTrigger().and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
+                Trigger aimTrigger = driverController.leftTrigger().and(shootTrigger.negate());
 
-            var shootCommand = shooter.shoot(hubDistanceSupplier);
-            var aimCommand = shooter.aimForDistance(hubDistanceSupplier);
-            if (vision != null) {
-                var autoAlignToHub = DriveCommands.autoAlignToHub(
-                        drive,
-                        vision,
-                        () -> driverController.getLeftY(),
-                        driverController::getLeftX,
-                        () -> -driverController.getRightX());
+                var shootCommand = shooter.shoot(hubDistanceSupplier);
+                var aimCommand = shooter.aimForDistance(hubDistanceSupplier);
+                if (vision != null) {
+                    var autoAlignToHub = DriveCommands.autoAlignToHub(
+                            drive,
+                            vision,
+                            () -> driverController.getLeftY(),
+                            driverController::getLeftX,
+                            () -> -driverController.getRightX());
 
-                // Shooting has priority over aim-only mode to avoid command interruption thrash.
-                shootCommand = Commands.parallel(autoAlignToHub, shootCommand);
+                    // Shooting has priority over aim-only mode to avoid command interruption thrash.
+                    shootCommand = Commands.parallel(autoAlignToHub, shootCommand);
+                }
+                shootTrigger.whileTrue(shootCommand);
+                aimTrigger.whileTrue(aimCommand);
             }
-            shootTrigger.whileTrue(shootCommand);
-            aimTrigger.whileTrue(aimCommand);
+            dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
 
             // Operator panel: action fires, stow stops shooter outputs.
             // operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
@@ -231,12 +249,14 @@ public final class Robot extends LoggedRobot {
         }
 
         // God controller can also toggle slow mode and reset heading
-        godController.leftBumper().onTrue(drive.toggleSlowMode());
-        godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
-        godController.a().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
-        godController.b().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
-        godController.x().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
-        godController.y().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+        if (drive != null) {
+            godController.leftBumper().onTrue(drive.toggleSlowMode());
+            godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+            godController.a().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+            godController.b().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+            godController.x().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
+            godController.y().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+        }
     }
 
     @Override
@@ -302,6 +322,14 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void simulationPeriodic() {
+        if (drive == null) {
+            return;
+        }
+
+        boolean shooterActive = shooter != null && shooter.isKickerActive();
+        double shooterRpm = shooter != null ? shooter.getTargetAverageShooterRpm() : 0.0;
+        double hoodAngleRad = shooter != null ? shooter.getTargetHoodAngleRad() : 0.0;
+        fuelSim.update(drive.getPose(), shooterRpm, hoodAngleRad, shooterActive, UPDATE_RATE_SECONDS);
     }
 
     public static double getUpdateRateSec() {
