@@ -4,8 +4,10 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.util.FieldConstants;
@@ -15,6 +17,19 @@ import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Shooter extends SubsystemBase {
+    private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
+    private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
+    private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
+    private static final String DASHBOARD_HOOD_DEG_KEY = "Shooter/Tuning/HoodDeg";
+    private static final String DASHBOARD_FEED_KEY = "Shooter/Tuning/FeedKicker";
+    private static final String DASHBOARD_KICKER_TORQUE_KEY = "Shooter/Tuning/KickerTorqueAmps";
+    private static final String DASHBOARD_RAW_DISTANCE_KEY = "Shooter/Comp/RawHubDistanceMeters";
+    private static final String DASHBOARD_COMP_DISTANCE_KEY = "Shooter/Comp/CompensatedDistanceMeters";
+    private static final String DASHBOARD_VELOCITY_TOWARD_HUB_KEY = "Shooter/Comp/VelocityTowardHubMps";
+    private static final String DASHBOARD_TIME_IN_AIR_KEY = "Shooter/Comp/TimeInAirSec";
+    private static final String DASHBOARD_MAP_DISTANCE_KEY = "Shooter/Comp/MapDistanceMeters";
+    private static final String DASHBOARD_MAP_TIME_KEY = "Shooter/Comp/MapTimeInAirSec";
+
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
 
     private enum KickerControlMode {
@@ -29,6 +44,7 @@ public class Shooter extends SubsystemBase {
     private final InterpolatingDoubleTreeMap leftRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap rightRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap hoodAngleRadByDistance = new InterpolatingDoubleTreeMap();
+    private final InterpolatingDoubleTreeMap timeInAirSecondsByDistance = new InterpolatingDoubleTreeMap();
 
     private double targetLeftRpm = 0.0;
     private double targetRightRpm = 0.0;
@@ -40,6 +56,8 @@ public class Shooter extends SubsystemBase {
         super("shooter");
         this.io = io;
         loadShotMapFromConstants();
+        loadTimeInAirMapFromConstants();
+        initDashboardTuningEntries();
     }
 
     @Override
@@ -62,6 +80,7 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/AtSetpoint", atSetpoint());
         Logger.recordOutput("Shooter/ReadyToFire", readyToFire());
+        Logger.recordOutput("Shooter/TuningEnabled", isDashboardTuningEnabled());
     }
 
     private void applyShooterTargets() {
@@ -136,6 +155,94 @@ public class Shooter extends SubsystemBase {
 
     public boolean readyToFire() {
         return atSetpoint() && (Math.abs(targetLeftRpm) > 1.0 || Math.abs(targetRightRpm) > 1.0);
+    }
+
+    public boolean isActivelyShooting() {
+        return readyToFire() && isKickerActive();
+    }
+
+    public boolean isKickerActive() {
+        return kickerControlMode != KickerControlMode.OFF && Math.abs(kickerOutput) > 1e-6;
+    }
+
+    public double getAverageShooterVelocityRpm() {
+        return (inputs.shooterLeftVelocityRpm + inputs.shooterRightVelocityRpm) / 2.0;
+    }
+
+    public double getTargetAverageShooterRpm() {
+        return (targetLeftRpm + targetRightRpm) / 2.0;
+    }
+
+    public double getCurrentHoodAngleRad() {
+        return inputs.hoodPositionRad;
+    }
+
+    public double getTargetHoodAngleRad() {
+        return targetHoodAngleRad;
+    }
+
+    public double getMotionCompensatedHubDistanceMeters(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
+        double rawDistanceMeters = getHubDistanceMeters(robotPose);
+        if (!Double.isFinite(rawDistanceMeters) || robotRelativeSpeeds == null) {
+            SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
+            SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, rawDistanceMeters);
+            SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, Double.NaN);
+            SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
+            return rawDistanceMeters;
+        }
+
+        Translation2d hubTarget = getHubTargetTranslation();
+        if (hubTarget == null) {
+            SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
+            SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, rawDistanceMeters);
+            SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, Double.NaN);
+            SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
+            return rawDistanceMeters;
+        }
+
+        Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
+        double rangeMeters = toHubVector.getNorm();
+        if (rangeMeters <= 1e-6) {
+            return rawDistanceMeters;
+        }
+
+        ChassisSpeeds fieldRelativeSpeeds =
+                ChassisSpeeds.fromRobotRelativeSpeeds(robotRelativeSpeeds, robotPose.getRotation());
+        double velocityTowardHubMetersPerSec =
+                (fieldRelativeSpeeds.vxMetersPerSecond * toHubVector.getX()
+                        + fieldRelativeSpeeds.vyMetersPerSecond * toHubVector.getY()) / rangeMeters;
+        double timeInAirSec = timeInAirSecondsByDistance.get(rawDistanceMeters);
+        double compensatedDistanceMeters = rawDistanceMeters - velocityTowardHubMetersPerSec * timeInAirSec;
+        double clampedDistanceMeters = MathUtil.clamp(
+                compensatedDistanceMeters,
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS[0],
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS[ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1]);
+
+        Logger.recordOutput("Shooter/RawHubDistanceMeters", rawDistanceMeters);
+        Logger.recordOutput("Shooter/VelocityTowardHubMps", velocityTowardHubMetersPerSec);
+        Logger.recordOutput("Shooter/TimeInAirSec", timeInAirSec);
+        Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", clampedDistanceMeters);
+        SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
+        SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, clampedDistanceMeters);
+        SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, velocityTowardHubMetersPerSec);
+        SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, timeInAirSec);
+        return clampedDistanceMeters;
+    }
+
+    public Command dashboardTuneCommand() {
+        return runCommandWithCleanup(
+                () -> {
+                    setTargets(getDashboardShotSetpoint());
+                    if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
+                        setKickerTorqueAmps(SmartDashboard.getNumber(
+                                DASHBOARD_KICKER_TORQUE_KEY,
+                                ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
+                    } else {
+                        stopKicker();
+                    }
+                },
+                this::stopAll,
+                "ShooterDashboardTune");
     }
 
     private Command runCommandWithCleanup(Runnable action, Runnable cleanup, String name) {
@@ -230,6 +337,20 @@ public class Shooter extends SubsystemBase {
         }
     }
 
+    public void setTimeInAirMap(double[] distancesMeters, double[] timeInAirSec) {
+        if (distancesMeters.length < 2) {
+            throw new IllegalArgumentException("Time-in-air map requires at least 2 points.");
+        }
+        if (distancesMeters.length != timeInAirSec.length) {
+            throw new IllegalArgumentException("Time-in-air map arrays must have equal length.");
+        }
+
+        timeInAirSecondsByDistance.clear();
+        for (int i = 0; i < distancesMeters.length; i++) {
+            timeInAirSecondsByDistance.put(distancesMeters[i], timeInAirSec[i]);
+        }
+    }
+
     private void loadShotMapFromConstants() {
         setShotMap(
                 ShooterConstants.SHOT_MAP_DISTANCE_METERS,
@@ -238,19 +359,60 @@ public class Shooter extends SubsystemBase {
                 ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG);
     }
 
+    private void loadTimeInAirMapFromConstants() {
+        if (ShooterConstants.SHOT_MAP_DISTANCE_METERS.length
+                != ShooterConstants.SHOT_TIME_IN_AIR_SECONDS.length) {
+            throw new IllegalArgumentException("SHOT_TIME_IN_AIR_SECONDS must match SHOT_MAP_DISTANCE_METERS length.");
+        }
+        setTimeInAirMap(
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS,
+                ShooterConstants.SHOT_TIME_IN_AIR_SECONDS);
+    }
+
+    public boolean isDashboardTuningEnabled() {
+        return SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
+    }
+
+    private ShotSetpoint getDashboardShotSetpoint() {
+        return new ShotSetpoint(
+                SmartDashboard.getNumber(DASHBOARD_LEFT_RPM_KEY, ShooterConstants.SHOT_MAP_LEFT_RPM[0]),
+                SmartDashboard.getNumber(DASHBOARD_RIGHT_RPM_KEY, ShooterConstants.SHOT_MAP_RIGHT_RPM[0]),
+                Units.degreesToRadians(SmartDashboard.getNumber(DASHBOARD_HOOD_DEG_KEY, ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0])));
+    }
+
+    private static void initDashboardTuningEntries() {
+        SmartDashboard.setDefaultBoolean(DASHBOARD_ENABLE_KEY, false);
+        SmartDashboard.setDefaultNumber(DASHBOARD_LEFT_RPM_KEY, ShooterConstants.SHOT_MAP_LEFT_RPM[0]);
+        SmartDashboard.setDefaultNumber(DASHBOARD_RIGHT_RPM_KEY, ShooterConstants.SHOT_MAP_RIGHT_RPM[0]);
+        SmartDashboard.setDefaultNumber(DASHBOARD_HOOD_DEG_KEY, ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0]);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_FEED_KEY, false);
+        SmartDashboard.setDefaultNumber(DASHBOARD_KICKER_TORQUE_KEY, ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
+        SmartDashboard.setDefaultNumber(DASHBOARD_RAW_DISTANCE_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_DISTANCE_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, 0.0);
+        SmartDashboard.setDefaultNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
+        SmartDashboard.putNumberArray(DASHBOARD_MAP_DISTANCE_KEY, ShooterConstants.SHOT_MAP_DISTANCE_METERS);
+        SmartDashboard.putNumberArray(DASHBOARD_MAP_TIME_KEY, ShooterConstants.SHOT_TIME_IN_AIR_SECONDS);
+    }
+
     public static DoubleSupplier hubDistanceMetersSupplier(Supplier<Pose2d> robotPoseSupplier) {
         return () -> getHubDistanceMeters(robotPoseSupplier.get());
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {
+        Translation2d hubTarget = getHubTargetTranslation();
+        if (hubTarget == null || robotPose == null) {
+            return Double.NaN;
+        }
+        return robotPose.getTranslation().getDistance(hubTarget);
+    }
+
+    private static Translation2d getHubTargetTranslation() {
         return FieldConstants.TAG_LAYOUT
                 .getTagPose(ShooterConstants.HUB_TAG_ID)
-                .map(tagPose -> {
-                    Translation2d target = new Translation2d(
-                            tagPose.getX() + ShooterConstants.HUB_TARGET_X_OFFSET_METERS,
-                            tagPose.getY());
-                    return robotPose.getTranslation().getDistance(target);
-                })
-                .orElse(Double.NaN);
+                .map(tagPose -> new Translation2d(
+                        tagPose.getX() + ShooterConstants.HUB_TARGET_X_OFFSET_METERS,
+                        tagPose.getY()))
+                .orElse(null);
     }
 }

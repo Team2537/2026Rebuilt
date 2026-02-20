@@ -349,6 +349,11 @@ public class Drive extends SubsystemBase {
         return kinematics.toChassisSpeeds(getModuleStates());
     }
 
+    /** Returns measured chassis speeds in robot-relative coordinates. */
+    public ChassisSpeeds getMeasuredChassisSpeeds() {
+        return getChassisSpeeds();
+    }
+
     /** Returns the position of each module in radians. */
     public double[] getWheelRadiusCharacterizationPositions() {
         double[] values = new double[4];
