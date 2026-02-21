@@ -7,6 +7,7 @@ import edu.wpi.first.hal.HALUtil;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
@@ -36,7 +37,6 @@ import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
 import frc.robot.sim.FuelSim;
-import lib.controllers.CommandButtonBoard;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
@@ -46,6 +46,8 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -62,7 +64,8 @@ public final class Robot extends LoggedRobot {
 
     // Controller setup from 2025Reefscape
     private final CommandXboxController driverController = new CommandXboxController(0);
-    // private final CommandButtonBoard operatorController = new CommandButtonBoard(1, 2);
+    // private final CommandButtonBoard operatorController = new
+    // CommandButtonBoard(1, 2);
     private final CommandXboxController godController = new CommandXboxController(5);
     private final FuelSim fuelSim = new FuelSim();
 
@@ -113,12 +116,12 @@ public final class Robot extends LoggedRobot {
             // Initialize drive subsystem
             switch (RobotType.MODE) {
                 case REAL ->
-                        drive = new Drive(
-                                new GyroIOPigeon2(),
-                                new ModuleIOTalonFX(TunerConstants.FrontLeft),
-                                new ModuleIOTalonFX(TunerConstants.FrontRight),
-                                new ModuleIOTalonFX(TunerConstants.BackLeft),
-                                new ModuleIOTalonFX(TunerConstants.BackRight));
+                    drive = new Drive(
+                            new GyroIOPigeon2(),
+                            new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                            new ModuleIOTalonFX(TunerConstants.FrontRight),
+                            new ModuleIOTalonFX(TunerConstants.BackLeft),
+                            new ModuleIOTalonFX(TunerConstants.BackRight));
                 case SIMULATION -> {
                     GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
                     drive = new Drive(
@@ -130,12 +133,17 @@ public final class Robot extends LoggedRobot {
                     gyroIOSim.setModulePositionsSupplier(drive::getModulePositionsForSim);
                 }
                 default ->
-                        drive = new Drive(
-                                new GyroIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {},
-                                new ModuleIO() {});
+                    drive = new Drive(
+                            new GyroIO() {
+                            },
+                            new ModuleIO() {
+                            },
+                            new ModuleIO() {
+                            },
+                            new ModuleIO() {
+                            },
+                            new ModuleIO() {
+                            });
             }
         }
 
@@ -186,75 +194,90 @@ public final class Robot extends LoggedRobot {
         try {
             Files.createDirectories(onboardLogDir);
         } catch (IOException ignored) {
-            // Writer creation below will report an explicit AdvantageKit error if this still fails.
+            // Writer creation below will report an explicit AdvantageKit error if this
+            // still fails.
         }
         return new WPILOGWriter(onboardLogDir.toString());
     }
 
     private void configureBindings() {
         if (drive != null) {
-            // Default drive command
             drive.setDefaultCommand(
                     DriveCommands.joystickDrive(
-                            drive, () -> driverController.getLeftY(), driverController::getLeftX, () -> -driverController.getRightX()));
+                            drive, () -> driverController.getLeftY(), driverController::getLeftX,
+                            () -> -driverController.getRightX()));
         }
-
-        // Driver controller bindings
-        if (drive != null) {
-            driverController.leftBumper().onTrue(drive.toggleSlowMode());
-        }
-        if (transfer != null) {
-            driverController.rightBumper().toggleOnTrue(transfer.runCommand());
-        }
-        if (intake != null) {
-            driverController.x().onTrue(intake.extendCommand());
-            driverController.y().onTrue(intake.retractCommand());
-            driverController.a().whileTrue(intake.spinRoller());
-        }
-        if (drive != null) {
-            driverController.leftStick().onTrue(DriveCommands.toggleFieldOriented(drive));
-            driverController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
-        }
-
         if (shooter != null) {
             shooter.setDefaultCommand(shooter.idleCommand());
-            Trigger dashboardTuneTrigger = driverController.rightTrigger().and(new Trigger(shooter::isDashboardTuningEnabled));
+        }
+        if (intake != null) {
+            intake.setDefaultCommand(intake.backgroundCommand());
+        }
+
+        if (drive != null) {
+            driverController.leftBumper().onTrue(drive.toggleSlowMode());
+            driverController.back().onTrue(DriveCommands.toggleFieldOriented(drive));
+            driverController.start().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+        }
+
+        if (transfer != null) {
+            driverController.y().whileTrue(transfer.reverseCommand()).whileFalse(transfer.backgroundCommand());
+        }
+
+        if (intake != null) {
+            driverController.b()
+                    .onTrue(Commands.either(
+                            intake.retractCommand().andThen(intake.stopCommand()),
+                            intake.extendCommand().andThen(intake.backgroundCommand()),
+                            intake.isExtended()));
+            driverController.leftTrigger().onTrue(intake.spinRoller()).onFalse(intake.backgroundCommand());
+        }
+
+        driverController.povUp().onTrue(Commands.runOnce(this::scheduleBackgroundManipulators));
+        driverController.povDown().onTrue(stopManipulatorsCommand());
+
+        if (shooter != null) {
+            Trigger dashboardTuneTrigger = driverController.rightTrigger()
+                    .and(new Trigger(shooter::isDashboardTuningEnabled));
+
             if (drive != null) {
-                DoubleSupplier hubDistanceSupplier =
-                        () -> shooter.getMotionCompensatedHubDistanceMeters(
-                                drive.getPose(),
-                                drive.getMeasuredChassisSpeeds());
-                Supplier<Rotation2d> hubHeadingSupplier =
-                        () -> shooter.getMotionCompensatedHubHeading(
-                                drive.getPose(),
-                                drive.getMeasuredChassisSpeeds());
-                Trigger shootTrigger = driverController.rightTrigger().and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
-                Trigger aimTrigger = driverController.leftTrigger().and(shootTrigger.negate());
+                DoubleSupplier hubDistanceSupplier = () -> shooter.getMotionCompensatedHubDistanceMeters(
+                        drive.getPose(),
+                        drive.getMeasuredChassisSpeeds());
+                Supplier<Rotation2d> hubHeadingSupplier = () -> shooter.getMotionCompensatedHubHeading(
+                        drive.getPose(),
+                        drive.getMeasuredChassisSpeeds());
+                Trigger shootTrigger = driverController.rightTrigger()
+                        .and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
+                Trigger aimTrigger = driverController.rightBumper();
+                Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
+                Trigger shootOnlyTrigger = shootTrigger.and(aimTrigger.negate());
+                Trigger aimAndShootTrigger = aimTrigger.and(shootTrigger);
 
                 var shootCommand = shooter.shoot(hubDistanceSupplier);
-                var aimCommand = shooter.aimForDistance(hubDistanceSupplier);
-                var alignToHubPose = DriveCommands.autoAlignToHubPose(
-                        drive,
-                        () -> driverController.getLeftY(),
-                        driverController::getLeftX,
-                        () -> -driverController.getRightX(),
-                        hubHeadingSupplier);
-                aimCommand = Commands.parallel(alignToHubPose, aimCommand);
-                shootCommand = Commands.parallel(
+                var aimOnlyCommand = Commands.parallel(
                         DriveCommands.autoAlignToHubPose(
                                 drive,
                                 () -> driverController.getLeftY(),
                                 driverController::getLeftX,
                                 () -> -driverController.getRightX(),
                                 hubHeadingSupplier),
-                        shootCommand);
-                shootTrigger.whileTrue(shootCommand);
-                aimTrigger.whileTrue(aimCommand);
+                        shooter.aimForDistance(hubDistanceSupplier));
+                var aimAndShootCommand = Commands.parallel(
+                        DriveCommands.autoAlignToHubPose(
+                                drive,
+                                () -> driverController.getLeftY(),
+                                driverController::getLeftX,
+                                () -> -driverController.getRightX(),
+                                hubHeadingSupplier),
+                        shooter.shoot(hubDistanceSupplier));
+                shootOnlyTrigger.whileTrue(shootCommand);
+                aimOnlyTrigger.whileTrue(aimOnlyCommand);
+                aimAndShootTrigger.whileTrue(aimAndShootCommand);
             }
             dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
         }
 
-        // God controller can also toggle slow mode and reset heading
         if (drive != null) {
             godController.leftBumper().onTrue(drive.toggleSlowMode());
             godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
@@ -276,7 +299,7 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void disabledInit() {
-        stopManipulators();
+        scheduleManipulatorStop();
     }
 
     @Override
@@ -292,6 +315,8 @@ public final class Robot extends LoggedRobot {
         if (autos != null) {
             autos.getSelectedRoutine().schedule();
         }
+        homeIntakeIfPresent();
+        scheduleBackgroundManipulators();
     }
 
     @Override
@@ -305,9 +330,8 @@ public final class Robot extends LoggedRobot {
     @Override
     public void teleopInit() {
         CommandScheduler.getInstance().cancelAll();
-        if (intake != null) {
-            CommandScheduler.getInstance().schedule(intake.homeCommand());
-        }
+        homeIntakeIfPresent();
+        scheduleBackgroundManipulators();
     }
 
     @Override
@@ -316,7 +340,7 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopExit() {
-        stopManipulators();
+        scheduleManipulatorStop();
     }
 
     @Override
@@ -372,15 +396,50 @@ public final class Robot extends LoggedRobot {
         return intake;
     }
 
-    private void stopManipulators() {
+    private Command stopManipulatorsCommand() {
+        List<Command> stopCommands = new ArrayList<>();
         if (shooter != null) {
-            shooter.stopAll();
+            stopCommands.add(shooter.stopCommand());
         }
         if (transfer != null) {
-            transfer.stopAll();
+            stopCommands.add(transfer.stopCommand());
         }
         if (intake != null) {
-            intake.stopAll();
+            stopCommands.add(intake.stopCommand());
+        }
+
+        if (stopCommands.isEmpty()) {
+            return Commands.none();
+        }
+
+        return Commands.parallel(stopCommands.toArray(Command[]::new)).withName("StopManipulators");
+    }
+
+    private void scheduleManipulatorStop() {
+        CommandScheduler.getInstance().schedule(stopManipulatorsCommand());
+    }
+
+    private void scheduleBackgroundManipulators() {
+        backgroundManipulatorCommands().forEach(command -> CommandScheduler.getInstance().schedule(command));
+    }
+
+    private List<Command> backgroundManipulatorCommands() {
+        List<Command> backgroundCommands = new ArrayList<>();
+        if (transfer != null) {
+            backgroundCommands.add(transfer.backgroundCommand());
+        }
+        if (shooter != null) {
+            backgroundCommands.add(shooter.backgroundCommand());
+        }
+        if (intake != null) {
+            backgroundCommands.add(intake.backgroundCommand());
+        }
+        return backgroundCommands;
+    }
+
+    private void homeIntakeIfPresent() {
+        if (intake != null) {
+            CommandScheduler.getInstance().schedule(intake.homeCommand());
         }
     }
 }

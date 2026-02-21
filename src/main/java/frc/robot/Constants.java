@@ -21,7 +21,7 @@ public final class Constants {
      * Enable/disable robot mechanisms at init time.
      */
     public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
-            EnumSet.of(Mechanism.INTAKE, Mechanism.DRIVE, Mechanism.SHOOTER);
+            EnumSet.of(Mechanism.INTAKE, Mechanism.DRIVE, Mechanism.SHOOTER, Mechanism.TRANSFER, Mechanism.VISION);
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {
         return ENABLED_MECHANISMS.contains(mechanism);

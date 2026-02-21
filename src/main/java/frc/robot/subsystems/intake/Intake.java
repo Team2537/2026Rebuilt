@@ -4,6 +4,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import java.util.function.BooleanSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Intake extends SubsystemBase {
@@ -30,13 +31,17 @@ public class Intake extends SubsystemBase {
         Logger.recordOutput("Intake/Extended", extended);
     }
 
-    public void setExtended(boolean extended) {
-        this.extended = extended;
-        if (extended) {
+    public void setExtended(boolean isExtended) {
+        this.extended = isExtended;
+        if (isExtended) {
             io.extend();
         } else {
             io.retract();
         }
+    }
+
+    public BooleanSupplier isExtended() {
+        return () -> extended;
     }
 
     public Command retractCommand() {
@@ -78,8 +83,17 @@ public class Intake extends SubsystemBase {
         return this.runEnd(
                 () -> io.setRollerRpm(IntakeConstants.SLOW_ROLLER_RPM),
                 io::stop)
-                .withName("IntakeSpinRoller");
+                .withName("IntakeSpinRollerSlow");
     }
+
+    public Command backgroundCommand() {
+        return spinRollerSlow().onlyIf(isExtended()).withName("IntakeBackground");
+    }
+
+    public Command stopCommand() {
+        return Commands.runOnce(this::stopAll, this).withName("IntakeStop");
+    }
+
     public void stopAll() {
         io.stop();
     }

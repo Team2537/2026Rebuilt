@@ -85,13 +85,8 @@ public class Shooter extends SubsystemBase {
         io.updateInputs(inputs);
         Logger.processInputs("Shooter", inputs);
 
-        if (DriverStation.isDisabled()) {
-            io.stop();
-            stopKicker();
-        } else {
-            applyShooterTargets();
-            applyKickerOutput();
-        }
+        applyShooterTargets();
+        applyKickerOutput();
 
         Logger.recordOutput("Shooter/TargetLeftRpm", targetLeftRpm);
         Logger.recordOutput("Shooter/TargetRightRpm", targetRightRpm);
@@ -476,21 +471,27 @@ public class Shooter extends SubsystemBase {
         return runCommandWithCleanup(
                         () -> {
                             setTargetsForDistance(distanceMetersSupplier.getAsDouble());
-                            if (readyToFire()) {
-                                setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble());
-                            } else {
-                                stopKicker();
-                            }
+                            setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble());
                         },
                         this::stopAll,
                         "ShooterShoot");
     }
 
     public Command slowShooterMotorsCommand() {
-        return Commands.runOnce(() -> {
-            io.setLeftVelocity(ShooterConstants.SLOW_SHOOTER_RPM);
-            io.setRightVelocity(ShooterConstants.SLOW_SHOOTER_RPM);
-        }, this).withName("ShooterSlowShooterMotors");
+        return Commands.run(
+                () -> {
+                    setTargets(
+                            ShooterConstants.SLOW_SHOOTER_RPM,
+                            ShooterConstants.SLOW_SHOOTER_RPM,
+                            ShooterConstants.HOOD_MIN_ANGLE_RAD);
+                    stopKicker();
+                },
+                this)
+                .withName("ShooterSlowShooterMotors");
+    }
+
+    public Command backgroundCommand() {
+        return slowShooterMotorsCommand().withName("ShooterBackground");
     }
 
     public Command shoot(DoubleSupplier distanceMetersSupplier) {

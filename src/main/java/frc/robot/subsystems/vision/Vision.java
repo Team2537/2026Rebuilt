@@ -27,10 +27,10 @@ public final class Vision extends SubsystemBase {
     private static final List<Transform3d> ROBOT_TO_CAMERAS = List.of(
             new Transform3d(
                     new Translation3d(0.325145, 0.299705, 0.254330),
-                    new Rotation3d(0.0, Units.degreesToRadians(-20.0), Units.degreesToRadians(10.0))),
+                    new Rotation3d(0.0, Units.degreesToRadians(-20.0), Units.degreesToRadians(350.0))),
             new Transform3d(
                     new Translation3d(0.325145, -0.299705, 0.254330),
-                    new Rotation3d(0.0, Units.degreesToRadians(-20.0), Units.degreesToRadians(350.0))));
+                    new Rotation3d(0.0, Units.degreesToRadians(-20.0), Units.degreesToRadians(10.0))));
 
     private static final double MAX_AMBIGUITY = 0.3;
     private static final double MAX_Z_ERROR = 0.75;

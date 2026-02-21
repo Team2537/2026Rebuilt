@@ -28,6 +28,14 @@ public class Transfer extends SubsystemBase {
         return Commands.runEnd(() -> io.setPercent(-TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferReverse");
     }
 
+    public Command backgroundCommand() {
+        return runCommand().withName("TransferBackground");
+    }
+
+    public Command stopCommand() {
+        return Commands.runOnce(this::stopAll, this).withName("TransferStop");
+    }
+
     public void stopAll() {
         io.stop();
     }
