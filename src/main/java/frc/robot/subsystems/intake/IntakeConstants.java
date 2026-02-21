@@ -37,6 +37,9 @@ public final class IntakeConstants {
     public static final double INTAKE_VELOCITY = 400.0;
     public static final double INTAKE_ACCELERATION = 600.0;
 
+    public static final double SLOW_INTAKE_VELOCITY = 200.0;
+    public static final double SLOW_INTAKE_ACCELERATION = 300.0;
+
     public static final double TRAVEL_IN_PER_MOTOR_REV = 0.2326;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;
     public static final double FULL_TRAVEL_IN = 10.65;

@@ -6,6 +6,7 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
+import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
@@ -21,6 +22,7 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
 import frc.robot.Constants;
+import main.java.frc.robot.subsystems.intake.IntakeConstants;
 
 public class IntakeIOReal implements IntakeIO {
     private static final CANBus MECHANISM_CAN_BUS = new CANBus(Constants.MECHANISM_CAN_BUS);
@@ -30,7 +32,7 @@ public class IntakeIOReal implements IntakeIO {
     private final TalonFX rightIntakeMotor = new TalonFX(IntakeConstants.RIGHT_MOTOR_ID, MECHANISM_CAN_BUS);
 
     private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
-    private final MotionMagicVoltage leftPositionRequest = new MotionMagicVoltage(0.0);
+    private final DynamicMotionMagicVoltage leftPositionRequest = new DynamicMotionMagicVoltage(0.0);
     private final VoltageOut leftVoltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
 
@@ -146,17 +148,23 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void retract() {
+        leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
+        leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
     }
 
     @Override
     public void extend() {
+        leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
+        leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.EXTENDED_POSITION_ROT));
     }
 
     @Override
     public void slowRetract() {
         // USE DYNAMIC MOTION MAGIC TO RETRACT THE INTAKE SLOWLY
+        leftPositionRequest.Velocity = IntakeConstants.SLOW_INTAKE_VELOCITY;
+        leftPositionRequest.Acceleration = IntakeConstants.SLOW_INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
     }
 
