@@ -252,10 +252,6 @@ public final class Robot extends LoggedRobot {
                 aimTrigger.whileTrue(aimCommand);
             }
             dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
-
-            // Operator panel: action fires, stow stops shooter outputs.
-            // operatorController.getActionButton().whileTrue(shooter.shoot(hubDistanceSupplier));
-            // operatorController.getStowButton().onTrue(shooter.stopCommand());
         }
 
         // God controller can also toggle slow mode and reset heading
@@ -309,6 +305,9 @@ public final class Robot extends LoggedRobot {
     @Override
     public void teleopInit() {
         CommandScheduler.getInstance().cancelAll();
+        if (intake != null) {
+            CommandScheduler.getInstance().schedule(intake.homeCommand());
+        }
     }
 
     @Override

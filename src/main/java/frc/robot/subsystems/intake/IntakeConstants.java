@@ -41,4 +41,6 @@ public final class IntakeConstants {
     public static final double FULL_TRAVEL_IN = 10.65;
     public static final double RETRACTED_POSITION_ROT = 0.0;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
+
+    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
 }

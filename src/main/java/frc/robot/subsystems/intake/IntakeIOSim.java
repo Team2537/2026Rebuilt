@@ -12,6 +12,8 @@ public class IntakeIOSim implements IntakeIO {
     private static final double LOOP_PERIOD_SEC = 0.02;
     private static final double MAX_VOLTS = 12.0;
     private static final double MAX_ROLLER_RPM = 6500.0;
+    private static final double HOMING_VOLTS = -1.0;
+    private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
 
     private static final DCMotor INTAKE_GEARBOX = DCMotor.getKrakenX60Foc(1);
     private static final DCMotor ROLLER_GEARBOX = DCMotor.getKrakenX60Foc(1);
@@ -36,21 +38,32 @@ public class IntakeIOSim implements IntakeIO {
 
     private boolean intakePositionClosedLoop = false;
     private boolean rollerVelocityClosedLoop = false;
+    private boolean homingActive = false;
+    private boolean homingAtStop = false;
 
     private double leftAppliedVolts = 0.0;
     private double rightAppliedVolts = 0.0;
     private double rollerAppliedVolts = 0.0;
+    private double leftPositionOffsetRad = 0.0;
+    private double rightPositionOffsetRad = 0.0;
 
     @Override
     public void updateInputs(IntakeIOInputs inputs) {
-        leftAppliedVolts = intakePositionClosedLoop
-                ? MathUtil.clamp(
-                        intakePositionController.calculate(
-                                Units.radiansToRotations(leftIntakeSim.getAngularPositionRad()),
-                                targetIntakePositionRot),
-                        -MAX_VOLTS,
-                        MAX_VOLTS)
-                : 0.0;
+        double leftPositionRot = Units.radiansToRotations(leftIntakeSim.getAngularPositionRad() - leftPositionOffsetRad);
+
+        if (homingActive) {
+            if (leftPositionRot <= IntakeConstants.RETRACTED_POSITION_ROT) {
+                homingAtStop = true;
+            }
+            leftAppliedVolts = homingAtStop ? 0.0 : HOMING_VOLTS;
+        } else if (intakePositionClosedLoop) {
+            leftAppliedVolts = MathUtil.clamp(
+                    intakePositionController.calculate(leftPositionRot, targetIntakePositionRot),
+                    -MAX_VOLTS,
+                    MAX_VOLTS);
+        } else {
+            leftAppliedVolts = 0.0;
+        }
 
         rightAppliedVolts = IntakeConstants.RIGHT_OPPOSES_LEFT ? -leftAppliedVolts : leftAppliedVolts;
 
@@ -70,19 +83,27 @@ public class IntakeIOSim implements IntakeIO {
         rightIntakeSim.update(LOOP_PERIOD_SEC);
         rollerSim.update(LOOP_PERIOD_SEC);
 
+        double leftSupplyCurrentAmps = Math.abs(leftIntakeSim.getCurrentDrawAmps());
+        double rightSupplyCurrentAmps = Math.abs(rightIntakeSim.getCurrentDrawAmps());
+        double leftStatorCurrentAmps = homingAtStop ? HOMING_STATOR_CURRENT_AMPS : leftSupplyCurrentAmps;
+        double rightStatorCurrentAmps = homingAtStop ? HOMING_STATOR_CURRENT_AMPS : rightSupplyCurrentAmps;
+
         inputs.leftAppliedVolts = leftAppliedVolts;
-        inputs.leftPositionRad = leftIntakeSim.getAngularPositionRad();
-        inputs.leftCurrentAmps = Math.abs(leftIntakeSim.getCurrentDrawAmps());
+        inputs.leftPositionRad = leftIntakeSim.getAngularPositionRad() - leftPositionOffsetRad;
+        inputs.leftSupplyCurrentAmps = leftSupplyCurrentAmps;
+        inputs.leftStatorCurrentAmps = leftStatorCurrentAmps;
         inputs.leftVelocityRpm = leftIntakeSim.getAngularVelocityRPM();
 
         inputs.rightAppliedVolts = rightAppliedVolts;
-        inputs.rightPositionRad = rightIntakeSim.getAngularPositionRad();
-        inputs.rightCurrentAmps = Math.abs(rightIntakeSim.getCurrentDrawAmps());
+        inputs.rightPositionRad = rightIntakeSim.getAngularPositionRad() - rightPositionOffsetRad;
+        inputs.rightSupplyCurrentAmps = rightSupplyCurrentAmps;
+        inputs.rightStatorCurrentAmps = rightStatorCurrentAmps;
         inputs.rightVelocityRpm = rightIntakeSim.getAngularVelocityRPM();
 
         inputs.rollerAppliedVolts = rollerAppliedVolts;
         inputs.rollerPositionRad = rollerSim.getAngularPositionRad();
-        inputs.rollerCurrentAmps = Math.abs(rollerSim.getCurrentDrawAmps());
+        inputs.rollerSupplyCurrentAmps = Math.abs(rollerSim.getCurrentDrawAmps());
+        inputs.rollerStatorCurrentAmps = Math.abs(rollerSim.getCurrentDrawAmps());
         inputs.rollerVelocityRpm = rollerSim.getAngularVelocityRPM();
     }
 
@@ -94,20 +115,39 @@ public class IntakeIOSim implements IntakeIO {
 
     @Override
     public void retract() {
+        homingActive = false;
+        homingAtStop = false;
         targetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
         intakePositionClosedLoop = true;
     }
 
     @Override
     public void extend() {
+        homingActive = false;
+        homingAtStop = false;
         targetIntakePositionRot = IntakeConstants.EXTENDED_POSITION_ROT;
         intakePositionClosedLoop = true;
+    }
+
+    @Override
+    public void home() {
+        intakePositionClosedLoop = false;
+        homingActive = true;
+        homingAtStop = false;
+    }
+
+    @Override
+    public void resetEncoders() {
+        leftPositionOffsetRad = leftIntakeSim.getAngularPositionRad();
+        rightPositionOffsetRad = rightIntakeSim.getAngularPositionRad();
     }
 
     @Override
     public void stop() {
         intakePositionClosedLoop = false;
         rollerVelocityClosedLoop = false;
+        homingActive = false;
+        homingAtStop = false;
         targetRollerRpm = 0.0;
         intakePositionController.reset();
         rollerVelocityController.reset();

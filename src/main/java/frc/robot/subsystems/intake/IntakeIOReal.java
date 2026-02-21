@@ -12,6 +12,7 @@ import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
+import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -30,22 +31,26 @@ public class IntakeIOReal implements IntakeIO {
 
     private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final MotionMagicVoltage leftPositionRequest = new MotionMagicVoltage(0.0);
+    private final VoltageOut leftVoltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
 
     private final StatusSignal<?> leftPosition;
     private final StatusSignal<?> leftVelocity;
     private final StatusSignal<?> leftAppliedVolts;
     private final StatusSignal<?> leftSupplyCurrent;
+    private final StatusSignal<?> leftStatorCurrent;
 
     private final StatusSignal<?> rightPosition;
     private final StatusSignal<?> rightVelocity;
     private final StatusSignal<?> rightAppliedVolts;
     private final StatusSignal<?> rightSupplyCurrent;
+    private final StatusSignal<?> rightStatorCurrent;
 
     private final StatusSignal<?> rollerPosition;
     private final StatusSignal<?> rollerVelocity;
     private final StatusSignal<?> rollerAppliedVolts;
     private final StatusSignal<?> rollerSupplyCurrent;
+    private final StatusSignal<?> rollerStatorCurrent;
 
     public IntakeIOReal() {
         configureLeftMotor();
@@ -61,16 +66,19 @@ public class IntakeIOReal implements IntakeIO {
         leftVelocity = leftIntakeMotor.getVelocity();
         leftAppliedVolts = leftIntakeMotor.getMotorVoltage();
         leftSupplyCurrent = leftIntakeMotor.getSupplyCurrent();
+        leftStatorCurrent = leftIntakeMotor.getStatorCurrent();
 
         rightPosition = rightIntakeMotor.getPosition();
         rightVelocity = rightIntakeMotor.getVelocity();
         rightAppliedVolts = rightIntakeMotor.getMotorVoltage();
         rightSupplyCurrent = rightIntakeMotor.getSupplyCurrent();
+        rightStatorCurrent = rightIntakeMotor.getStatorCurrent();
 
         rollerPosition = rollerMotor.getPosition();
         rollerVelocity = rollerMotor.getVelocity();
         rollerAppliedVolts = rollerMotor.getMotorVoltage();
         rollerSupplyCurrent = rollerMotor.getSupplyCurrent();
+        rollerStatorCurrent = rollerMotor.getStatorCurrent();
 
         BaseStatusSignal.setUpdateFrequencyForAll(
                 IntakeConstants.STATUS_UPDATE_HZ,
@@ -78,14 +86,17 @@ public class IntakeIOReal implements IntakeIO {
                 leftVelocity,
                 leftAppliedVolts,
                 leftSupplyCurrent,
+                leftStatorCurrent,
                 rightPosition,
                 rightVelocity,
                 rightAppliedVolts,
                 rightSupplyCurrent,
+                rightStatorCurrent,
                 rollerPosition,
                 rollerVelocity,
                 rollerAppliedVolts,
-                rollerSupplyCurrent);
+                rollerSupplyCurrent,
+                rollerStatorCurrent);
         ParentDevice.optimizeBusUtilizationForAll(leftIntakeMotor, rightIntakeMotor, rollerMotor);
     }
 
@@ -96,28 +107,34 @@ public class IntakeIOReal implements IntakeIO {
                 leftVelocity,
                 leftAppliedVolts,
                 leftSupplyCurrent,
+                leftStatorCurrent,
                 rightPosition,
                 rightVelocity,
                 rightAppliedVolts,
                 rightSupplyCurrent,
+                rightStatorCurrent,
                 rollerPosition,
                 rollerVelocity,
                 rollerAppliedVolts,
-                rollerSupplyCurrent);
+                rollerSupplyCurrent,
+                rollerStatorCurrent);
 
         inputs.leftAppliedVolts = leftAppliedVolts.getValueAsDouble();
         inputs.leftPositionRad = Units.rotationsToRadians(leftPosition.getValueAsDouble());
-        inputs.leftCurrentAmps = leftSupplyCurrent.getValueAsDouble();
+        inputs.leftSupplyCurrentAmps = leftSupplyCurrent.getValueAsDouble();
+        inputs.leftStatorCurrentAmps = leftStatorCurrent.getValueAsDouble();
         inputs.leftVelocityRpm = leftVelocity.getValueAsDouble() * 60.0;
 
         inputs.rightAppliedVolts = rightAppliedVolts.getValueAsDouble();
         inputs.rightPositionRad = Units.rotationsToRadians(rightPosition.getValueAsDouble());
-        inputs.rightCurrentAmps = rightSupplyCurrent.getValueAsDouble();
+        inputs.rightSupplyCurrentAmps = rightSupplyCurrent.getValueAsDouble();
+        inputs.rightStatorCurrentAmps = rightStatorCurrent.getValueAsDouble();
         inputs.rightVelocityRpm = rightVelocity.getValueAsDouble() * 60.0;
 
         inputs.rollerAppliedVolts = rollerAppliedVolts.getValueAsDouble();
         inputs.rollerPositionRad = Units.rotationsToRadians(rollerPosition.getValueAsDouble());
-        inputs.rollerCurrentAmps = rollerSupplyCurrent.getValueAsDouble();
+        inputs.rollerSupplyCurrentAmps = rollerSupplyCurrent.getValueAsDouble();
+        inputs.rollerStatorCurrentAmps = rollerStatorCurrent.getValueAsDouble();
         inputs.rollerVelocityRpm = rollerVelocity.getValueAsDouble() * 60.0;
     }
 
@@ -135,6 +152,17 @@ public class IntakeIOReal implements IntakeIO {
     @Override
     public void extend() {
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.EXTENDED_POSITION_ROT));
+    }
+
+    @Override
+    public void resetEncoders() {
+        leftIntakeMotor.setPosition(0.0);
+        rightIntakeMotor.setPosition(0.0);
+    }
+
+    @Override
+    public void home() {
+        leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-1.0));
     }
 
     @Override
