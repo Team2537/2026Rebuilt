@@ -8,6 +8,7 @@ public final class IntakeConstants {
     public static final int RIGHT_MOTOR_ID = 24;
 
     public static final double ROLLER_RPM = 3000.0;
+    public static final double SLOW_ROLLER_RPM = 1000.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
 

@@ -70,6 +70,12 @@ public class Intake extends SubsystemBase {
                 .withName("IntakeSpinRoller");
     }
 
+    public Command spinRollerSlow() {
+        return this.runEnd(
+                () -> io.setRollerRpm(IntakeConstants.SLOW_ROLLER_RPM),
+                io::stop)
+                .withName("IntakeSpinRoller");
+    }
     public void stopAll() {
         io.stop();
     }
