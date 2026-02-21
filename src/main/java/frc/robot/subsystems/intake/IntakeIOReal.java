@@ -204,9 +204,6 @@ public class IntakeIOReal implements IntakeIO {
                 .withKD(IntakeConstants.INTAKE_KD)
                 .withKS(IntakeConstants.INTAKE_KS)
                 .withKV(IntakeConstants.INTAKE_KV);
-        config.MotionMagic = new MotionMagicConfigs()
-                .withMotionMagicCruiseVelocity(IntakeConstants.INTAKE_VELOCITY)
-                .withMotionMagicAcceleration(IntakeConstants.INTAKE_ACCELERATION);
         config.CurrentLimits.StatorCurrentLimit = highCurrentLimit ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = highCurrentLimit ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
