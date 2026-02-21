@@ -43,6 +43,10 @@ public class Intake extends SubsystemBase {
         return Commands.runOnce(() -> setExtended(false), this).withName("IntakeRetract");
     }
 
+    public Command slowRetractCommand() {
+        return Commands.runOnce(() -> io.slowRetract(), this).withName("IntakeSlowRetract");
+    }
+
     public Command extendCommand() {
         return Commands.runOnce(() -> setExtended(true), this).withName("IntakeExtend");
     }

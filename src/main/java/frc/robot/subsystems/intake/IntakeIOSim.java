@@ -122,6 +122,14 @@ public class IntakeIOSim implements IntakeIO {
     }
 
     @Override
+    public void slowRetract() {
+        homingActive = false;
+        homingAtStop = false;
+        targetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
+        intakePositionClosedLoop = true;
+    }
+
+    @Override
     public void extend() {
         homingActive = false;
         homingAtStop = false;

@@ -155,6 +155,12 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     @Override
+    public void slowRetract() {
+        // USE DYNAMIC MOTION MAGIC TO RETRACT THE INTAKE SLOWLY
+        leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
+    }
+
+    @Override
     public void resetEncoders() {
         leftIntakeMotor.setPosition(0.0);
         rightIntakeMotor.setPosition(0.0);

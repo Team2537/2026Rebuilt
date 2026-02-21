@@ -486,6 +486,13 @@ public class Shooter extends SubsystemBase {
                         "ShooterShoot");
     }
 
+    public Command slowShooterMotorsCommand() {
+        return Commands.runOnce(() -> {
+            io.setLeftVelocity(ShooterConstants.SLOW_SHOOTER_RPM);
+            io.setRightVelocity(ShooterConstants.SLOW_SHOOTER_RPM);
+        }, this).withName("ShooterSlowShooterMotors");
+    }
+
     public Command shoot(DoubleSupplier distanceMetersSupplier) {
         return shoot(distanceMetersSupplier, () -> ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS)
                 .withName("ShooterShootDefaultFeed");

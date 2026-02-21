@@ -39,6 +39,9 @@ public interface IntakeIO {
     public default void home(){
     }
 
+    public default void slowRetract(){
+    }
+
     public default void resetEncoders(){
     }
 

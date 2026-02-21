@@ -20,6 +20,7 @@ public final class ShooterConstants {
     public static final double KICKER_SENSOR_TO_MECHANISM_RATIO = 2.667;
 
     public static final double SHOOTER_MAX_RPM = 6200.0;
+    public static final double SLOW_SHOOTER_RPM = 1000.0;
     public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 70.0;
     public static final double MAX_OUTPUT_VOLTS = 12.0;
 
