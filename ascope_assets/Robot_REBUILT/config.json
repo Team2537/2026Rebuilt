@@ -23,15 +23,15 @@
             "rotations": [
                 {
                     "axis": "y",
-                    "degrees": -10.0
+                    "degrees": -20.0
                 },
                 {
                     "axis": "z",
-                    "degrees": 220.0
+                    "degrees": 10.0
                 }
             ],
             "position": [
-                -0.325145,
+                0.325145,
                 0.299705,
                 0.254330
             ],
@@ -46,15 +46,15 @@
             "rotations": [
                 {
                     "axis": "y",
-                    "degrees": -10.0
+                    "degrees": -20.0
                 },
                 {
                     "axis": "z",
-                    "degrees": 140.0
+                    "degrees": 350.0
                 }
             ],
             "position": [
-                -0.325145,
+                0.325145,
                 -0.299705,
                 0.254330
             ],
