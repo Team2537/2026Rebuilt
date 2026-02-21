@@ -204,7 +204,7 @@ public final class Robot extends LoggedRobot {
             driverController.leftBumper().onTrue(drive.toggleSlowMode());
         }
         if (transfer != null) {
-            driverController.rightBumper().onTrue(transfer.toggleCommand());
+            driverController.rightBumper().toggleOnTrue(transfer.runCommand());
         }
         if (intake != null) {
             driverController.x().onTrue(intake.extendCommand());
