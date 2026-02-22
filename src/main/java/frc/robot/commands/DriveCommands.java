@@ -43,12 +43,22 @@ public class DriveCommands {
     private static final double HUB_ALIGN_KD = 0.4;
     private static final double HUB_ALIGN_MAX_VELOCITY = 8.0;
     private static final double HUB_ALIGN_MAX_ACCELERATION = 20.0;
-    private static final double HUB_POSE_ALIGN_KP = 3.0;
-    private static final double HUB_POSE_ALIGN_KD = 0.2;
-    private static final double HUB_POSE_ALIGN_MAX_VELOCITY = 6.0;
+    private static final double HUB_POSE_ALIGN_KP = 2.4;
+    private static final double HUB_POSE_ALIGN_KD = 0.16;
+    private static final double HUB_POSE_ALIGN_MAX_VELOCITY = 5.2;
     private static final double HUB_POSE_ALIGN_MAX_ACCELERATION = 14.0;
     private static final double HUB_POSE_ALIGN_TOLERANCE_RAD = Units.degreesToRadians(1.25);
+    private static final double HUB_POSE_ALIGN_HOLD_RELEASE_TOLERANCE_RAD = Units.degreesToRadians(1.7);
     private static final double HUB_POSE_TARGET_FILTER_ALPHA = 0.2;
+    private static final double HUB_POSE_TARGET_FILTER_MAX_STEP_RAD = Units.degreesToRadians(4.0);
+    private static final double HUB_POSE_MAX_OMEGA_RAD_PER_SEC = 4.5;
+    private static final double HUB_POSE_OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 36.0;
+    private static final double HUB_POSE_TARGET_RATE_FILTER_ALPHA = 0.35;
+    private static final double HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC = 6.0;
+    private static final double HUB_POSE_TARGET_RATE_FF = 0.9;
+    private static final double HUB_POSE_MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC = 0.35;
+    private static final double HUB_POSE_TARGET_RATE_DT_MIN_SEC = 1e-3;
+    private static final double HUB_POSE_TARGET_RATE_DT_MAX_SEC = 0.1;
     private static final double FF_START_DELAY = 2.0; // Secs
     private static final double FF_RAMP_RATE = 0.1; // Volts/Sec
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 0.25; // Rad/Sec
@@ -260,10 +270,8 @@ public class DriveCommands {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> headingSupplier) {
-        class HubPoseAlignState {
-            private Rotation2d filteredTargetHeading = null;
-        }
         HubPoseAlignState state = new HubPoseAlignState();
+        SlewRateLimiter omegaLimiter = new SlewRateLimiter(HUB_POSE_OMEGA_SLEW_RATE_RAD_PER_SEC_SQ);
 
         ProfiledPIDController angleController = new ProfiledPIDController(
                 HUB_POSE_ALIGN_KP,
@@ -282,29 +290,49 @@ public class DriveCommands {
                     double omega;
                     if (targetHeading != null) {
                         if (state.filteredTargetHeading == null) {
-                            state.filteredTargetHeading = targetHeading;
+                            state.initializeTargetTracking(targetHeading, Timer.getFPGATimestamp());
                             angleController.reset(drive.getRotation().getRadians());
                         } else {
-                            double targetDelta = MathUtil.angleModulus(
-                                    targetHeading.getRadians() - state.filteredTargetHeading.getRadians());
-                            state.filteredTargetHeading = new Rotation2d(
-                                    state.filteredTargetHeading.getRadians() + targetDelta * HUB_POSE_TARGET_FILTER_ALPHA);
+                            state.filteredTargetHeading = filterTargetHeading(
+                                    state.filteredTargetHeading,
+                                    targetHeading);
                         }
+
+                        double targetHeadingRateRadPerSec = updateTargetHeadingRateRadPerSec(
+                                state,
+                                Timer.getFPGATimestamp());
 
                         double currentHeadingRad = drive.getRotation().getRadians();
                         double filteredTargetHeadingRad = state.filteredTargetHeading.getRadians();
                         double headingErrorRad = MathUtil.angleModulus(filteredTargetHeadingRad - currentHeadingRad);
-                        if (Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_TOLERANCE_RAD) {
+                        boolean targetMoving = Math.abs(targetHeadingRateRadPerSec)
+                                >= HUB_POSE_MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC;
+
+                        if (state.holdAtTarget
+                                && !targetMoving
+                                && Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_HOLD_RELEASE_TOLERANCE_RAD) {
+                            omega = 0.0;
+                            angleController.reset(currentHeadingRad);
+                        } else if (!targetMoving && Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_TOLERANCE_RAD) {
+                            state.holdAtTarget = true;
                             omega = 0.0;
                             angleController.reset(currentHeadingRad);
                         } else {
-                            omega = angleController.calculate(currentHeadingRad, filteredTargetHeadingRad);
+                            state.holdAtTarget = false;
+                            double feedbackOmega = angleController.calculate(currentHeadingRad, filteredTargetHeadingRad);
+                            double feedforwardOmega = targetHeadingRateRadPerSec * HUB_POSE_TARGET_RATE_FF;
+                            omega = MathUtil.clamp(
+                                    feedbackOmega + feedforwardOmega,
+                                    -HUB_POSE_MAX_OMEGA_RAD_PER_SEC,
+                                    HUB_POSE_MAX_OMEGA_RAD_PER_SEC);
                         }
+                        omega = omegaLimiter.calculate(omega);
                     } else {
-                        state.filteredTargetHeading = null;
+                        state.clearTargetTracking();
                         double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
                         fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
                         omega = fallbackOmega * drive.getMaxAngularSpeedRadPerSec();
+                        omegaLimiter.reset(omega);
                         angleController.reset(drive.getRotation().getRadians());
                     }
 
@@ -327,10 +355,51 @@ public class DriveCommands {
                 },
                 drive)
                 .beforeStarting(() -> {
-                    state.filteredTargetHeading = headingSupplier.get();
+                    Rotation2d initialTargetHeading = headingSupplier.get();
+                    if (initialTargetHeading != null) {
+                        state.initializeTargetTracking(initialTargetHeading, Timer.getFPGATimestamp());
+                    } else {
+                        state.clearTargetTracking();
+                    }
+                    omegaLimiter.reset(0.0);
                     angleController.reset(drive.getRotation().getRadians());
                 })
                 .withName("DriveAutoAlignToHubPose");
+    }
+
+    private static Rotation2d filterTargetHeading(Rotation2d filteredTargetHeading, Rotation2d targetHeading) {
+        double targetDelta = MathUtil.angleModulus(targetHeading.getRadians() - filteredTargetHeading.getRadians());
+        double filteredDeltaStep = MathUtil.clamp(
+                targetDelta * HUB_POSE_TARGET_FILTER_ALPHA,
+                -HUB_POSE_TARGET_FILTER_MAX_STEP_RAD,
+                HUB_POSE_TARGET_FILTER_MAX_STEP_RAD);
+        return new Rotation2d(filteredTargetHeading.getRadians() + filteredDeltaStep);
+    }
+
+    private static double updateTargetHeadingRateRadPerSec(HubPoseAlignState state, double nowSec) {
+        if (state.lastFilteredTargetHeading == null || !Double.isFinite(state.lastFilteredTargetHeadingTimestampSec)) {
+            state.lastFilteredTargetHeading = state.filteredTargetHeading;
+            state.lastFilteredTargetHeadingTimestampSec = nowSec;
+            state.filteredTargetHeadingRateRadPerSec = 0.0;
+            return 0.0;
+        }
+
+        double dtSec = MathUtil.clamp(
+                nowSec - state.lastFilteredTargetHeadingTimestampSec,
+                HUB_POSE_TARGET_RATE_DT_MIN_SEC,
+                HUB_POSE_TARGET_RATE_DT_MAX_SEC);
+        double targetHeadingDelta = MathUtil.angleModulus(
+                state.filteredTargetHeading.getRadians()
+                        - state.lastFilteredTargetHeading.getRadians());
+        double rawTargetHeadingRateRadPerSec = MathUtil.clamp(
+                targetHeadingDelta / dtSec,
+                -HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC,
+                HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC);
+        state.filteredTargetHeadingRateRadPerSec += HUB_POSE_TARGET_RATE_FILTER_ALPHA
+                * (rawTargetHeadingRateRadPerSec - state.filteredTargetHeadingRateRadPerSec);
+        state.lastFilteredTargetHeading = state.filteredTargetHeading;
+        state.lastFilteredTargetHeadingTimestampSec = nowSec;
+        return state.filteredTargetHeadingRateRadPerSec;
     }
 
     private static Rotation2d getHubFacingHeading(Pose2d robotPose) {
@@ -483,6 +552,30 @@ public class DriveCommands {
                                                             + formatter.format(Units.metersToInches(wheelRadius))
                                                             + " inches");
                                         })));
+    }
+
+    private static class HubPoseAlignState {
+        Rotation2d filteredTargetHeading = null;
+        boolean holdAtTarget = false;
+        Rotation2d lastFilteredTargetHeading = null;
+        double lastFilteredTargetHeadingTimestampSec = Double.NaN;
+        double filteredTargetHeadingRateRadPerSec = 0.0;
+
+        void initializeTargetTracking(Rotation2d initialHeading, double nowSec) {
+            filteredTargetHeading = initialHeading;
+            holdAtTarget = false;
+            lastFilteredTargetHeading = initialHeading;
+            lastFilteredTargetHeadingTimestampSec = nowSec;
+            filteredTargetHeadingRateRadPerSec = 0.0;
+        }
+
+        void clearTargetTracking() {
+            filteredTargetHeading = null;
+            holdAtTarget = false;
+            lastFilteredTargetHeading = null;
+            lastFilteredTargetHeadingTimestampSec = Double.NaN;
+            filteredTargetHeadingRateRadPerSec = 0.0;
+        }
     }
 
     private static class WheelRadiusCharacterizationState {
