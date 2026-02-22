@@ -8,6 +8,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj.PowerDistribution;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -43,6 +44,14 @@ import frc.robot.util.FieldConstants;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.LogFileUtil;
@@ -54,6 +63,8 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 public final class Robot extends LoggedRobot {
     private static final int GOD_CONTROLLER_PORT = 5;
+    private static final int COMMAND_EVENT_HISTORY_LIMIT = 40;
+    private static final String UNKNOWN_COMMAND_SOURCE = "unknown";
 
     private final Drive drive;
     private final Vision vision;
@@ -66,6 +77,11 @@ public final class Robot extends LoggedRobot {
     private final CommandXboxController godController = new CommandXboxController(GOD_CONTROLLER_PORT);
 
     private FuelSim fuelSim;
+    private final Map<Command, String> commandSources = new WeakHashMap<>();
+    private final Map<Command, Double> commandStartTimesSec = new IdentityHashMap<>();
+    private final Map<Command, Integer> commandRunIds = new IdentityHashMap<>();
+    private final ArrayDeque<String> recentCommandEvents = new ArrayDeque<>();
+    private int nextCommandRunId = 1;
 
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
@@ -96,11 +112,7 @@ public final class Robot extends LoggedRobot {
         }
 
         Logger.start();
-
-        CommandScheduler.getInstance()
-                .onCommandInitialize(command -> Logger.recordOutput("commands/" + command.getName(), true));
-        CommandScheduler.getInstance()
-                .onCommandFinish(command -> Logger.recordOutput("commands/" + command.getName(), false));
+        configureCommandTelemetry();
 
         drive = createDrive();
         vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION)
@@ -191,25 +203,260 @@ public final class Robot extends LoggedRobot {
         return new WPILOGWriter(onboardLogDir.toString());
     }
 
+    private void configureCommandTelemetry() {
+        CommandScheduler scheduler = CommandScheduler.getInstance();
+        scheduler.onCommandInitialize(this::handleCommandInitialize);
+        scheduler.onCommandFinish(this::handleCommandFinish);
+        scheduler.onCommandInterrupt(this::handleCommandInterrupt);
+        updateCommandLoggingOutputs(Timer.getFPGATimestamp());
+    }
+
+    private void bindOnTrue(Trigger trigger, String source, Command command) {
+        trigger.onTrue(withCommandSource(source, command));
+    }
+
+    private void bindOnFalse(Trigger trigger, String source, Command command) {
+        trigger.onFalse(withCommandSource(source, command));
+    }
+
+    private void bindWhileTrue(Trigger trigger, String source, Command command) {
+        trigger.whileTrue(withCommandSource(source, command));
+    }
+
+    private void bindWhileFalse(Trigger trigger, String source, Command command) {
+        trigger.whileFalse(withCommandSource(source, command));
+    }
+
+    private Command withCommandSource(String source, Command command) {
+        commandSources.put(command, normalizeCommandSource(source));
+        return command;
+    }
+
+    private void scheduleCommand(String source, Command... commands) {
+        String normalizedSource = normalizeCommandSource(source);
+        List<Command> commandsToSchedule = new ArrayList<>();
+        List<String> commandNames = new ArrayList<>();
+
+        for (Command command : commands) {
+            if (command == null) {
+                continue;
+            }
+            Command trackedCommand = withCommandSource(normalizedSource, command);
+            commandsToSchedule.add(trackedCommand);
+            commandNames.add(normalizeCommandName(trackedCommand));
+        }
+
+        if (commandsToSchedule.isEmpty()) {
+            return;
+        }
+
+        recordCommandEvent("REQUEST source=" + normalizedSource + " commands=" + String.join(", ", commandNames));
+        Logger.recordOutput("commands/lastSchedule/source", normalizedSource);
+        Logger.recordOutput("commands/lastSchedule/commands", commandNames.toArray(String[]::new));
+        CommandScheduler.getInstance().schedule(commandsToSchedule.toArray(Command[]::new));
+    }
+
+    private void cancelAllCommands(String source) {
+        String normalizedSource = normalizeCommandSource(source);
+        recordCommandEvent("CANCEL_ALL source=" + normalizedSource);
+        Logger.recordOutput("commands/lastCancelAllSource", normalizedSource);
+        CommandScheduler.getInstance().cancelAll();
+    }
+
+    private void handleCommandInitialize(Command command) {
+        double nowSec = Timer.getFPGATimestamp();
+        int runId = nextCommandRunId++;
+        commandStartTimesSec.put(command, nowSec);
+        commandRunIds.put(command, runId);
+
+        String commandName = normalizeCommandName(command);
+        String source = commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE);
+        String requirements = getRequirementsSummary(command);
+        String commandKey = sanitizeCommandKey(commandName);
+
+        Logger.recordOutput("commands/" + commandName, true);
+        Logger.recordOutput("commands/byName/" + commandKey + "/running", true);
+        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
+        Logger.recordOutput("commands/lastStarted/name", commandName);
+        Logger.recordOutput("commands/lastStarted/source", source);
+        Logger.recordOutput("commands/lastStarted/runId", runId);
+        Logger.recordOutput("commands/lastStarted/requirements", requirements);
+
+        recordCommandEvent(String.format(
+                Locale.US,
+                "START run=%d name=%s source=%s requirements=%s",
+                runId,
+                commandName,
+                source,
+                requirements));
+        updateCommandLoggingOutputs(nowSec);
+    }
+
+    private void handleCommandFinish(Command command) {
+        handleCommandEnd(command, false);
+    }
+
+    private void handleCommandInterrupt(Command command) {
+        handleCommandEnd(command, true);
+    }
+
+    private void handleCommandEnd(Command command, boolean interrupted) {
+        double nowSec = Timer.getFPGATimestamp();
+        Double startTimeSec = commandStartTimesSec.remove(command);
+        Integer runId = commandRunIds.remove(command);
+
+        String commandName = normalizeCommandName(command);
+        String source = commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE);
+        String commandKey = sanitizeCommandKey(commandName);
+        double durationSec = startTimeSec == null ? 0.0 : nowSec - startTimeSec;
+        boolean stillRunning = isCommandNameRunning(commandName);
+
+        Logger.recordOutput("commands/" + commandName, stillRunning);
+        Logger.recordOutput("commands/byName/" + commandKey + "/running", stillRunning);
+        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
+        Logger.recordOutput("commands/lastEnded/name", commandName);
+        Logger.recordOutput("commands/lastEnded/source", source);
+        Logger.recordOutput("commands/lastEnded/runId", runId == null ? -1 : runId);
+        Logger.recordOutput("commands/lastEnded/durationSec", durationSec);
+        Logger.recordOutput("commands/lastEnded/interrupted", interrupted);
+
+        recordCommandEvent(String.format(
+                Locale.US,
+                "%s run=%d name=%s source=%s duration=%.3fs",
+                interrupted ? "INTERRUPT" : "FINISH",
+                runId == null ? -1 : runId,
+                commandName,
+                source,
+                durationSec));
+        updateCommandLoggingOutputs(nowSec);
+    }
+
+    private void updateCommandLoggingOutputs(double nowSec) {
+        List<Map.Entry<Command, Double>> runningEntries = new ArrayList<>(commandStartTimesSec.entrySet());
+        runningEntries.sort(Map.Entry.comparingByValue(Comparator.naturalOrder()));
+
+        List<String> runningNames = new ArrayList<>();
+        List<String> runningInstances = new ArrayList<>();
+
+        for (Map.Entry<Command, Double> entry : runningEntries) {
+            Command command = entry.getKey();
+            String name = normalizeCommandName(command);
+            if (!runningNames.contains(name)) {
+                runningNames.add(name);
+            }
+            runningInstances.add(String.format(
+                    Locale.US,
+                    "run=%d name=%s source=%s elapsed=%.3fs requirements=%s",
+                    commandRunIds.getOrDefault(command, -1),
+                    name,
+                    commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE),
+                    nowSec - entry.getValue(),
+                    getRequirementsSummary(command)));
+        }
+
+        Logger.recordOutput("commands/running/count", runningEntries.size());
+        Logger.recordOutput("commands/running/names", runningNames.toArray(String[]::new));
+        Logger.recordOutput("commands/running/instances", runningInstances.toArray(String[]::new));
+        Logger.recordOutput("commands/recentEvents", recentCommandEvents.toArray(String[]::new));
+    }
+
+    private int countRunningInstances(String commandName) {
+        int count = 0;
+        for (Command runningCommand : commandStartTimesSec.keySet()) {
+            if (commandName.equals(normalizeCommandName(runningCommand))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean isCommandNameRunning(String commandName) {
+        return countRunningInstances(commandName) > 0;
+    }
+
+    private static String getRequirementsSummary(Command command) {
+        List<String> requirementNames = new ArrayList<>();
+        for (var requirement : command.getRequirements()) {
+            String requirementName = requirement.getName();
+            if (requirementName == null || requirementName.isBlank()) {
+                requirementName = requirement.getClass().getSimpleName();
+            }
+            requirementNames.add(requirementName);
+        }
+        requirementNames.sort(String::compareTo);
+        return requirementNames.isEmpty() ? "[]" : "[" + String.join(", ", requirementNames) + "]";
+    }
+
+    private void recordCommandEvent(String event) {
+        String eventWithTimestamp = String.format(Locale.US, "%.3fs %s", Timer.getFPGATimestamp(), event);
+        recentCommandEvents.addLast(eventWithTimestamp);
+        while (recentCommandEvents.size() > COMMAND_EVENT_HISTORY_LIMIT) {
+            recentCommandEvents.removeFirst();
+        }
+        Logger.recordOutput("commands/lastEvent", eventWithTimestamp);
+    }
+
+    private static String normalizeCommandName(Command command) {
+        if (command == null) {
+            return "UnnamedCommand";
+        }
+        String name = command.getName();
+        if (name == null || name.isBlank()) {
+            String fallbackName = command.getClass().getSimpleName();
+            if (fallbackName == null || fallbackName.isBlank()) {
+                return "UnnamedCommand";
+            }
+            return fallbackName;
+        }
+        return name;
+    }
+
+    private static String normalizeCommandSource(String source) {
+        return source == null || source.isBlank() ? UNKNOWN_COMMAND_SOURCE : source;
+    }
+
+    private static String sanitizeCommandKey(String key) {
+        StringBuilder sanitized = new StringBuilder(key.length());
+        for (int i = 0; i < key.length(); i++) {
+            char character = key.charAt(i);
+            if (Character.isLetterOrDigit(character) || character == '_' || character == '-') {
+                sanitized.append(character);
+            } else {
+                sanitized.append('_');
+            }
+        }
+        return sanitized.isEmpty() ? "unnamed" : sanitized.toString();
+    }
+
     private void configureBindings() {
         drive.setDefaultCommand(
-                DriveCommands.joystickDrive(
+                withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
                         drive, () -> driverController.getLeftY(), driverController::getLeftX,
-                        () -> -driverController.getRightX()));
-        shooter.setDefaultCommand(shooter.idleCommand());
-        intake.setDefaultCommand(intake.backgroundCommand());
+                        () -> -driverController.getRightX())
+                        .withName("DriveJoystickDefault")));
+        shooter.setDefaultCommand(withCommandSource("default.shooterIdle", shooter.idleCommand()));
+        intake.setDefaultCommand(withCommandSource("default.intakeBackground", intake.backgroundCommand()));
 
-        driverController.leftBumper().onTrue(drive.toggleSlowMode());
-        driverController.back().onTrue(DriveCommands.toggleFieldOriented(drive));
-        driverController.start().onTrue(DriveCommands.resetOdometryAndHeading(drive));
+        bindOnTrue(driverController.leftBumper(), "driver.leftBumper.onTrue",
+                drive.toggleSlowMode().withName("DriveToggleSlowMode"));
+        bindOnTrue(driverController.back(), "driver.back.onTrue",
+                DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
+        bindOnTrue(driverController.start(), "driver.start.onTrue",
+                DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
 
-        driverController.y().whileTrue(transfer.reverseCommand()).whileFalse(transfer.backgroundCommand());
+        Trigger reverseTransferTrigger = driverController.y();
+        bindWhileTrue(reverseTransferTrigger, "driver.y.whileTrue", transfer.reverseCommand());
+        bindWhileFalse(reverseTransferTrigger, "driver.y.whileFalse", transfer.backgroundCommand());
 
-        driverController.b().onTrue(intake.toggleExtendedCommand());
-        driverController.leftTrigger().onTrue(intake.spinRoller()).onFalse(intake.backgroundCommand());
+        bindOnTrue(driverController.b(), "driver.b.onTrue", intake.toggleExtendedCommand());
+        Trigger intakeRollerTrigger = driverController.leftTrigger();
+        bindOnTrue(intakeRollerTrigger, "driver.leftTrigger.onTrue", intake.spinRoller());
+        bindOnFalse(intakeRollerTrigger, "driver.leftTrigger.onFalse", intake.backgroundCommand());
 
-        driverController.povUp().onTrue(Commands.runOnce(this::scheduleBackgroundManipulators));
-        driverController.povDown().onTrue(stopManipulatorsCommand());
+        bindOnTrue(driverController.povUp(), "driver.povUp.onTrue",
+                Commands.runOnce(() -> scheduleBackgroundManipulators("driver.povUp"))
+                        .withName("ScheduleBackgroundManipulators"));
+        bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
 
         DoubleSupplier hubDistanceSupplier = () -> shooter.getMotionCompensatedHubDistanceMeters(
                 drive.getPose(), drive.getMeasuredChassisSpeeds());
@@ -229,32 +476,43 @@ public final class Robot extends LoggedRobot {
         Trigger aimAndShootTrigger = aimTrigger.and(shootTrigger);
         Trigger shooterControlsReleased = aimTrigger.or(rightTriggerPressed).negate();
 
-        shootOnlyTrigger.whileTrue(shooter.shoot(hubDistanceSupplier));
-        aimOnlyTrigger.whileTrue(Commands.parallel(
+        bindWhileTrue(shootOnlyTrigger, "driver.shootOnly.whileTrue", shooter.shoot(hubDistanceSupplier));
+        bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", Commands.parallel(
                 createTeleopAutoAlignCommand(
                         () -> driverController.getLeftY(),
                         driverController::getLeftX,
                         () -> -driverController.getRightX(),
                         hubHeadingSupplier,
                         hubTagOnlyHeadingSupplier),
-                shooter.aimForDistance(hubDistanceSupplier)));
-        aimAndShootTrigger.whileTrue(Commands.parallel(
+                shooter.aimForDistance(hubDistanceSupplier))
+                .withName("ShooterAimOnly"));
+        bindWhileTrue(aimAndShootTrigger, "driver.aimAndShoot.whileTrue", Commands.parallel(
                 createTeleopAutoAlignCommand(
                         () -> driverController.getLeftY(),
                         driverController::getLeftX,
                         () -> -driverController.getRightX(),
                         hubHeadingSupplier,
                         hubTagOnlyHeadingSupplier),
-                shooter.shoot(hubDistanceSupplier)));
-        dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
-        shooterControlsReleased.onTrue(Commands.runOnce(this::scheduleShooterBackgroundIfIdle));
+                shooter.shoot(hubDistanceSupplier))
+                .withName("ShooterAimAndShoot"));
+        bindWhileTrue(dashboardTuneTrigger, "driver.dashboardTune.whileTrue",
+                shooter.dashboardTuneCommand().withName("ShooterDashboardTune"));
+        bindOnTrue(shooterControlsReleased, "driver.shooterControlsReleased.onTrue",
+                Commands.runOnce(() -> scheduleShooterBackgroundIfIdle("driver.shooterControlsReleased"))
+                        .withName("ScheduleShooterBackgroundIfIdle"));
 
-        godController.leftBumper().onTrue(drive.toggleSlowMode());
-        godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
-        godController.a().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
-        godController.b().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
-        godController.x().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
-        godController.y().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+        bindOnTrue(godController.leftBumper(), "god.leftBumper.onTrue",
+                drive.toggleSlowMode().withName("DriveToggleSlowMode"));
+        bindOnTrue(godController.povDown(), "god.povDown.onTrue",
+                DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
+        bindWhileTrue(godController.a(), "god.a.whileTrue",
+                drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward).withName("DriveSysIdQuasistaticForward"));
+        bindWhileTrue(godController.b(), "god.b.whileTrue",
+                drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdQuasistaticReverse"));
+        bindWhileTrue(godController.x(), "god.x.whileTrue",
+                drive.sysIdDynamic(SysIdRoutine.Direction.kForward).withName("DriveSysIdDynamicForward"));
+        bindWhileTrue(godController.y(), "god.y.whileTrue",
+                drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
     }
 
     private Command createTeleopAutoAlignCommand(
@@ -306,13 +564,14 @@ public final class Robot extends LoggedRobot {
     @Override
     public void robotPeriodic() {
         CommandScheduler.getInstance().run();
+        updateCommandLoggingOutputs(Timer.getFPGATimestamp());
         shooter.getMotionCompensationToHub(drive.getPose(), drive.getMeasuredChassisSpeeds());
         MechanismVisualizer.updatePoses();
     }
 
     @Override
     public void disabledInit() {
-        scheduleManipulatorStop();
+        scheduleManipulatorStop("mode.disabledInit");
     }
 
     @Override
@@ -323,10 +582,10 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void autonomousInit() {
-        autos.getSelectedRoutine().schedule();
-        CommandScheduler.getInstance().schedule(intake.homeCommand());
-        CommandScheduler.getInstance().schedule(shooter.homeCommand());
-        scheduleBackgroundManipulators();
+        scheduleCommand("mode.autonomousInit.selectedRoutine", autos.getSelectedRoutine());
+        scheduleCommand("mode.autonomousInit.intakeHome", intake.homeCommand());
+        scheduleCommand("mode.autonomousInit.shooterHome", shooter.homeCommand());
+        scheduleBackgroundManipulators("mode.autonomousInit");
     }
 
     @Override
@@ -337,10 +596,10 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopInit() {
-        CommandScheduler.getInstance().cancelAll();
-        CommandScheduler.getInstance().schedule(intake.homeCommand());
-        CommandScheduler.getInstance().schedule(shooter.homeCommand());
-        scheduleBackgroundManipulators();
+        cancelAllCommands("mode.teleopInit");
+        scheduleCommand("mode.teleopInit.intakeHome", intake.homeCommand());
+        scheduleCommand("mode.teleopInit.shooterHome", shooter.homeCommand());
+        scheduleBackgroundManipulators("mode.teleopInit");
     }
 
     @Override
@@ -348,12 +607,12 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void teleopExit() {
-        scheduleManipulatorStop();
+        scheduleManipulatorStop("mode.teleopExit");
     }
 
     @Override
     public void testInit() {
-        CommandScheduler.getInstance().cancelAll();
+        cancelAllCommands("mode.testInit");
     }
 
     @Override
@@ -383,25 +642,31 @@ public final class Robot extends LoggedRobot {
                 .withName("StopManipulators");
     }
 
-    private void scheduleManipulatorStop() {
-        CommandScheduler.getInstance().schedule(stopManipulatorsCommand());
+    private void scheduleManipulatorStop(String source) {
+        scheduleCommand(source + ".stopManipulators", stopManipulatorsCommand());
     }
 
-    private void scheduleBackgroundManipulators() {
-        CommandScheduler.getInstance().schedule(
+    private void scheduleBackgroundManipulators(String source) {
+        scheduleCommand(source + ".backgroundManipulators",
                 transfer.backgroundCommand(),
                 shooter.backgroundCommand(),
                 intake.backgroundCommand());
     }
 
-    private void scheduleShooterBackgroundIfIdle() {
+    private void scheduleShooterBackgroundIfIdle(String source) {
         if (!isEnabled()) {
+            recordCommandEvent("SKIP source=" + normalizeCommandSource(source)
+                    + " command=ShooterBackground reason=RobotDisabled");
             return;
         }
 
         Command currentShooterCommand = shooter.getCurrentCommand();
         if (currentShooterCommand == null || "ShooterIdle".equals(currentShooterCommand.getName())) {
-            CommandScheduler.getInstance().schedule(shooter.backgroundCommand());
+            scheduleCommand(source + ".idle", shooter.backgroundCommand());
+        } else {
+            recordCommandEvent("SKIP source=" + normalizeCommandSource(source)
+                    + " command=ShooterBackground reason=ShooterBusy current="
+                    + normalizeCommandName(currentShooterCommand));
         }
     }
 }

@@ -9,13 +9,13 @@ import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 
 /** Collection of autonomous routine factories. */
 public final class Autos {
-    private static final Supplier<Command> DEFAULT_ROUTINE = Commands::none;
+    private static final Supplier<Command> DEFAULT_ROUTINE = () -> Commands.none().withName("AutoNone");
     private final LoggedDashboardChooser<Supplier<Command>> chooser =
             new LoggedDashboardChooser<>("auto");
 
     public Autos(Drive drive) {
         chooser.addDefaultOption("none", DEFAULT_ROUTINE);
-        chooser.addOption("stopWithX", () -> Commands.runOnce(drive::stopWithX, drive));
+        chooser.addOption("stopWithX", () -> Commands.runOnce(drive::stopWithX, drive).withName("AutoStopWithX"));
     }
 
     public Command getSelectedRoutine() {
