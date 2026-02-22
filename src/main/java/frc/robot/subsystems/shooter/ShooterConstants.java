@@ -1,9 +1,12 @@
 package frc.robot.subsystems.shooter;
 
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.RobotBase;
 
 /** Constants for the shooter hardware implementation. */
 public final class ShooterConstants {
+    private static final boolean isReal = RobotBase.isReal();
+
     // TODO: Set these IDs to match your wiring.
     public static final int LEFT_SHOOTER_MOTOR_ID = 10;
     public static final int RIGHT_SHOOTER_MOTOR_ID = 11;
@@ -40,19 +43,26 @@ public final class ShooterConstants {
      * Replace with measured values from characterization once available.
      */
 
-    // SIM
-    // public static final double[] SHOT_MAP_DISTANCE_METERS = {2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
-    // public static final double[] SHOT_MAP_LEFT_RPM = {1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
-    // public static final double[] SHOT_MAP_RIGHT_RPM = { 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
-    // public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
-    // public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
+    private static final double[] SHOT_MAP_DISTANCE_METERS_SIM = {0.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
+    private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
+    private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
+    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.55, 1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
 
-    // REAL
-    public static final double[] SHOT_MAP_DISTANCE_METERS = {0.0, 20.0};
-    public static final double[] SHOT_MAP_LEFT_RPM = {4000.0, 4000.0};
-    public static final double[] SHOT_MAP_RIGHT_RPM = { 4000.0, 4000.0 };
-    public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {0.0, 0.0};
-    public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.55};
+    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = {0.0, 20.0};
+    private static final double[] SHOT_MAP_LEFT_RPM_REAL = {4000.0, 4000.0};
+    private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 4000.0, 4000.0 };
+    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {0.0, 0.0};
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.55, 1.55};
+
+    public static final double[] SHOT_MAP_DISTANCE_METERS =
+        isReal ? SHOT_MAP_DISTANCE_METERS_REAL : SHOT_MAP_DISTANCE_METERS_SIM;
+    public static final double[] SHOT_MAP_LEFT_RPM = isReal ? SHOT_MAP_LEFT_RPM_REAL : SHOT_MAP_LEFT_RPM_SIM;
+    public static final double[] SHOT_MAP_RIGHT_RPM = isReal ? SHOT_MAP_RIGHT_RPM_REAL : SHOT_MAP_RIGHT_RPM_SIM;
+    public static final double[] SHOT_MAP_HOOD_ANGLE_DEG =
+        isReal ? SHOT_MAP_HOOD_ANGLE_DEG_REAL : SHOT_MAP_HOOD_ANGLE_DEG_SIM;
+    public static final double[] SHOT_TIME_IN_AIR_SECONDS =
+        isReal ? SHOT_TIME_IN_AIR_SECONDS_REAL : SHOT_TIME_IN_AIR_SECONDS_SIM;
 
     // Closed-loop gains (starting points, tune on robot).
     public static final double SHOOTER_KP = 10.0;
