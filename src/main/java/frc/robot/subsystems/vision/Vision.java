@@ -55,6 +55,7 @@ public final class Vision extends SubsystemBase {
     private final List<VisionIO> ios;
     private final List<VisionIOInputsAutoLogged> inputs;
     private double hubYawRad = Double.NaN;
+    private Pose2d hubTagRobotPose = null;
 
     public Vision(Drive drive) {
         super("vision");
@@ -66,6 +67,14 @@ public final class Vision extends SubsystemBase {
 
     public double getHubYawRad() {
         return hubYawRad;
+    }
+
+    /**
+     * Returns robot pose estimated only from currently visible/reliable hub tags.
+     * Returns null when unavailable or stale.
+     */
+    public Pose2d getHubTagRobotPose() {
+        return hubTagRobotPose;
     }
 
     @Override
@@ -135,7 +144,7 @@ public final class Vision extends SubsystemBase {
                                 .map(transform -> new Pose3d(currentPose).transformBy(transform))
                                 .toArray(Pose3d[]::new));
 
-        updateHubYawFromTags();
+        updateHubTagTracking();
     }
 
     private List<VisionIO> createIOs() {
@@ -209,7 +218,7 @@ public final class Vision extends SubsystemBase {
         return true;
     }
 
-    private void updateHubYawFromTags() {
+    private void updateHubTagTracking() {
         double nowSeconds = Timer.getFPGATimestamp();
         TargetTransform bestHubTarget = findBestHubTarget(nowSeconds);
 
@@ -217,19 +226,31 @@ public final class Vision extends SubsystemBase {
                 || bestHubTarget.cameraIndex() < 0
                 || bestHubTarget.cameraIndex() >= ROBOT_TO_CAMERAS.size()) {
             hubYawRad = Double.NaN;
+            hubTagRobotPose = null;
             Logger.recordOutput("vision/hubYawRobotRad", Double.NaN);
             Logger.recordOutput("vision/hubYawTagId", -1);
             Logger.recordOutput("vision/hubRelativePose", new Pose3d());
+            Logger.recordOutput("vision/hubTagRobotPose", new Pose2d());
             return;
         }
 
         Transform3d robotToTarget = ROBOT_TO_CAMERAS.get(bestHubTarget.cameraIndex()).plus(bestHubTarget.cameraToTarget());
         hubYawRad = Math.atan2(robotToTarget.getY(), robotToTarget.getX());
+        hubTagRobotPose = estimateRobotPoseFromHubTarget(bestHubTarget, robotToTarget);
         Logger.recordOutput("vision/hubYawRobotRad", hubYawRad);
         Logger.recordOutput("vision/hubYawTagId", bestHubTarget.fiducialId());
         Logger.recordOutput(
                 "vision/hubRelativePose",
                 new Pose3d(robotToTarget.getTranslation(), new Rotation3d()));
+        Logger.recordOutput(
+                "vision/hubTagRobotPose",
+                hubTagRobotPose != null ? hubTagRobotPose : new Pose2d());
+    }
+
+    private Pose2d estimateRobotPoseFromHubTarget(TargetTransform target, Transform3d robotToTarget) {
+        return FieldConstants.TAG_LAYOUT.getTagPose(target.fiducialId())
+                .map(fieldToTarget -> fieldToTarget.transformBy(robotToTarget.inverse()).toPose2d())
+                .orElse(null);
     }
 
     private TargetTransform findBestHubTarget(double nowSeconds) {

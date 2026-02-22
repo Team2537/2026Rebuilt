@@ -4,7 +4,9 @@ import edu.wpi.first.hal.FRCNetComm.tInstances;
 import edu.wpi.first.hal.FRCNetComm.tResourceType;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.hal.HALUtil;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -37,6 +39,7 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
+import frc.robot.util.FieldConstants;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -216,6 +219,8 @@ public final class Robot extends LoggedRobot {
                 drive.getPose(), drive.getMeasuredChassisSpeeds());
         Supplier<Rotation2d> hubHeadingSupplier = () -> shooter.getMotionCompensatedHubHeading(
                 drive.getPose(), drive.getMeasuredChassisSpeeds());
+        Supplier<Rotation2d> hubTagOnlyHeadingSupplier = () -> getHubFacingHeading(
+                vision != null ? vision.getHubTagRobotPose() : null);
 
         Trigger dashboardTuneTrigger = driverController.rightTrigger()
                 .and(new Trigger(shooter::isDashboardTuningEnabled));
@@ -228,20 +233,20 @@ public final class Robot extends LoggedRobot {
 
         shootOnlyTrigger.whileTrue(shooter.shoot(hubDistanceSupplier));
         aimOnlyTrigger.whileTrue(Commands.parallel(
-                DriveCommands.autoAlignToHubPose(
-                        drive,
+                createTeleopAutoAlignCommand(
                         () -> driverController.getLeftY(),
                         driverController::getLeftX,
                         () -> -driverController.getRightX(),
-                        hubHeadingSupplier),
+                        hubHeadingSupplier,
+                        hubTagOnlyHeadingSupplier),
                 shooter.aimForDistance(hubDistanceSupplier)));
         aimAndShootTrigger.whileTrue(Commands.parallel(
-                DriveCommands.autoAlignToHubPose(
-                        drive,
+                createTeleopAutoAlignCommand(
                         () -> driverController.getLeftY(),
                         driverController::getLeftX,
                         () -> -driverController.getRightX(),
-                        hubHeadingSupplier),
+                        hubHeadingSupplier,
+                        hubTagOnlyHeadingSupplier),
                 shooter.shoot(hubDistanceSupplier)));
         dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
 
@@ -251,6 +256,52 @@ public final class Robot extends LoggedRobot {
         godController.b().whileTrue(drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
         godController.x().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kForward));
         godController.y().whileTrue(drive.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+    }
+
+    private Command createTeleopAutoAlignCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<Rotation2d> hubHeadingSupplier,
+            Supplier<Rotation2d> hubTagOnlyHeadingSupplier) {
+        return switch (Constants.TELEOP_AUTO_ALIGN_MODE) {
+            case HUB_TAGS_ONLY -> {
+                if (vision == null) {
+                    throw new IllegalStateException(
+                            "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION mechanism is disabled.");
+                }
+                yield DriveCommands.autoAlignToHubPose(
+                        drive,
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        hubTagOnlyHeadingSupplier);
+            }
+            case POSE_ODOMETRY -> DriveCommands.autoAlignToHubPose(
+                    drive,
+                    xSupplier,
+                    ySupplier,
+                    omegaFallbackSupplier,
+                    hubHeadingSupplier);
+        };
+    }
+
+    private static Rotation2d getHubFacingHeading(Pose2d robotPose) {
+        if (robotPose == null) {
+            return null;
+        }
+        return FieldConstants.TAG_LAYOUT.getTagPose(FieldConstants.HUB_TAG_ID)
+                .map(tagPose -> {
+                    Translation2d hubTarget = new Translation2d(
+                            tagPose.getX() + FieldConstants.HUB_TARGET_X_OFFSET_METERS,
+                            tagPose.getY());
+                    Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
+                    if (toHub.getNorm() <= 1e-6) {
+                        return null;
+                    }
+                    return toHub.getAngle();
+                })
+                .orElse(null);
     }
 
     @Override
