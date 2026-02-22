@@ -19,8 +19,8 @@ public final class IntakeConstants {
     public static final double ROLLER_KS = 0.0;
     public static final double ROLLER_KV = 0.12;
 
-    public static final double INTAKE_KP = 2.0;
-    public static final double INTAKE_KI = 0.0;
+    public static final double INTAKE_KP = 4.0;
+    public static final double INTAKE_KI = 0.5;
     public static final double INTAKE_KD = 0.0;
     public static final double INTAKE_KS = 0.0;
     public static final double INTAKE_KV = 0.0;
@@ -37,18 +37,18 @@ public final class IntakeConstants {
     public static final double INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW = 15.0;
     public static final double INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW = 15.0;
 
-    public static final double INTAKE_VELOCITY = 400.0;
-    public static final double INTAKE_ACCELERATION = 600.0;
+    public static final double INTAKE_VELOCITY = 50.0;
+    public static final double INTAKE_ACCELERATION = 50.0;
 
     public static final double SLOW_INTAKE_VELOCITY = 200.0;
     public static final double SLOW_INTAKE_ACCELERATION = 300.0;
 
-    public static final double TRAVEL_IN_PER_MOTOR_REV = 0.2326;
+    public static final double TRAVEL_IN_PER_MOTOR_REV = 0.5233;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;
-    public static final double FULL_TRAVEL_IN = 10.65;
+    public static final double FULL_TRAVEL_IN = 12.65;
     public static final double RETRACTED_POSITION_ROT = 0.0;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
-    public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
+    public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;
 }

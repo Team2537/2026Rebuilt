@@ -325,6 +325,7 @@ public final class Robot extends LoggedRobot {
     public void autonomousInit() {
         autos.getSelectedRoutine().schedule();
         CommandScheduler.getInstance().schedule(intake.homeCommand());
+        CommandScheduler.getInstance().schedule(shooter.homeCommand());
         scheduleBackgroundManipulators();
     }
 
@@ -338,6 +339,7 @@ public final class Robot extends LoggedRobot {
     public void teleopInit() {
         CommandScheduler.getInstance().cancelAll();
         CommandScheduler.getInstance().schedule(intake.homeCommand());
+        CommandScheduler.getInstance().schedule(shooter.homeCommand());
         scheduleBackgroundManipulators();
     }
 

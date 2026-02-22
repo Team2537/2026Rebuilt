@@ -53,6 +53,7 @@ public class ShooterIOReal implements ShooterIO {
     private final StatusSignal<?> hoodVelocity;
     private final StatusSignal<?> hoodAppliedVolts;
     private final StatusSignal<?> hoodSupplyCurrent;
+    private final StatusSignal<?> hoodStatorCurrent;
     private final StatusSignal<?> hoodTemp;
 
     private final StatusSignal<?> kickerPosition;
@@ -90,6 +91,7 @@ public class ShooterIOReal implements ShooterIO {
         hoodVelocity = hoodMotor.getVelocity();
         hoodAppliedVolts = hoodMotor.getMotorVoltage();
         hoodSupplyCurrent = hoodMotor.getSupplyCurrent();
+        hoodStatorCurrent = hoodMotor.getStatorCurrent();
         hoodTemp = hoodMotor.getDeviceTemp();
 
         kickerPosition = kickerMotor.getPosition();
@@ -114,6 +116,7 @@ public class ShooterIOReal implements ShooterIO {
                 hoodVelocity,
                 hoodAppliedVolts,
                 hoodSupplyCurrent,
+                hoodStatorCurrent,
                 hoodTemp,
                 kickerPosition,
                 kickerVelocity,
@@ -140,6 +143,7 @@ public class ShooterIOReal implements ShooterIO {
                 hoodVelocity,
                 hoodAppliedVolts,
                 hoodSupplyCurrent,
+                hoodStatorCurrent,
                 hoodTemp,
                 kickerPosition,
                 kickerVelocity,
@@ -163,6 +167,7 @@ public class ShooterIOReal implements ShooterIO {
         inputs.hoodVelocityRpm = hoodVelocity.getValueAsDouble() * 60.0;
         inputs.hoodAppliedVolts = hoodAppliedVolts.getValueAsDouble();
         inputs.hoodSupplyCurrentAmps = hoodSupplyCurrent.getValueAsDouble();
+        inputs.hoodStatorCurrentAmps = hoodStatorCurrent.getValueAsDouble();
         inputs.hoodTempCelsius = hoodTemp.getValueAsDouble();
 
         inputs.kickerPositionRad = Units.rotationsToRadians(kickerPosition.getValueAsDouble());

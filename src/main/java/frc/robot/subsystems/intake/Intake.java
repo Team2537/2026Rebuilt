@@ -77,21 +77,10 @@ public class Intake extends SubsystemBase {
                     .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
                     .withName("IntakeHomeWaitUntil"),
             Commands.runOnce(() -> io.stop(), this),
-            Commands.either(
                 Commands.sequence(
+                    Commands.waitSeconds(2),
                     Commands.runOnce(() -> io.resetEncoders(), this),
-                    Commands.runOnce(() -> setExtended(false), this)),
-                Commands.runOnce(
-                        () -> {
-                            // Keep state retracted to prevent background roller spin, but do not
-                            // command a position move when homing never established a valid zero.
-                            extended = false;
-                            DriverStation.reportWarning(
-                                    "Intake homing timed out before current threshold; skipping encoder reset/retract.",
-                                    false);
-                        },
-                        this),
-                atHomingStop))
+                    Commands.runOnce(() -> setExtended(false), this)))
                 .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
                 .finallyDo(interrupted -> io.stop())
                 .withName("IntakeHome");

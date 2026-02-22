@@ -6,6 +6,7 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
+import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -136,6 +137,10 @@ public class IntakeIOReal implements IntakeIO {
         inputs.rollerSupplyCurrentAmps = rollerSupplyCurrent.getValueAsDouble();
         inputs.rollerStatorCurrentAmps = rollerStatorCurrent.getValueAsDouble();
         inputs.rollerVelocityRpm = rollerVelocity.getValueAsDouble() * 60.0;
+
+        rightIntakeMotor.setControl(new Follower(
+                leftIntakeMotor.getDeviceID(),
+                IntakeConstants.RIGHT_OPPOSES_LEFT ? MotorAlignmentValue.Opposed : MotorAlignmentValue.Aligned));
     }
 
     @Override
@@ -146,7 +151,7 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void retract() {
-        setLeftCurrentLimits(true);
+        // setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
@@ -154,16 +159,16 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void extend() {
-        setLeftCurrentLimits(true);
+        // setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.EXTENDED_POSITION_ROT));
-        setLeftCurrentLimits(false);
+        // setLeftCurrentLimits(false);
     }
 
     @Override
     public void slowRetract() {
-        setLeftCurrentLimits(true);
+        // setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.SLOW_INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.SLOW_INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
@@ -178,7 +183,7 @@ public class IntakeIOReal implements IntakeIO {
     @Override
     public void home() {
         setLeftCurrentLimits(true);
-        leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-1.0));
+        leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-2.0));
     }
 
     @Override
@@ -200,6 +205,9 @@ public class IntakeIOReal implements IntakeIO {
                 .withKD(IntakeConstants.INTAKE_KD)
                 .withKS(IntakeConstants.INTAKE_KS)
                 .withKV(IntakeConstants.INTAKE_KV);
+        config.MotionMagic = new MotionMagicConfigs()
+                .withMotionMagicCruiseVelocity(IntakeConstants.INTAKE_VELOCITY)
+                .withMotionMagicAcceleration(IntakeConstants.INTAKE_ACCELERATION);
         config.CurrentLimits.StatorCurrentLimit = IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
@@ -227,6 +235,9 @@ public class IntakeIOReal implements IntakeIO {
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
+        config.MotionMagic = new MotionMagicConfigs()
+                .withMotionMagicCruiseVelocity(IntakeConstants.INTAKE_VELOCITY)
+                .withMotionMagicAcceleration(IntakeConstants.INTAKE_ACCELERATION);
         tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(config, 0.25));
         rightIntakeMotor.setControl(new Follower(
                 leftIntakeMotor.getDeviceID(),

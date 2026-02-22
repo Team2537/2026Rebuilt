@@ -32,8 +32,8 @@ public final class Constants {
             EnumSet.of(Mechanism.DRIVE, Mechanism.SHOOTER, Mechanism.TRANSFER, Mechanism.VISION, Mechanism.INTAKE);
 
     /** Toggleable auto-align mode for right-bumper aiming in teleop. */
-    public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.POSE_ODOMETRY;
-    // public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.HUB_TAGS_ONLY;
+    // public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.POSE_ODOMETRY;
+    public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.HUB_TAGS_ONLY;
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {
         return ENABLED_MECHANISMS.contains(mechanism);
