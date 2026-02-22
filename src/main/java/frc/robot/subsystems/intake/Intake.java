@@ -57,19 +57,32 @@ public class Intake extends SubsystemBase {
     }
 
     public Command homeCommand() {
+        BooleanSupplier atHomingStop =
+                () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;
         return Commands.sequence(
             Commands.runOnce(() -> io.home(), this),
-            Commands.waitUntil(() -> inputs.leftStatorCurrentAmps > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS)
+            Commands.waitUntil(atHomingStop)
                     .withTimeout(HOMING_WAIT_TIMEOUT_SEC)
                     .withName("IntakeHomeWaitUntil"),
             Commands.runOnce(() -> io.stop(), this),
             Commands.either(
-                Commands.runOnce(() -> io.resetEncoders(), this),
-                Commands.runOnce(() -> DriverStation.reportWarning("Intake homing timed out before current threshold; skipping encoder reset.", false)),
-                () -> inputs.leftStatorCurrentAmps > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS
-            ),
-            Commands.runOnce(() -> setExtended(false), this)
-        ).withName("IntakeHome");
+                Commands.sequence(
+                    Commands.runOnce(() -> io.resetEncoders(), this),
+                    Commands.runOnce(() -> setExtended(false), this)),
+                Commands.runOnce(
+                        () -> {
+                            // Keep state retracted to prevent background roller spin, but do not
+                            // command a position move when homing never established a valid zero.
+                            extended = false;
+                            DriverStation.reportWarning(
+                                    "Intake homing timed out before current threshold; skipping encoder reset/retract.",
+                                    false);
+                        },
+                        this),
+                atHomingStop))
+                .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
+                .finallyDo(interrupted -> io.stop())
+                .withName("IntakeHome");
     }
 
     public Command spinRoller() {
