@@ -3,8 +3,10 @@ package frc.robot.subsystems.vision;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
@@ -15,6 +17,7 @@ import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.FieldConstants;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
+import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.List;
 import java.util.Set;
@@ -42,6 +45,10 @@ public final class Vision extends SubsystemBase {
     private static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
     private static final int HUB_TAG_ID = ShooterConstants.HUB_TAG_ID;
     private static final Set<Integer> HUB_TAG_IDS = determineHubTagIds();
+    private static final double MAX_VISION_TRANSLATION_DELTA_METERS = 1.0;
+    private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
+    private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
+    private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
 
     private final Drive drive;
     private final Supplier<Pose2d> robotPoseSupplier;
@@ -77,11 +84,41 @@ public final class Vision extends SubsystemBase {
                 double clampedFactor = Math.max(1.0, stdDevFactor);
                 double linearStdDev = LINEAR_STD_DEV_BASELINE * clampedFactor;
                 double angularStdDev = ANGULAR_STD_DEV_BASELINE * clampedFactor;
+                Pose2d measuredPose = bestObservation.pose().toPose2d();
+                PoseDelta innovation = calculatePoseDelta(measuredPose, currentPose);
+                if (!isVisionMeasurementConsistent(innovation)) {
+                    logVisionRejection(
+                            bestObservation.timestampSeconds(),
+                            measuredPose,
+                            currentPose,
+                            innovation,
+                            bestObservation.tagCount(),
+                            input.tagIds,
+                            bestObservation.ambiguity(),
+                            bestObservation.averageTagDistance(),
+                            linearStdDev,
+                            angularStdDev,
+                            index);
+                    continue;
+                }
 
                 drive.addVisionMeasurement(
-                        bestObservation.pose().toPose2d(),
+                        measuredPose,
                         bestObservation.timestampSeconds(),
                         VecBuilder.fill(linearStdDev, linearStdDev, angularStdDev));
+
+                logVisionJumpIfLarge(
+                        bestObservation.timestampSeconds(),
+                        measuredPose,
+                        currentPose,
+                        innovation,
+                        bestObservation.tagCount(),
+                        input.tagIds,
+                        bestObservation.ambiguity(),
+                        bestObservation.averageTagDistance(),
+                        linearStdDev,
+                        angularStdDev,
+                        index);
             }
         }
 
@@ -229,5 +266,118 @@ public final class Vision extends SubsystemBase {
     }
 
     private static final class NullVisionIO implements VisionIO {
+    }
+
+    private boolean isVisionMeasurementConsistent(PoseDelta innovation) {
+        return innovation.translationMeters() <= MAX_VISION_TRANSLATION_DELTA_METERS
+                && innovation.headingDegrees() <= MAX_VISION_HEADING_DELTA_DEGREES;
+    }
+
+    private static PoseDelta calculatePoseDelta(Pose2d measuredPose, Pose2d odometryPose) {
+        Translation2d deltaTranslation = measuredPose.getTranslation().minus(odometryPose.getTranslation());
+        double translationDelta = deltaTranslation.getNorm();
+        double headingDeltaDeg = calculateHeadingDeltaDegrees(measuredPose.getRotation(), odometryPose.getRotation());
+        return new PoseDelta(translationDelta, headingDeltaDeg);
+    }
+
+    private static double calculateHeadingDeltaDegrees(Rotation2d first, Rotation2d second) {
+        double headingDeltaRad = Math.abs(Math.IEEEremainder(first.minus(second).getRadians(), 2.0 * Math.PI));
+        if (headingDeltaRad > Math.PI) {
+            headingDeltaRad = 2.0 * Math.PI - headingDeltaRad;
+        }
+        return Units.radiansToDegrees(headingDeltaRad);
+    }
+
+    private void logVisionRejection(
+            double timestampSeconds,
+            Pose2d measuredPose,
+            Pose2d odometryPose,
+            PoseDelta innovation,
+            int tagCount,
+            int[] tagIds,
+            double ambiguity,
+            double avgDistance,
+            double linearStdDev,
+            double angularStdDev,
+            int cameraIndex) {
+        logVisionEvent(
+                "reject",
+                timestampSeconds,
+                measuredPose,
+                odometryPose,
+                innovation,
+                tagCount,
+                tagIds,
+                ambiguity,
+                avgDistance,
+                linearStdDev,
+                angularStdDev,
+                cameraIndex);
+    }
+
+    private void logVisionJumpIfLarge(
+            double timestampSeconds,
+            Pose2d measuredPose,
+            Pose2d odometryPose,
+            PoseDelta innovation,
+            int tagCount,
+            int[] tagIds,
+            double ambiguity,
+            double avgDistance,
+            double linearStdDev,
+            double angularStdDev,
+            int cameraIndex) {
+        if (innovation.translationMeters() <= VISION_JUMP_TRANSLATION_THRESHOLD_METERS
+                && innovation.headingDegrees() <= VISION_JUMP_HEADING_THRESHOLD_DEGREES) {
+            return;
+        }
+
+        logVisionEvent(
+                "jump",
+                timestampSeconds,
+                measuredPose,
+                odometryPose,
+                innovation,
+                tagCount,
+                tagIds,
+                ambiguity,
+                avgDistance,
+                linearStdDev,
+                angularStdDev,
+                cameraIndex);
+    }
+
+    private void logVisionEvent(
+            String eventType,
+            double timestampSeconds,
+            Pose2d measuredPose,
+            Pose2d odometryPose,
+            PoseDelta innovation,
+            int tagCount,
+            int[] tagIds,
+            double ambiguity,
+            double avgDistance,
+            double linearStdDev,
+            double angularStdDev,
+            int cameraIndex) {
+        String tagList = tagIds == null ? "[]" : Arrays.toString(tagIds);
+        System.out.printf(
+                "Vision %s @%.3f s cam=%d pose=%s odom=%s dPos=%.3fm dYawDeg=%.1f tags=%d %s amb=%.3f avgDist=%.3fm stdDev=[%.3f,%.3f]%n",
+                eventType,
+                timestampSeconds,
+                cameraIndex,
+                measuredPose,
+                odometryPose,
+                innovation.translationMeters(),
+                innovation.headingDegrees(),
+                tagCount,
+                tagList,
+                ambiguity,
+                avgDistance,
+                linearStdDev,
+                angularStdDev);
+    }
+
+    private record PoseDelta(double translationMeters, double headingDegrees) {
     }
 }
