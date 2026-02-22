@@ -13,7 +13,6 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotType;
 import frc.robot.subsystems.drive.Drive;
-import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.FieldConstants;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
@@ -43,7 +42,7 @@ public final class Vision extends SubsystemBase {
     private static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
     private static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
     private static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
-    private static final int HUB_TAG_ID = ShooterConstants.HUB_TAG_ID;
+    private static final int HUB_TAG_ID = FieldConstants.HUB_TAG_ID;
     private static final Set<Integer> HUB_TAG_IDS = determineHubTagIds();
     private static final double MAX_VISION_TRANSLATION_DELTA_METERS = 1.0;
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
@@ -289,11 +288,8 @@ public final class Vision extends SubsystemBase {
     }
 
     private static double calculateHeadingDeltaDegrees(Rotation2d first, Rotation2d second) {
-        double headingDeltaRad = Math.abs(Math.IEEEremainder(first.minus(second).getRadians(), 2.0 * Math.PI));
-        if (headingDeltaRad > Math.PI) {
-            headingDeltaRad = 2.0 * Math.PI - headingDeltaRad;
-        }
-        return Units.radiansToDegrees(headingDeltaRad);
+        return Units.radiansToDegrees(
+                Math.abs(Math.IEEEremainder(first.minus(second).getRadians(), 2.0 * Math.PI)));
     }
 
     private void logVisionRejection(

@@ -106,25 +106,25 @@ public class ShooterIOSim implements ShooterIO {
         inputs.shooterLeftVelocityRpm = leftShooterSim.getAngularVelocityRPM();
         inputs.shooterLeftAppliedVolts = leftAppliedVolts;
         inputs.shooterLeftSupplyCurrentAmps = Math.abs(leftShooterSim.getCurrentDrawAmps());
-        inputs.shooterLeftTempCelcius = AMBIENT_TEMP_C;
+        inputs.shooterLeftTempCelsius = AMBIENT_TEMP_C;
 
         inputs.shooterRightPositionRad = rightShooterSim.getAngularPositionRad();
         inputs.shooterRightVelocityRpm = rightShooterSim.getAngularVelocityRPM();
         inputs.shooterRightAppliedVolts = rightAppliedVolts;
         inputs.shooterRightSupplyCurrentAmps = Math.abs(rightShooterSim.getCurrentDrawAmps());
-        inputs.shooterRightTempCelcius = AMBIENT_TEMP_C;
+        inputs.shooterRightTempCelsius = AMBIENT_TEMP_C;
 
         inputs.hoodPositionRad = hoodSim.getAngularPositionRad();
         inputs.hoodVelocityRpm = hoodSim.getAngularVelocityRPM();
         inputs.hoodAppliedVolts = hoodAppliedVolts;
         inputs.hoodSupplyCurrentAmps = Math.abs(hoodSim.getCurrentDrawAmps());
-        inputs.hoodTempCelcius = AMBIENT_TEMP_C;
+        inputs.hoodTempCelsius = AMBIENT_TEMP_C;
 
         inputs.kickerPositionRad = kickerSim.getAngularPositionRad();
         inputs.kickerVelocityRpm = kickerSim.getAngularVelocityRPM();
         inputs.kickerAppliedVolts = kickerAppliedVolts;
         inputs.kickerSupplyCurrentAmps = Math.abs(kickerSim.getCurrentDrawAmps());
-        inputs.kickerTempCelcius = AMBIENT_TEMP_C;
+        inputs.kickerTempCelsius = AMBIENT_TEMP_C;
     }
 
     @Override

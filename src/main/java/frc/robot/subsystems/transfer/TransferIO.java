@@ -9,7 +9,7 @@ public interface TransferIO {
         public double velocityRpm = 0.0;
         public double appliedVolts = 0.0;
         public double supplyCurrentAmps = 0.0;
-        public double tempCelcius = 0.0;
+        public double tempCelsius = 0.0;
     }
 
     default void updateInputs(TransferIOInputs inputs) {}

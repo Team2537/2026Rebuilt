@@ -12,7 +12,8 @@ import org.photonvision.simulation.VisionSystemSim;
 
 /** Simulation implementation of the PhotonVision IO layer. */
 public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
-    private final VisionSystemSim visionSim;
+    private static VisionSystemSim sharedVisionSim;
+
     private final Supplier<Pose2d> poseSupplier;
     private final PhotonCameraSim cameraSim;
 
@@ -20,7 +21,6 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
             String name, Transform3d robotToCamera, int cameraIndex, Supplier<Pose2d> poseSupplier) {
         super(name, robotToCamera, cameraIndex);
         this.poseSupplier = poseSupplier;
-        this.visionSim = createVisionSim();
 
         SimCameraProperties cameraProperties = new SimCameraProperties();
         cameraProperties.setCalibration(
@@ -53,18 +53,20 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
         cameraProperties.setCalibError(0.0, 0.0);
 
         this.cameraSim = new PhotonCameraSim(camera, cameraProperties);
-        visionSim.addCamera(cameraSim, robotToCamera);
+        getOrCreateVisionSim().addCamera(cameraSim, robotToCamera);
     }
 
     @Override
     public void updateInputs(VisionIOInputs inputs) {
-        visionSim.update(poseSupplier.get());
+        getOrCreateVisionSim().update(poseSupplier.get());
         super.updateInputs(inputs);
     }
 
-    private static VisionSystemSim createVisionSim() {
-        VisionSystemSim sim = new VisionSystemSim("main");
-        sim.addAprilTags(FieldConstants.TAG_LAYOUT);
-        return sim;
+    private static synchronized VisionSystemSim getOrCreateVisionSim() {
+        if (sharedVisionSim == null) {
+            sharedVisionSim = new VisionSystemSim("main");
+            sharedVisionSim.addAprilTags(FieldConstants.TAG_LAYOUT);
+        }
+        return sharedVisionSim;
     }
 }

@@ -33,7 +33,7 @@ public class TransferIOSim implements TransferIO {
         inputs.velocityRpm = transferSim.getAngularVelocityRPM();
         inputs.appliedVolts = appliedVolts;
         inputs.supplyCurrentAmps = Math.abs(transferSim.getCurrentDrawAmps());
-        inputs.tempCelcius = AMBIENT_TEMP_C;
+        inputs.tempCelsius = AMBIENT_TEMP_C;
     }
 
     @Override

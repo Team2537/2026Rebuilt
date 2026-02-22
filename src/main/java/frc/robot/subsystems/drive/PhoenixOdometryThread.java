@@ -17,7 +17,6 @@ import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.DoubleSupplier;
 
 /**
  * Provides an interface for asynchronously reading high-frequency measurements
@@ -35,9 +34,7 @@ import java.util.function.DoubleSupplier;
 public class PhoenixOdometryThread extends Thread {
     private final Lock signalsLock = new ReentrantLock(); // Prevents conflicts when registering signals
     private BaseStatusSignal[] phoenixSignals = new BaseStatusSignal[0];
-    private final List<DoubleSupplier> genericSignals = new ArrayList<>();
     private final List<Queue<Double>> phoenixQueues = new ArrayList<>();
-    private final List<Queue<Double>> genericQueues = new ArrayList<>();
     private final List<Queue<Double>> timestampQueues = new ArrayList<>();
 
     private static PhoenixOdometryThread instance = null;
@@ -72,21 +69,6 @@ public class PhoenixOdometryThread extends Thread {
             newSignals[phoenixSignals.length] = signal;
             phoenixSignals = newSignals;
             phoenixQueues.add(queue);
-        } finally {
-            signalsLock.unlock();
-            Drive.odometryLock.unlock();
-        }
-        return queue;
-    }
-
-    /** Registers a generic signal to be read from the thread. */
-    public Queue<Double> registerSignal(DoubleSupplier signal) {
-        Queue<Double> queue = new ArrayBlockingQueue<>(20);
-        signalsLock.lock();
-        Drive.odometryLock.lock();
-        try {
-            genericSignals.add(signal);
-            genericQueues.add(queue);
         } finally {
             signalsLock.unlock();
             Drive.odometryLock.unlock();
@@ -142,9 +124,6 @@ public class PhoenixOdometryThread extends Thread {
                 // Add new samples to queues
                 for (int i = 0; i < phoenixSignals.length; i++) {
                     phoenixQueues.get(i).offer(phoenixSignals[i].getValueAsDouble());
-                }
-                for (int i = 0; i < genericSignals.size(); i++) {
-                    genericQueues.get(i).offer(genericSignals.get(i).getAsDouble());
                 }
                 for (int i = 0; i < timestampQueues.size(); i++) {
                     timestampQueues.get(i).offer(timestamp);

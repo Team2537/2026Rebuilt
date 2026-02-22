@@ -52,7 +52,7 @@ public class TransferIOReal implements TransferIO {
         inputs.velocityRpm = velocity.getValueAsDouble() * 60.0;
         inputs.appliedVolts = appliedVolts.getValueAsDouble();
         inputs.supplyCurrentAmps = supplyCurrent.getValueAsDouble();
-        inputs.tempCelcius = temp.getValueAsDouble();
+        inputs.tempCelsius = temp.getValueAsDouble();
     }
 
     @Override

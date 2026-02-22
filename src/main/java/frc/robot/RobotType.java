@@ -34,5 +34,7 @@ public final class RobotType {
 
   public static final Type TYPE = MODE.getDefaultRobotType();
 
-  public static final boolean IS_TUNING = !DriverStation.isFMSAttached();
+  public static boolean isTuning() {
+    return !DriverStation.isFMSAttached();
+  }
 }

@@ -35,8 +35,6 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 125.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(3.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final int HUB_TAG_ID = 26;
-    public static final double HUB_TARGET_X_OFFSET_METERS = Units.inchesToMeters(26.0);
 
     /**
      * Seed shot map for interpolation.

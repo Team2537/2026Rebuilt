@@ -5,7 +5,7 @@ import static frc.robot.util.PhoenixUtil.tryUntilOk;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
-import com.ctre.phoenix6.configs.MotionMagicConfigs;
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -53,7 +53,7 @@ public class IntakeIOReal implements IntakeIO {
     private final StatusSignal<?> rollerStatorCurrent;
 
     public IntakeIOReal() {
-        configureLeftMotor(true);
+        configureLeftMotor();
         configureRightMotor();
         configureRollerMotor();
 
@@ -146,7 +146,7 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void retract() {
-        configureLeftMotor(true);
+        setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
@@ -154,17 +154,16 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void extend() {
-        configureLeftMotor(true);
+        setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.EXTENDED_POSITION_ROT));
-        configureLeftMotor(false);
+        setLeftCurrentLimits(false);
     }
 
     @Override
     public void slowRetract() {
-        configureLeftMotor(true);
-        // USE DYNAMIC MOTION MAGIC TO RETRACT THE INTAKE SLOWLY
+        setLeftCurrentLimits(true);
         leftPositionRequest.Velocity = IntakeConstants.SLOW_INTAKE_VELOCITY;
         leftPositionRequest.Acceleration = IntakeConstants.SLOW_INTAKE_ACCELERATION;
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
@@ -178,17 +177,18 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void home() {
-        configureLeftMotor(true);
+        setLeftCurrentLimits(true);
         leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-1.0));
     }
 
     @Override
     public void stop() {
         leftIntakeMotor.setControl(neutralRequest);
+        rightIntakeMotor.setControl(neutralRequest);
         rollerMotor.setControl(neutralRequest);
     }
 
-    private void configureLeftMotor(boolean highCurrentLimit) {
+    private void configureLeftMotor() {
         TalonFXConfiguration config = new TalonFXConfiguration();
         config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
         config.MotorOutput.Inverted = IntakeConstants.LEFT_INTAKE_INVERTED
@@ -200,16 +200,33 @@ public class IntakeIOReal implements IntakeIO {
                 .withKD(IntakeConstants.INTAKE_KD)
                 .withKS(IntakeConstants.INTAKE_KS)
                 .withKV(IntakeConstants.INTAKE_KV);
-        config.CurrentLimits.StatorCurrentLimit = highCurrentLimit ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
+        config.CurrentLimits.StatorCurrentLimit = IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
-        config.CurrentLimits.SupplyCurrentLimit = highCurrentLimit ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
+        config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(config, 0.25));
+    }
+
+    private void setLeftCurrentLimits(boolean high) {
+        var limits = new CurrentLimitsConfigs();
+        limits.StatorCurrentLimit = high
+                ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS
+                : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
+        limits.StatorCurrentLimitEnable = true;
+        limits.SupplyCurrentLimit = high
+                ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS
+                : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
+        limits.SupplyCurrentLimitEnable = true;
+        tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(limits, 0.25));
     }
 
     private void configureRightMotor() {
         TalonFXConfiguration config = new TalonFXConfiguration();
         config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+        config.CurrentLimits.StatorCurrentLimit = IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS;
+        config.CurrentLimits.StatorCurrentLimitEnable = true;
+        config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
+        config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(config, 0.25));
         rightIntakeMotor.setControl(new Follower(
                 leftIntakeMotor.getDeviceID(),

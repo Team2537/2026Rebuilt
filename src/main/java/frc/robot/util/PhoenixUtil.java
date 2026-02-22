@@ -8,15 +8,19 @@
 package frc.robot.util;
 
 import com.ctre.phoenix6.StatusCode;
+import edu.wpi.first.wpilibj.DriverStation;
 import java.util.function.Supplier;
 
 public class PhoenixUtil {
-    /** Attempts to run the command until no error is produced. */
+    /** Attempts to run the command until no error is produced. Logs on final failure. */
     public static void tryUntilOk(int maxAttempts, Supplier<StatusCode> command) {
         for (int i = 0; i < maxAttempts; i++) {
             var error = command.get();
-            if (error.isOK())
-                break;
+            if (error.isOK()) return;
+            if (i == maxAttempts - 1) {
+                DriverStation.reportWarning(
+                        "Phoenix config failed after " + maxAttempts + " attempts: " + error, false);
+            }
         }
     }
 }

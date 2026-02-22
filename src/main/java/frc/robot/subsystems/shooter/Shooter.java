@@ -8,6 +8,7 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -15,7 +16,6 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.util.FieldConstants;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.function.DoubleSupplier;
-import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Shooter extends SubsystemBase {
@@ -28,18 +28,6 @@ public class Shooter extends SubsystemBase {
     private static final String DASHBOARD_HOOD_DEG_KEY = "Shooter/Tuning/HoodDeg";
     private static final String DASHBOARD_FEED_KEY = "Shooter/Tuning/FeedKicker";
     private static final String DASHBOARD_KICKER_TORQUE_KEY = "Shooter/Tuning/KickerTorqueAmps";
-    private static final String DASHBOARD_RAW_DISTANCE_KEY = "Shooter/Comp/RawHubDistanceMeters";
-    private static final String DASHBOARD_COMP_DISTANCE_KEY = "Shooter/Comp/CompensatedDistanceMeters";
-    private static final String DASHBOARD_VELOCITY_TOWARD_HUB_KEY = "Shooter/Comp/VelocityTowardHubMps";
-    private static final String DASHBOARD_VELOCITY_PERP_HUB_KEY = "Shooter/Comp/VelocityPerpendicularHubMps";
-    private static final String DASHBOARD_TIME_IN_AIR_KEY = "Shooter/Comp/TimeInAirSec";
-    private static final String DASHBOARD_COMP_HEADING_DEG_KEY = "Shooter/Comp/CompensatedHeadingDeg";
-    private static final String DASHBOARD_COMP_TARGET_X_KEY = "Shooter/Comp/TargetX";
-    private static final String DASHBOARD_COMP_TARGET_Y_KEY = "Shooter/Comp/TargetY";
-    private static final String DASHBOARD_COMP_TARGET_HEADING_KEY = "Shooter/Comp/TargetHeadingDeg";
-    private static final String DASHBOARD_COMP_TARGET_VALID_KEY = "Shooter/Comp/TargetValid";
-    private static final String DASHBOARD_MAP_DISTANCE_KEY = "Shooter/Comp/MapDistanceMeters";
-    private static final String DASHBOARD_MAP_TIME_KEY = "Shooter/Comp/MapTimeInAirSec";
 
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
     public record MotionCompensation(
@@ -71,7 +59,6 @@ public class Shooter extends SubsystemBase {
     private double targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
     private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
-    private boolean dashboardTuneWarningIssued = false;
 
     public Shooter(ShooterIO io) {
         super("shooter");
@@ -120,19 +107,13 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setTargets(ShotSetpoint setpoint) {
-        if (setpoint == null) {
-            throw new IllegalArgumentException("setpoint must not be null");
-        }
         setTargets(setpoint.leftRpm(), setpoint.rightRpm(), setpoint.hoodAngleRad());
     }
 
     public void setTargets(double leftRpm, double rightRpm, double hoodAngleRad) {
-        targetLeftRpm = requireInRange(
-                leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "leftRpm");
-        targetRightRpm = requireInRange(
-                rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM, "rightRpm");
-        targetHoodAngleRad = requireInRange(
-                hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD, "hoodAngleRad");
+        targetLeftRpm = MathUtil.clamp(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        targetRightRpm = MathUtil.clamp(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        targetHoodAngleRad = MathUtil.clamp(hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD);
     }
 
     public void setTargetsForDistance(double distanceMeters) {
@@ -150,20 +131,16 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setKickerTorqueAmps(double torqueAmps) {
-        kickerOutput = requireInRange(
-                torqueAmps,
+        kickerOutput = MathUtil.clamp(torqueAmps,
                 -ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
-                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS,
-                "torqueAmps");
+                ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS);
         kickerControlMode = KickerControlMode.TORQUE;
     }
 
     public void setKickerVoltage(double voltage) {
-        kickerOutput = requireInRange(
-                voltage,
+        kickerOutput = MathUtil.clamp(voltage,
                 -ShooterConstants.MAX_OUTPUT_VOLTS,
-                ShooterConstants.MAX_OUTPUT_VOLTS,
-                "voltage");
+                ShooterConstants.MAX_OUTPUT_VOLTS);
         kickerControlMode = KickerControlMode.VOLTAGE;
     }
 
@@ -191,27 +168,15 @@ public class Shooter extends SubsystemBase {
     }
 
     public boolean readyToFire() {
-        return atSetpoint() && (Math.abs(targetLeftRpm) > 1.0 || Math.abs(targetRightRpm) > 1.0);
-    }
-
-    public boolean isActivelyShooting() {
-        return readyToFire() && isKickerActive();
+        return atSetpoint() && Math.abs(targetLeftRpm) > 1.0 && Math.abs(targetRightRpm) > 1.0;
     }
 
     public boolean isKickerActive() {
         return kickerControlMode != KickerControlMode.OFF && Math.abs(kickerOutput) > 1e-6;
     }
 
-    public double getAverageShooterVelocityRpm() {
-        return (inputs.shooterLeftVelocityRpm + inputs.shooterRightVelocityRpm) / 2.0;
-    }
-
     public double getTargetAverageShooterRpm() {
         return (targetLeftRpm + targetRightRpm) / 2.0;
-    }
-
-    public double getCurrentHoodAngleRad() {
-        return inputs.hoodPositionRad;
     }
 
     public double getTargetHoodAngleRad() {
@@ -372,21 +337,13 @@ public class Shooter extends SubsystemBase {
             double velocityTowardHubMps,
             double velocityPerpendicularHubMps,
             Rotation2d compensatedHeading) {
-        double headingDeg = compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN;
-
         Logger.recordOutput("Shooter/RawHubDistanceMeters", rawDistanceMeters);
         Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", compensatedDistanceMeters);
         Logger.recordOutput("Shooter/VelocityTowardHubMps", velocityTowardHubMps);
         Logger.recordOutput("Shooter/VelocityPerpendicularHubMps", velocityPerpendicularHubMps);
         Logger.recordOutput("Shooter/TimeInAirSec", timeInAirSec);
-        Logger.recordOutput("Shooter/CompensatedHubHeadingDeg", headingDeg);
-
-        SmartDashboard.putNumber(DASHBOARD_RAW_DISTANCE_KEY, rawDistanceMeters);
-        SmartDashboard.putNumber(DASHBOARD_COMP_DISTANCE_KEY, compensatedDistanceMeters);
-        SmartDashboard.putNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, velocityTowardHubMps);
-        SmartDashboard.putNumber(DASHBOARD_VELOCITY_PERP_HUB_KEY, velocityPerpendicularHubMps);
-        SmartDashboard.putNumber(DASHBOARD_TIME_IN_AIR_KEY, timeInAirSec);
-        SmartDashboard.putNumber(DASHBOARD_COMP_HEADING_DEG_KEY, headingDeg);
+        Logger.recordOutput("Shooter/CompensatedHubHeadingDeg",
+                compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
 
         return new MotionCompensation(
                 rawDistanceMeters,
@@ -412,21 +369,14 @@ public class Shooter extends SubsystemBase {
                 0.0,
                 new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians()));
         Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, robotPose);
-        // Keep legacy key for existing widgets; it mirrors the compensated robot pose.
         Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, robotPose);
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, compensatedRobot.getX());
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, compensatedRobot.getY());
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, compensatedRobotHeading.getDegrees());
-        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, hasValidTarget);
+        Logger.recordOutput("Shooter/Comp/TargetValid", hasValidTarget);
     }
 
     private void publishCompensationTargetInvalid() {
         Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
         Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
-        SmartDashboard.putNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
-        SmartDashboard.putBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
+        Logger.recordOutput("Shooter/Comp/TargetValid", false);
     }
 
     private void reportCompensationFailure(String reason) {
@@ -453,24 +403,13 @@ public class Shooter extends SubsystemBase {
     public Command dashboardTuneCommand() {
         return runCommandWithCleanup(
                 () -> {
-                    try {
-                        setTargets(getDashboardShotSetpoint());
-                        if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
-                            setKickerTorqueAmps(SmartDashboard.getNumber(
-                                    DASHBOARD_KICKER_TORQUE_KEY,
-                                    ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
-                        } else {
-                            stopKicker();
-                        }
-                        dashboardTuneWarningIssued = false;
-                    } catch (IllegalArgumentException exception) {
-                        if (!dashboardTuneWarningIssued) {
-                            DriverStation.reportWarning(
-                                    "[Shooter] Ignoring invalid dashboard tune values: " + exception.getMessage(),
-                                    false);
-                            dashboardTuneWarningIssued = true;
-                        }
-                        stopAll();
+                    setTargets(getDashboardShotSetpoint());
+                    if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
+                        setKickerTorqueAmps(SmartDashboard.getNumber(
+                                DASHBOARD_KICKER_TORQUE_KEY,
+                                ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
+                    } else {
+                        stopKicker();
                     }
                 },
                 this::stopAll,
@@ -496,7 +435,11 @@ public class Shooter extends SubsystemBase {
         return runCommandWithCleanup(
                         () -> {
                             setTargetsForDistance(distanceMetersSupplier.getAsDouble());
-                            setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble());
+                            if (atSetpoint()) {
+                                setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble());
+                            } else {
+                                stopKicker();
+                            }
                         },
                         this::stopAll,
                         "ShooterShoot");
@@ -522,30 +465,6 @@ public class Shooter extends SubsystemBase {
     public Command shoot(DoubleSupplier distanceMetersSupplier) {
         return shoot(distanceMetersSupplier, () -> ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS)
                 .withName("ShooterShootDefaultFeed");
-    }
-
-    public Command runSetpoint(
-            DoubleSupplier leftRpmSupplier, DoubleSupplier rightRpmSupplier, DoubleSupplier hoodAngleRadSupplier) {
-        return runTargetingCommand(
-                () -> setTargets(
-                        leftRpmSupplier.getAsDouble(),
-                        rightRpmSupplier.getAsDouble(),
-                        hoodAngleRadSupplier.getAsDouble()),
-                "ShooterRunSetpoint");
-    }
-
-    public Command runKickerTorque(DoubleSupplier kickerTorqueAmpsSupplier) {
-        return runCommandWithCleanup(
-                () -> setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble()),
-                this::stopKicker,
-                "ShooterRunKickerTorque");
-    }
-
-    public Command runKickerVoltage(DoubleSupplier kickerVoltageSupplier) {
-        return runCommandWithCleanup(
-                () -> setKickerVoltage(kickerVoltageSupplier.getAsDouble()),
-                this::stopKicker,
-                "ShooterRunKickerVoltage");
     }
 
     public Command stopCommand() {
@@ -675,22 +594,6 @@ public class Shooter extends SubsystemBase {
         SmartDashboard.setDefaultNumber(DASHBOARD_HOOD_DEG_KEY, ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0]);
         SmartDashboard.setDefaultBoolean(DASHBOARD_FEED_KEY, false);
         SmartDashboard.setDefaultNumber(DASHBOARD_KICKER_TORQUE_KEY, ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
-        SmartDashboard.setDefaultNumber(DASHBOARD_RAW_DISTANCE_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_DISTANCE_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_VELOCITY_TOWARD_HUB_KEY, 0.0);
-        SmartDashboard.setDefaultNumber(DASHBOARD_VELOCITY_PERP_HUB_KEY, 0.0);
-        SmartDashboard.setDefaultNumber(DASHBOARD_TIME_IN_AIR_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_HEADING_DEG_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_X_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_Y_KEY, Double.NaN);
-        SmartDashboard.setDefaultNumber(DASHBOARD_COMP_TARGET_HEADING_KEY, Double.NaN);
-        SmartDashboard.setDefaultBoolean(DASHBOARD_COMP_TARGET_VALID_KEY, false);
-        SmartDashboard.putNumberArray(DASHBOARD_MAP_DISTANCE_KEY, ShooterConstants.SHOT_MAP_DISTANCE_METERS);
-        SmartDashboard.putNumberArray(DASHBOARD_MAP_TIME_KEY, ShooterConstants.SHOT_TIME_IN_AIR_SECONDS);
-    }
-
-    public static DoubleSupplier hubDistanceMetersSupplier(Supplier<Pose2d> robotPoseSupplier) {
-        return () -> getHubDistanceMeters(robotPoseSupplier.get());
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {
@@ -703,9 +606,9 @@ public class Shooter extends SubsystemBase {
 
     private static Translation2d getHubTargetTranslation() {
         return FieldConstants.TAG_LAYOUT
-                .getTagPose(ShooterConstants.HUB_TAG_ID)
+                .getTagPose(FieldConstants.HUB_TAG_ID)
                 .map(tagPose -> new Translation2d(
-                        tagPose.getX() + ShooterConstants.HUB_TARGET_X_OFFSET_METERS,
+                        tagPose.getX() + FieldConstants.HUB_TARGET_X_OFFSET_METERS,
                         tagPose.getY()))
                 .orElse(null);
     }

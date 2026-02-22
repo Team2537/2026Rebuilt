@@ -9,25 +9,25 @@ public interface ShooterIO {
         public double shooterLeftVelocityRpm = 0.0;
         public double shooterLeftAppliedVolts = 0.0;
         public double shooterLeftSupplyCurrentAmps = 0.0;
-        public double shooterLeftTempCelcius = 0.0;
+        public double shooterLeftTempCelsius = 0.0;
 
         public double shooterRightPositionRad = 0.0;
         public double shooterRightVelocityRpm = 0.0;
         public double shooterRightAppliedVolts = 0.0;
         public double shooterRightSupplyCurrentAmps = 0.0;
-        public double shooterRightTempCelcius = 0.0;
+        public double shooterRightTempCelsius = 0.0;
 
         public double hoodPositionRad = 0.0;
         public double hoodVelocityRpm = 0.0;
         public double hoodAppliedVolts = 0.0;
         public double hoodSupplyCurrentAmps = 0.0;
-        public double hoodTempCelcius = 0.0;
+        public double hoodTempCelsius = 0.0;
 
         public double kickerVelocityRpm = 0.0;
         public double kickerPositionRad = 0.0;
         public double kickerAppliedVolts = 0.0;
         public double kickerSupplyCurrentAmps = 0.0;
-        public double kickerTempCelcius = 0.0;
+        public double kickerTempCelsius = 0.0;
     }
 
     /** Updates the current sensor inputs for logging and control. */

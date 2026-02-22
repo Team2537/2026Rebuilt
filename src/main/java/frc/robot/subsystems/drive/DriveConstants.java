@@ -16,18 +16,6 @@ public class DriveConstants {
             edu.wpi.first.units.Units.RadiansPerSecond.of(MAX_ANGULAR_VELOCITY_RPS),
             DegreesPerSecondPerSecond.of(1500.0));
 
-    public static final PathConstraints EXTENDED_LIMITS = new PathConstraints(
-            FeetPerSecond.of(3.0),
-            MetersPerSecondPerSecond.of(5.5),
-            edu.wpi.first.units.Units.RadiansPerSecond.of(MAX_ANGULAR_VELOCITY_RPS),
-            DegreesPerSecondPerSecond.of(1500.0));
-
-    public static final PathConstraints INTAKE_LIMITS = new PathConstraints(
-            FeetPerSecond.of(3.0),
-            MetersPerSecondPerSecond.of(5.5),
-            edu.wpi.first.units.Units.RadiansPerSecond.of(MAX_ANGULAR_VELOCITY_RPS),
-            DegreesPerSecondPerSecond.of(2500.0));
-
     public static final PathConstraints AUTO_LIMITS = new PathConstraints(
             MetersPerSecond.of(3.0),
             MetersPerSecondPerSecond.of(14.5),

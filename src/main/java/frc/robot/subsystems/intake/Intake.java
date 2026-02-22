@@ -1,7 +1,7 @@
 package frc.robot.subsystems.intake;
 
-import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.function.BooleanSupplier;
@@ -40,8 +40,8 @@ public class Intake extends SubsystemBase {
         }
     }
 
-    public BooleanSupplier isExtended() {
-        return () -> extended;
+    public boolean isExtended() {
+        return extended;
     }
 
     public Command retractCommand() {
@@ -105,7 +105,7 @@ public class Intake extends SubsystemBase {
     }
 
     public Command backgroundCommand() {
-        return spinRollerSlow().onlyIf(isExtended()).withName("IntakeBackground");
+        return spinRollerSlow().onlyIf(this::isExtended).withName("IntakeBackground");
     }
 
     public Command stopCommand() {

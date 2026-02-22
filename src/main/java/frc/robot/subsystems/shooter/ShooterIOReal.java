@@ -150,25 +150,25 @@ public class ShooterIOReal implements ShooterIO {
         inputs.shooterLeftVelocityRpm = leftVelocity.getValueAsDouble() * 60.0;
         inputs.shooterLeftAppliedVolts = leftAppliedVolts.getValueAsDouble();
         inputs.shooterLeftSupplyCurrentAmps = leftSupplyCurrent.getValueAsDouble();
-        inputs.shooterLeftTempCelcius = leftTemp.getValueAsDouble();
+        inputs.shooterLeftTempCelsius = leftTemp.getValueAsDouble();
 
         inputs.shooterRightPositionRad = Units.rotationsToRadians(rightPosition.getValueAsDouble());
         inputs.shooterRightVelocityRpm = rightVelocity.getValueAsDouble() * 60.0;
         inputs.shooterRightAppliedVolts = rightAppliedVolts.getValueAsDouble();
         inputs.shooterRightSupplyCurrentAmps = rightSupplyCurrent.getValueAsDouble();
-        inputs.shooterRightTempCelcius = rightTemp.getValueAsDouble();
+        inputs.shooterRightTempCelsius = rightTemp.getValueAsDouble();
 
         inputs.hoodPositionRad = Units.rotationsToRadians(hoodPosition.getValueAsDouble());
         inputs.hoodVelocityRpm = hoodVelocity.getValueAsDouble() * 60.0;
         inputs.hoodAppliedVolts = hoodAppliedVolts.getValueAsDouble();
         inputs.hoodSupplyCurrentAmps = hoodSupplyCurrent.getValueAsDouble();
-        inputs.hoodTempCelcius = hoodTemp.getValueAsDouble();
+        inputs.hoodTempCelsius = hoodTemp.getValueAsDouble();
 
         inputs.kickerPositionRad = Units.rotationsToRadians(kickerPosition.getValueAsDouble());
         inputs.kickerVelocityRpm = kickerVelocity.getValueAsDouble() * 60.0;
         inputs.kickerAppliedVolts = kickerAppliedVolts.getValueAsDouble();
         inputs.kickerSupplyCurrentAmps = kickerSupplyCurrent.getValueAsDouble();
-        inputs.kickerTempCelcius = kickerTemp.getValueAsDouble();
+        inputs.kickerTempCelsius = kickerTemp.getValueAsDouble();
     }
 
     @Override

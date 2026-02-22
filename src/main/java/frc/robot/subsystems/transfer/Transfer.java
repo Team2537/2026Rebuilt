@@ -1,5 +1,6 @@
 package frc.robot.subsystems.transfer;
 
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -18,6 +19,10 @@ public class Transfer extends SubsystemBase {
     public void periodic() {
         io.updateInputs(inputs);
         Logger.processInputs("Transfer", inputs);
+
+        if (DriverStation.isDisabled()) {
+            io.stop();
+        }
     }
 
     public Command runCommand() {
