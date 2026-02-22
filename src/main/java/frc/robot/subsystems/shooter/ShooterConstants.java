@@ -12,15 +12,15 @@ public final class ShooterConstants {
 
     public static final boolean LEFT_SHOOTER_INVERTED = false;
     public static final boolean RIGHT_SHOOTER_INVERTED = true;
-    public static final boolean HOOD_INVERTED = false;
-    public static final boolean KICKER_INVERTED = false;
+    public static final boolean HOOD_INVERTED = true;
+    public static final boolean KICKER_INVERTED = true;
 
     public static final double SHOOTER_SENSOR_TO_MECHANISM_RATIO = 1.125;
     public static final double HOOD_SENSOR_TO_MECHANISM_RATIO = 72.0;
     public static final double KICKER_SENSOR_TO_MECHANISM_RATIO = 2.667;
 
     public static final double SHOOTER_MAX_RPM = 6200.0;
-    public static final double SLOW_SHOOTER_RPM = 1000.0;
+    public static final double SLOW_SHOOTER_RPM = 4000.0;
     public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 70.0;
     public static final double MAX_OUTPUT_VOLTS = 12.0;
 
@@ -31,7 +31,7 @@ public final class ShooterConstants {
 
     public static final double SHOOTER_RPM_TOLERANCE = 125.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(3.0);
-    public static final double DEFAULT_KICKER_TORQUE_AMPS = 45.0;
+    public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
     public static final int HUB_TAG_ID = 26;
     public static final double HUB_TARGET_X_OFFSET_METERS = Units.inchesToMeters(26.0);
 

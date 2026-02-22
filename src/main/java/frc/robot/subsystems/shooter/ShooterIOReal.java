@@ -248,6 +248,7 @@ public class ShooterIOReal implements ShooterIO {
         config.CurrentLimits.SupplyCurrentLimit = ShooterConstants.HOOD_SUPPLY_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> hoodMotor.getConfigurator().apply(config, 0.25));
+        hoodMotor.setPosition(0.0);
     }
 
     private void configureKickerMotor() {

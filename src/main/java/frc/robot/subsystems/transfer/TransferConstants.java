@@ -5,7 +5,7 @@ public final class TransferConstants {
     // TODO: Set to match wiring.
     public static final int TRANSFER_MOTOR_ID = 14;
 
-    public static final boolean TRANSFER_INVERTED = false;
+    public static final boolean TRANSFER_INVERTED = true;
     public static final double SENSOR_TO_MECHANISM_RATIO = 1.333;
 
     public static final double DEFAULT_TRANSFER_PERCENT = 0.0;
