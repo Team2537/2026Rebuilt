@@ -8,7 +8,6 @@ import java.util.function.BooleanSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Intake extends SubsystemBase {
-    private static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
 
     private final IntakeIO io;
     private final IntakeIOInputsAutoLogged inputs = new IntakeIOInputsAutoLogged();
@@ -67,7 +66,7 @@ public class Intake extends SubsystemBase {
         return Commands.sequence(
             Commands.runOnce(() -> io.home(), this),
             Commands.waitUntil(atHomingStop)
-                    .withTimeout(HOMING_WAIT_TIMEOUT_SEC)
+                    .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
                     .withName("IntakeHomeWaitUntil"),
             Commands.runOnce(() -> io.stop(), this),
             Commands.either(

@@ -32,6 +32,7 @@ public class ShooterIOReal implements ShooterIO {
     private final VelocityTorqueCurrentFOC leftVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final VelocityTorqueCurrentFOC rightVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final PositionVoltage hoodPositionRequest = new PositionVoltage(0.0);
+    private final VoltageOut hoodVoltageRequest = new VoltageOut(0.0);
     private final TorqueCurrentFOC kickerTorqueRequest = new TorqueCurrentFOC(0.0);
     private final VoltageOut kickerVoltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
@@ -191,9 +192,17 @@ public class ShooterIOReal implements ShooterIO {
         kickerMotor.setControl(kickerTorqueRequest.withOutput(torque));
     }
 
+    public void resetHoodEncoder() {
+        hoodMotor.setPosition(0.0);
+    }
+
     @Override
     public void setKickerVoltage(double volts) {
         kickerMotor.setControl(kickerVoltageRequest.withOutput(volts));
+    }
+
+    public void setHoodVoltage(double volts) {
+        hoodMotor.setControl(hoodVoltageRequest.withOutput(volts));
     }
 
     @Override

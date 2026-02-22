@@ -82,5 +82,9 @@ public final class ShooterConstants {
     public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 70.0;
     public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 45.0;
 
+    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 10.0;
+    public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
+
+
     private ShooterConstants() {}
 }

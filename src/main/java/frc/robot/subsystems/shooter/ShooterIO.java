@@ -22,6 +22,7 @@ public interface ShooterIO {
         public double hoodAppliedVolts = 0.0;
         public double hoodSupplyCurrentAmps = 0.0;
         public double hoodTempCelsius = 0.0;
+        public double hoodStatorCurrentAmps = 0.0;
 
         public double kickerVelocityRpm = 0.0;
         public double kickerPositionRad = 0.0;
@@ -45,8 +46,12 @@ public interface ShooterIO {
     /** Sets kicker torque-current request in amps. */
     default void setKickerTorque(double torqueCurrentAmps) {}
 
+    default void resetHoodEncoder() {}
+
     /** Sets kicker voltage request in volts. */
     default void setKickerVoltage(double volts) {}
+
+    default void setHoodVoltage(double volts) {}
 
     /** Stops all shooter motors. */
     default void stop() {}

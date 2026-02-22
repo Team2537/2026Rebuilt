@@ -15,6 +15,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.util.FieldConstants;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
@@ -612,4 +613,30 @@ public class Shooter extends SubsystemBase {
                         tagPose.getY()))
                 .orElse(null);
     }
+
+    public Command homeCommand() {
+        BooleanSupplier atHomingStop =
+                () -> Math.abs(inputs.hoodStatorCurrentAmps) > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS;
+        return Commands.sequence(
+            Commands.runOnce(() -> io.setHoodVoltage(-1.0), this),
+            Commands.waitUntil(atHomingStop)
+                    .withTimeout(ShooterConstants.HOMING_WAIT_TIMEOUT_SEC)
+                    .withName("HoodHomeWaitUntil"),
+            Commands.runOnce(() -> io.stop(), this),
+            Commands.either(
+                Commands.sequence(
+                    Commands.runOnce(() -> io.resetHoodEncoder(), this)),
+                Commands.runOnce(
+                        () -> {
+                            DriverStation.reportWarning(
+                                    "Hood homing timed out before current threshold; skipping encoder reset/retract.",
+                                    false);
+                        },
+                        this),
+                atHomingStop))
+                .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
+                .finallyDo(interrupted -> io.stop())
+                .withName("HoodHome");
+    }
+
 }

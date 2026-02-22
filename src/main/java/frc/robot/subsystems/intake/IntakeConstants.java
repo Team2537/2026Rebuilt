@@ -50,4 +50,5 @@ public final class IntakeConstants {
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
+    public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
 }
