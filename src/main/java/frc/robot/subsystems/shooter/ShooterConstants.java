@@ -32,7 +32,7 @@ public final class ShooterConstants {
 
     public static final double STATUS_UPDATE_HZ = 50.0;
 
-    public static final double SHOOTER_RPM_TOLERANCE = 125.0;
+    public static final double SHOOTER_RPM_TOLERANCE = 50.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(0.2);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
 
