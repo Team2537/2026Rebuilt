@@ -218,18 +218,16 @@ public final class Robot extends LoggedRobot {
         Supplier<Rotation2d> hubTagOnlyHeadingSupplier = () -> getHubFacingHeading(
                 vision != null ? vision.getHubTagRobotPose() : null);
 
-        Trigger dashboardTuneTrigger = driverController.rightTrigger()
+        Trigger rightTriggerPressed = driverController.rightTrigger();
+        Trigger dashboardTuneTrigger = rightTriggerPressed
                 .and(new Trigger(shooter::isDashboardTuningEnabled));
-        Trigger shootTrigger = driverController.rightTrigger()
+        Trigger shootTrigger = rightTriggerPressed
                 .and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
         Trigger aimTrigger = driverController.rightBumper();
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
         Trigger shootOnlyTrigger = shootTrigger.and(aimTrigger.negate());
         Trigger aimAndShootTrigger = aimTrigger.and(shootTrigger);
-        Trigger shooterActiveTrigger = shootOnlyTrigger
-                .or(aimOnlyTrigger)
-                .or(aimAndShootTrigger)
-                .or(dashboardTuneTrigger);
+        Trigger shooterControlsReleased = aimTrigger.or(rightTriggerPressed).negate();
 
         shootOnlyTrigger.whileTrue(shooter.shoot(hubDistanceSupplier));
         aimOnlyTrigger.whileTrue(Commands.parallel(
@@ -249,7 +247,7 @@ public final class Robot extends LoggedRobot {
                         hubTagOnlyHeadingSupplier),
                 shooter.shoot(hubDistanceSupplier)));
         dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
-        shooterActiveTrigger.onFalse(Commands.runOnce(this::scheduleShooterBackgroundIfIdle));
+        shooterControlsReleased.onTrue(Commands.runOnce(this::scheduleShooterBackgroundIfIdle));
 
         godController.leftBumper().onTrue(drive.toggleSlowMode());
         godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));

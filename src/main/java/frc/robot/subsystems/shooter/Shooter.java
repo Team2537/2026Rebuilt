@@ -427,8 +427,16 @@ public class Shooter extends SubsystemBase {
 
     public Command aimForDistance(DoubleSupplier distanceMetersSupplier) {
         return runTargetingCommand(
-                () -> setTargetsForDistance(distanceMetersSupplier.getAsDouble()),
+                () -> setAimTargets(distanceMetersSupplier.getAsDouble()),
                 "ShooterAimForDistance");
+    }
+
+    private void setAimTargets(double distanceMeters) {
+        if (isDashboardTuningEnabled()) {
+            setTargets(getDashboardShotSetpoint());
+        } else {
+            setTargetsForDistance(distanceMeters);
+        }
     }
 
     public Command shoot(
