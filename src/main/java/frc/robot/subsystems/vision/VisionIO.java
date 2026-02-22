@@ -14,6 +14,13 @@ public interface VisionIO {
         public PoseObservation[] poseObservations = new PoseObservation[0];
         public int[] tagIds = new int[0];
         public TargetTransform[] targetTransforms = new TargetTransform[0];
+
+        public void clearFrameData() {
+            latestTargetObservation = new TargetObservation(Rotation2d.kZero, Rotation2d.kZero);
+            poseObservations = new PoseObservation[0];
+            tagIds = new int[0];
+            targetTransforms = new TargetTransform[0];
+        }
     }
 
     record TargetObservation(Rotation2d yaw, Rotation2d pitch) {}

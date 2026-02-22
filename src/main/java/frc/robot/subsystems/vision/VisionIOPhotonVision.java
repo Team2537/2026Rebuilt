@@ -17,6 +17,7 @@ public class VisionIOPhotonVision implements VisionIO {
     protected final PhotonCamera camera;
     protected final Transform3d robotToCamera;
     private final int cameraIndex;
+    private TargetObservation latestTargetObservation = new TargetObservation(Rotation2d.kZero, Rotation2d.kZero);
 
     public VisionIOPhotonVision(String name, Transform3d robotToCamera, int cameraIndex) {
         this.camera = new PhotonCamera(name);
@@ -27,21 +28,22 @@ public class VisionIOPhotonVision implements VisionIO {
     @Override
     public void updateInputs(VisionIOInputs inputs) {
         inputs.isConnected = camera.isConnected();
-        inputs.latestTargetObservation = new TargetObservation(Rotation2d.kZero, Rotation2d.kZero);
+        inputs.latestTargetObservation = latestTargetObservation;
 
         Set<Integer> tagIds = new HashSet<>();
         List<PoseObservation> poseObservations = new ArrayList<>();
         List<TargetTransform> targetTransforms = new ArrayList<>();
+        List<PhotonPipelineResult> unreadResults = camera.getAllUnreadResults();
 
-        for (PhotonPipelineResult result : camera.getAllUnreadResults()) {
+        if (!unreadResults.isEmpty()) {
+            PhotonPipelineResult result = unreadResults.get(unreadResults.size() - 1);
             if (result.hasTargets()) {
                 PhotonTrackedTarget bestTarget = result.getBestTarget();
-                inputs.latestTargetObservation =
+                latestTargetObservation =
                         new TargetObservation(
                                 Rotation2d.fromDegrees(bestTarget.getYaw()),
                                 Rotation2d.fromDegrees(bestTarget.getPitch()));
-            } else {
-                inputs.latestTargetObservation = new TargetObservation(Rotation2d.kZero, Rotation2d.kZero);
+                inputs.latestTargetObservation = latestTargetObservation;
             }
 
             for (PhotonTrackedTarget target : result.getTargets()) {

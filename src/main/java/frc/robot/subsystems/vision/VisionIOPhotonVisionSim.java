@@ -12,8 +12,7 @@ import org.photonvision.simulation.VisionSystemSim;
 
 /** Simulation implementation of the PhotonVision IO layer. */
 public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
-    private static final VisionSystemSim VISION_SIM = createVisionSim();
-
+    private final VisionSystemSim visionSim;
     private final Supplier<Pose2d> poseSupplier;
     private final PhotonCameraSim cameraSim;
 
@@ -21,6 +20,7 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
             String name, Transform3d robotToCamera, int cameraIndex, Supplier<Pose2d> poseSupplier) {
         super(name, robotToCamera, cameraIndex);
         this.poseSupplier = poseSupplier;
+        this.visionSim = createVisionSim();
 
         SimCameraProperties cameraProperties = new SimCameraProperties();
         cameraProperties.setCalibration(
@@ -53,12 +53,12 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
         cameraProperties.setCalibError(0.0, 0.0);
 
         this.cameraSim = new PhotonCameraSim(camera, cameraProperties);
-        VISION_SIM.addCamera(cameraSim, robotToCamera);
+        visionSim.addCamera(cameraSim, robotToCamera);
     }
 
     @Override
     public void updateInputs(VisionIOInputs inputs) {
-        VISION_SIM.update(poseSupplier.get());
+        visionSim.update(poseSupplier.get());
         super.updateInputs(inputs);
     }
 

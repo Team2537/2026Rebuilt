@@ -49,6 +49,7 @@ public final class Vision extends SubsystemBase {
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
     private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
+    private static final boolean ENABLE_VISION_EVENT_LOGS = false;
 
     private final Drive drive;
     private final Supplier<Pose2d> robotPoseSupplier;
@@ -75,8 +76,13 @@ public final class Vision extends SubsystemBase {
         for (int index = 0; index < ios.size(); index++) {
             VisionIO io = ios.get(index);
             VisionIOInputsAutoLogged input = inputs.get(index);
+            input.clearFrameData();
             io.updateInputs(input);
             Logger.processInputs(getName() + "/Camera" + index, input);
+
+            if (currentPose == null) {
+                continue;
+            }
 
             PoseObservation bestObservation = selectBestObservation(input.poseObservations);
             if (bestObservation != null) {
@@ -124,9 +130,11 @@ public final class Vision extends SubsystemBase {
 
         Logger.recordOutput(
                 "vision/cameraPoses",
-                ROBOT_TO_CAMERAS.stream()
-                        .map(transform -> new Pose3d(currentPose).transformBy(transform))
-                        .toArray(Pose3d[]::new));
+                currentPose == null
+                        ? new Pose3d[0]
+                        : ROBOT_TO_CAMERAS.stream()
+                                .map(transform -> new Pose3d(currentPose).transformBy(transform))
+                                .toArray(Pose3d[]::new));
 
         updateHubYawFromTags();
     }
@@ -360,6 +368,9 @@ public final class Vision extends SubsystemBase {
             double linearStdDev,
             double angularStdDev,
             int cameraIndex) {
+        if (!ENABLE_VISION_EVENT_LOGS) {
+            return;
+        }
         String tagList = tagIds == null ? "[]" : Arrays.toString(tagIds);
         System.out.printf(
                 "Vision %s @%.3f s cam=%d pose=%s odom=%s dPos=%.3fm dYawDeg=%.1f tags=%d %s amb=%.3f avgDist=%.3fm stdDev=[%.3f,%.3f]%n",
