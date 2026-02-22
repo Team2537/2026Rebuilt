@@ -39,11 +39,20 @@ public final class ShooterConstants {
      * Seed shot map for interpolation.
      * Replace with measured values from characterization once available.
      */
-    public static final double[] SHOT_MAP_DISTANCE_METERS = {2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
-    public static final double[] SHOT_MAP_LEFT_RPM = {1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
-    public static final double[] SHOT_MAP_RIGHT_RPM = { 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
-    public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
-    public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
+
+    // SIM
+    // public static final double[] SHOT_MAP_DISTANCE_METERS = {2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
+    // public static final double[] SHOT_MAP_LEFT_RPM = {1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
+    // public static final double[] SHOT_MAP_RIGHT_RPM = { 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
+    // public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
+    // public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
+
+    // REAL
+    public static final double[] SHOT_MAP_DISTANCE_METERS = {0.0, 20.0};
+    public static final double[] SHOT_MAP_LEFT_RPM = {4000.0, 4000.0};
+    public static final double[] SHOT_MAP_RIGHT_RPM = { 4000.0, 4000.0 };
+    public static final double[] SHOT_MAP_HOOD_ANGLE_DEG = {0.0, 0.0};
+    public static final double[] SHOT_TIME_IN_AIR_SECONDS = {1.55, 1.55};
 
     // Closed-loop gains (starting points, tune on robot).
     public static final double SHOOTER_KP = 10.0;
