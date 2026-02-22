@@ -10,14 +10,12 @@ import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
-import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
@@ -31,8 +29,14 @@ public class IntakeIOReal implements IntakeIO {
     private final TalonFX rightIntakeMotor = new TalonFX(IntakeConstants.RIGHT_MOTOR_ID, MECHANISM_CAN_BUS);
 
     private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
-    private final DynamicMotionMagicVoltage leftPositionRequest = new DynamicMotionMagicVoltage(0.0, IntakeConstants.INTAKE_VELOCITY,IntakeConstants.INTAKE_ACCELERATION);
+    private final DynamicMotionMagicVoltage leftPositionRequest =
+            new DynamicMotionMagicVoltage(
+                    0.0, IntakeConstants.INTAKE_VELOCITY, IntakeConstants.INTAKE_ACCELERATION);
+    private final DynamicMotionMagicVoltage rightPositionRequest =
+            new DynamicMotionMagicVoltage(
+                    0.0, IntakeConstants.INTAKE_VELOCITY, IntakeConstants.INTAKE_ACCELERATION);
     private final VoltageOut leftVoltageRequest = new VoltageOut(0.0);
+    private final VoltageOut rightVoltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
 
     private final StatusSignal<?> leftPosition;
@@ -138,9 +142,6 @@ public class IntakeIOReal implements IntakeIO {
         inputs.rollerStatorCurrentAmps = rollerStatorCurrent.getValueAsDouble();
         inputs.rollerVelocityRpm = rollerVelocity.getValueAsDouble() * 60.0;
 
-        rightIntakeMotor.setControl(new Follower(
-                leftIntakeMotor.getDeviceID(),
-                IntakeConstants.RIGHT_OPPOSES_LEFT ? MotorAlignmentValue.Opposed : MotorAlignmentValue.Aligned));
     }
 
     @Override
@@ -151,27 +152,26 @@ public class IntakeIOReal implements IntakeIO {
 
     @Override
     public void retract() {
-        // setLeftCurrentLimits(true);
-        leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
-        leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
-        leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
+        setIntakePosition(
+                IntakeConstants.RETRACTED_POSITION_ROT,
+                IntakeConstants.INTAKE_VELOCITY,
+                IntakeConstants.INTAKE_ACCELERATION);
     }
 
     @Override
     public void extend() {
-        // setLeftCurrentLimits(true);
-        leftPositionRequest.Velocity = IntakeConstants.INTAKE_VELOCITY;
-        leftPositionRequest.Acceleration = IntakeConstants.INTAKE_ACCELERATION;
-        leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.EXTENDED_POSITION_ROT));
-        // setLeftCurrentLimits(false);
+        setIntakePosition(
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                IntakeConstants.INTAKE_VELOCITY,
+                IntakeConstants.INTAKE_ACCELERATION);
     }
 
     @Override
     public void slowRetract() {
-        // setLeftCurrentLimits(true);
-        leftPositionRequest.Velocity = IntakeConstants.SLOW_INTAKE_VELOCITY;
-        leftPositionRequest.Acceleration = IntakeConstants.SLOW_INTAKE_ACCELERATION;
-        leftIntakeMotor.setControl(leftPositionRequest.withPosition(IntakeConstants.RETRACTED_POSITION_ROT));
+        setIntakePosition(
+                IntakeConstants.RETRACTED_POSITION_ROT,
+                IntakeConstants.SLOW_INTAKE_VELOCITY,
+                IntakeConstants.SLOW_INTAKE_ACCELERATION);
     }
 
     @Override
@@ -183,7 +183,9 @@ public class IntakeIOReal implements IntakeIO {
     @Override
     public void home() {
         setLeftCurrentLimits(true);
+        setRightCurrentLimits(true);
         leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-2.0));
+        rightIntakeMotor.setControl(rightVoltageRequest.withOutput(applyRightAlignment(-2.0)));
     }
 
     @Override
@@ -228,9 +230,41 @@ public class IntakeIOReal implements IntakeIO {
         tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(limits, 0.25));
     }
 
+    private void setRightCurrentLimits(boolean high) {
+        var limits = new CurrentLimitsConfigs();
+        limits.StatorCurrentLimit = high
+                ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS
+                : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
+        limits.StatorCurrentLimitEnable = true;
+        limits.SupplyCurrentLimit = high
+                ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS
+                : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
+        limits.SupplyCurrentLimitEnable = true;
+        tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(limits, 0.25));
+    }
+
+    private void setIntakePosition(double leftTargetRot, double velocity, double acceleration) {
+        leftPositionRequest.Velocity = velocity;
+        leftPositionRequest.Acceleration = acceleration;
+        rightPositionRequest.Velocity = velocity;
+        rightPositionRequest.Acceleration = acceleration;
+        leftIntakeMotor.setControl(leftPositionRequest.withPosition(leftTargetRot));
+        rightIntakeMotor.setControl(rightPositionRequest.withPosition(applyRightAlignment(leftTargetRot)));
+    }
+
+    private double applyRightAlignment(double leftReference) {
+        return IntakeConstants.RIGHT_OPPOSES_LEFT ? -leftReference : leftReference;
+    }
+
     private void configureRightMotor() {
         TalonFXConfiguration config = new TalonFXConfiguration();
         config.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+        config.Slot0 = new Slot0Configs()
+                .withKP(IntakeConstants.INTAKE_KP)
+                .withKI(IntakeConstants.INTAKE_KI)
+                .withKD(IntakeConstants.INTAKE_KD)
+                .withKS(IntakeConstants.INTAKE_KS)
+                .withKV(IntakeConstants.INTAKE_KV);
         config.CurrentLimits.StatorCurrentLimit = IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
@@ -239,9 +273,6 @@ public class IntakeIOReal implements IntakeIO {
                 .withMotionMagicCruiseVelocity(IntakeConstants.INTAKE_VELOCITY)
                 .withMotionMagicAcceleration(IntakeConstants.INTAKE_ACCELERATION);
         tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(config, 0.25));
-        rightIntakeMotor.setControl(new Follower(
-                leftIntakeMotor.getDeviceID(),
-                IntakeConstants.RIGHT_OPPOSES_LEFT ? MotorAlignmentValue.Opposed : MotorAlignmentValue.Aligned));
     }
 
     private void configureRollerMotor() {

@@ -69,8 +69,9 @@ public class Intake extends SubsystemBase {
     }
 
     public Command homeCommand() {
-        BooleanSupplier atHomingStop =
-                () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;
+        BooleanSupplier atHomingStop = () ->
+                Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS
+                        && Math.abs(inputs.rightStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;
         return Commands.sequence(
             Commands.runOnce(() -> io.home(), this),
             Commands.waitUntil(atHomingStop)
