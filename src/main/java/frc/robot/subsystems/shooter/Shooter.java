@@ -71,6 +71,7 @@ public class Shooter extends SubsystemBase {
     private double targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
     private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
+    private boolean dashboardTuneWarningIssued = false;
 
     public Shooter(ShooterIO io) {
         super("shooter");
@@ -85,8 +86,14 @@ public class Shooter extends SubsystemBase {
         io.updateInputs(inputs);
         Logger.processInputs("Shooter", inputs);
 
-        applyShooterTargets();
-        applyKickerOutput();
+        if (DriverStation.isDisabled()) {
+            setIdleTargets();
+            stopKicker();
+            io.stop();
+        } else {
+            applyShooterTargets();
+            applyKickerOutput();
+        }
 
         Logger.recordOutput("Shooter/TargetLeftRpm", targetLeftRpm);
         Logger.recordOutput("Shooter/TargetRightRpm", targetRightRpm);
@@ -166,8 +173,15 @@ public class Shooter extends SubsystemBase {
     }
 
     public void stopAll() {
-        setTargets(0.0, 0.0, ShooterConstants.HOOD_MIN_ANGLE_RAD);
+        setIdleTargets();
         stopKicker();
+        io.stop();
+    }
+
+    private void setIdleTargets() {
+        targetLeftRpm = 0.0;
+        targetRightRpm = 0.0;
+        targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
     }
 
     public boolean atSetpoint() {
@@ -439,13 +453,24 @@ public class Shooter extends SubsystemBase {
     public Command dashboardTuneCommand() {
         return runCommandWithCleanup(
                 () -> {
-                    setTargets(getDashboardShotSetpoint());
-                    if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
-                        setKickerTorqueAmps(SmartDashboard.getNumber(
-                                DASHBOARD_KICKER_TORQUE_KEY,
-                                ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
-                    } else {
-                        stopKicker();
+                    try {
+                        setTargets(getDashboardShotSetpoint());
+                        if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
+                            setKickerTorqueAmps(SmartDashboard.getNumber(
+                                    DASHBOARD_KICKER_TORQUE_KEY,
+                                    ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
+                        } else {
+                            stopKicker();
+                        }
+                        dashboardTuneWarningIssued = false;
+                    } catch (IllegalArgumentException exception) {
+                        if (!dashboardTuneWarningIssued) {
+                            DriverStation.reportWarning(
+                                    "[Shooter] Ignoring invalid dashboard tune values: " + exception.getMessage(),
+                                    false);
+                            dashboardTuneWarningIssued = true;
+                        }
+                        stopAll();
                     }
                 },
                 this::stopAll,

@@ -1,6 +1,7 @@
 package frc.robot.subsystems.shooter;
 
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.wpilibj.simulation.DCMotorSim;
@@ -71,21 +72,25 @@ public class ShooterIOSim implements ShooterIO {
                 ? SHOOTER_KV_VOLTS_PER_RPM * targetLeftRpm
                         + leftVelocityController.calculate(leftShooterSim.getAngularVelocityRPM(), targetLeftRpm)
                 : 0.0;
+        leftAppliedVolts = clampOutputVolts(leftAppliedVolts);
 
         rightAppliedVolts = rightClosedLoop
                 ? SHOOTER_KV_VOLTS_PER_RPM * targetRightRpm
                         + rightVelocityController.calculate(rightShooterSim.getAngularVelocityRPM(), targetRightRpm)
                 : 0.0;
+        rightAppliedVolts = clampOutputVolts(rightAppliedVolts);
 
         hoodAppliedVolts = hoodClosedLoop
                 ? hoodPositionController.calculate(hoodSim.getAngularPositionRad(), targetHoodAngleRad)
                 : 0.0;
+        hoodAppliedVolts = clampOutputVolts(hoodAppliedVolts);
 
         kickerAppliedVolts = switch (kickerMode) {
             case OFF -> 0.0;
             case TORQUE -> kickerOutput / ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS * ShooterConstants.MAX_OUTPUT_VOLTS;
             case VOLTAGE -> kickerOutput;
         };
+        kickerAppliedVolts = clampOutputVolts(kickerAppliedVolts);
 
         leftShooterSim.setInputVoltage(leftAppliedVolts);
         rightShooterSim.setInputVoltage(rightAppliedVolts);
@@ -166,5 +171,9 @@ public class ShooterIOSim implements ShooterIO {
         leftVelocityController.reset();
         rightVelocityController.reset();
         hoodPositionController.reset();
+    }
+
+    private static double clampOutputVolts(double volts) {
+        return MathUtil.clamp(volts, -ShooterConstants.MAX_OUTPUT_VOLTS, ShooterConstants.MAX_OUTPUT_VOLTS);
     }
 }

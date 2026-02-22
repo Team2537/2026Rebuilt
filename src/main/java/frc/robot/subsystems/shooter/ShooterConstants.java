@@ -7,7 +7,7 @@ import edu.wpi.first.wpilibj.RobotBase;
 public final class ShooterConstants {
     private static final boolean isReal = RobotBase.isReal();
 
-    // TODO: Set these IDs to match your wiring.
+    // CAN IDs for the shooter assembly.
     public static final int LEFT_SHOOTER_MOTOR_ID = 10;
     public static final int RIGHT_SHOOTER_MOTOR_ID = 11;
     public static final int HOOD_MOTOR_ID = 12;
