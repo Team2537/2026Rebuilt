@@ -9,7 +9,7 @@
         },
         {
             "axis": "z",
-            "degrees": 270
+            "degrees": 90
         }
     ],
     "position": [
@@ -19,7 +19,7 @@
     ],
     "cameras": [
         {
-            "name": "Front Right",
+            "name": "Front Left",
             "rotations": [
                 {
                     "axis": "y",
@@ -27,12 +27,12 @@
                 },
                 {
                     "axis": "z",
-                    "degrees": 10.0
+                    "degrees": 170.0
                 }
             ],
             "position": [
-                0.325145,
-                0.299705,
+                -0.325145,
+                -0.299705,
                 0.254330
             ],
             "resolution": [
@@ -42,7 +42,7 @@
             "fov": 70
         },
         {
-            "name": "Front Left",
+            "name": "Front Right",
             "rotations": [
                 {
                     "axis": "y",
@@ -50,12 +50,12 @@
                 },
                 {
                     "axis": "z",
-                    "degrees": 350.0
+                    "degrees": 190.0
                 }
             ],
             "position": [
-                0.325145,
-                -0.299705,
+                -0.325145,
+                0.299705,
                 0.254330
             ],
             "resolution": [

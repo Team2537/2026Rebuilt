@@ -19,7 +19,7 @@ public final class FuelSim {
     private static final double SHOOTER_SPEED_EFFICIENCY = 0.85;
     private static final double MIN_MUZZLE_SPEED_METERS_PER_SEC = 7.0;
     private static final double MAX_MUZZLE_SPEED_METERS_PER_SEC = 25.0;
-    private static final double MUZZLE_OFFSET_X_METERS = 0.32;
+    private static final double MUZZLE_OFFSET_X_METERS = -0.32;
     private static final double MUZZLE_OFFSET_Y_METERS = 0.0;
     private static final double MUZZLE_HEIGHT_METERS = 0.68;
     private static final double MAX_HOOD_ANGLE_RAD = Units.degreesToRadians(90.0);
@@ -109,7 +109,7 @@ public final class FuelSim {
         int index = nextSpawnIndex;
         nextSpawnIndex = (nextSpawnIndex + 1) % FUEL_COUNT;
 
-        double yaw = robotPose.getRotation().getRadians();
+        double yaw = robotPose.getRotation().getRadians() + Math.PI;
         Translation2d muzzleOffsetRobot = new Translation2d(MUZZLE_OFFSET_X_METERS, MUZZLE_OFFSET_Y_METERS);
         Translation2d muzzleOffsetField = muzzleOffsetRobot.rotateBy(robotPose.getRotation());
 

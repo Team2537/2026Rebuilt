@@ -50,6 +50,7 @@ public class DriveCommands {
     private static final double HUB_POSE_MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC = 0.35;
     private static final double HUB_POSE_TARGET_RATE_DT_MIN_SEC = 1e-3;
     private static final double HUB_POSE_TARGET_RATE_DT_MAX_SEC = 0.1;
+    private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
 
     private DriveCommands() {
     }
@@ -147,7 +148,8 @@ public class DriveCommands {
                     double hubYawRad = vision.getHubYawRad();
                     double omega;
                     if (Double.isFinite(hubYawRad)) {
-                        omega = hubYawController.calculate(-hubYawRad, 0.0);
+                        double adjustedHubYawRad = MathUtil.angleModulus(hubYawRad + HUB_AUTO_ALIGN_HEADING_OFFSET.getRadians());
+                        omega = hubYawController.calculate(-adjustedHubYawRad, 0.0);
                     } else {
                         double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
                         fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
@@ -168,7 +170,10 @@ public class DriveCommands {
                 },
                 drive).beforeStarting(() -> {
                     double initialHubYaw = vision.getHubYawRad();
-                    hubYawController.reset(Double.isFinite(initialHubYaw) ? -initialHubYaw : 0.0);
+                    double adjustedInitialHubYaw = Double.isFinite(initialHubYaw)
+                            ? MathUtil.angleModulus(initialHubYaw + HUB_AUTO_ALIGN_HEADING_OFFSET.getRadians())
+                            : Double.NaN;
+                    hubYawController.reset(Double.isFinite(adjustedInitialHubYaw) ? -adjustedInitialHubYaw : 0.0);
                 })
                 .withName("DriveAutoAlignToHub");
     }
@@ -216,7 +221,7 @@ public class DriveCommands {
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
                             -ySupplier.getAsDouble());
 
-                    Rotation2d targetHeading = headingSupplier.get();
+                    Rotation2d targetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
                     double omega;
                     if (targetHeading != null) {
                         if (state.filteredTargetHeading == null) {
@@ -279,7 +284,7 @@ public class DriveCommands {
                 },
                 drive)
                 .beforeStarting(() -> {
-                    Rotation2d initialTargetHeading = headingSupplier.get();
+                    Rotation2d initialTargetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
                     if (initialTargetHeading != null) {
                         state.initializeTargetTracking(initialTargetHeading, Timer.getFPGATimestamp());
                     } else {
@@ -289,6 +294,10 @@ public class DriveCommands {
                     angleController.reset(drive.getRotation().getRadians());
                 })
                 .withName("DriveAutoAlignToHubPose");
+    }
+
+    private static Rotation2d applyHubAutoAlignHeadingOffset(Rotation2d heading) {
+        return heading == null ? null : heading.plus(HUB_AUTO_ALIGN_HEADING_OFFSET);
     }
 
     private static Rotation2d filterTargetHeading(Rotation2d filteredTargetHeading, Rotation2d targetHeading) {
