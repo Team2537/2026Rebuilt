@@ -81,6 +81,14 @@ public class DriveCommands {
                 .getTranslation();
     }
 
+    private static Rotation2d getAllianceAdjustedFieldHeading(Drive drive) {
+        boolean isFlipped = DriverStation.getAlliance().isPresent()
+                && DriverStation.getAlliance().get() == Alliance.Red;
+        return isFlipped
+                ? drive.getRotation().plus(new Rotation2d(Math.PI))
+                : drive.getRotation();
+    }
+
     /**
      * Field relative drive command using two joysticks (controlling linear and
      * angular velocities).
@@ -108,15 +116,8 @@ public class DriveCommands {
                             linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
                             omega * drive.getMaxAngularSpeedRadPerSec());
 
-                    boolean isFlipped = DriverStation.getAlliance().isPresent()
-                            && DriverStation.getAlliance().get() == Alliance.Red;
-
-                    Rotation2d heading = isFlipped
-                            ? drive.getRotation().plus(new Rotation2d(Math.PI))
-                            : drive.getRotation();
-
                     ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading)
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
                             : speeds;
 
                     drive.runVelocity(commandSpeeds);
@@ -171,14 +172,10 @@ public class DriveCommands {
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
                             linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
                             omega);
-                    boolean isFlipped = DriverStation.getAlliance().isPresent()
-                            && DriverStation.getAlliance().get() == Alliance.Red;
                     drive.runVelocity(
                             ChassisSpeeds.fromFieldRelativeSpeeds(
                                     speeds,
-                                    isFlipped
-                                            ? drive.getRotation().plus(new Rotation2d(Math.PI))
-                                            : drive.getRotation()));
+                                    getAllianceAdjustedFieldHeading(drive)));
                 },
                 drive)
 
@@ -224,14 +221,8 @@ public class DriveCommands {
                             linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
                             omega);
 
-                    boolean isFlipped = DriverStation.getAlliance().isPresent()
-                            && DriverStation.getAlliance().get() == Alliance.Red;
-                    Rotation2d heading = isFlipped
-                            ? drive.getRotation().plus(new Rotation2d(Math.PI))
-                            : drive.getRotation();
-
                     ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading)
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
                             : speeds;
 
                     drive.runVelocity(commandSpeeds);
@@ -461,21 +452,31 @@ public class DriveCommands {
                         drive)
 
                         // When cancelled, calculate and print results
-                        .finallyDo(
-                                () -> {
-                                    int n = velocitySamples.size();
-                                    double sumX = 0.0;
-                                    double sumY = 0.0;
-                                    double sumXY = 0.0;
-                                    double sumX2 = 0.0;
-                                    for (int i = 0; i < n; i++) {
+                                .finallyDo(
+                                        () -> {
+                                            int n = velocitySamples.size();
+                                            if (n < 2) {
+                                                System.out.println("Drive FF characterization skipped: not enough samples.");
+                                                return;
+                                            }
+
+                                            double sumX = 0.0;
+                                            double sumY = 0.0;
+                                            double sumXY = 0.0;
+                                            double sumX2 = 0.0;
+                                            for (int i = 0; i < n; i++) {
                                         sumX += velocitySamples.get(i);
                                         sumY += voltageSamples.get(i);
-                                        sumXY += velocitySamples.get(i) * voltageSamples.get(i);
-                                        sumX2 += velocitySamples.get(i) * velocitySamples.get(i);
-                                    }
-                                    double kS = (sumY * sumX2 - sumX * sumXY) / (n * sumX2 - sumX * sumX);
-                                    double kV = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+                                                sumXY += velocitySamples.get(i) * voltageSamples.get(i);
+                                                sumX2 += velocitySamples.get(i) * velocitySamples.get(i);
+                                            }
+                                            double denominator = n * sumX2 - sumX * sumX;
+                                            if (Math.abs(denominator) <= 1e-9) {
+                                                System.out.println("Drive FF characterization skipped: degenerate sample set.");
+                                                return;
+                                            }
+                                            double kS = (sumY * sumX2 - sumX * sumXY) / denominator;
+                                            double kV = (n * sumXY - sumX * sumY) / denominator;
 
                                     NumberFormat formatter = new DecimalFormat("#0.00000");
                                     System.out.println("********** Drive FF Characterization Results **********");
@@ -534,6 +535,11 @@ public class DriveCommands {
                                             double wheelDelta = 0.0;
                                             for (int i = 0; i < 4; i++) {
                                                 wheelDelta += Math.abs(positions[i] - state.positions[i]) / 4.0;
+                                            }
+                                            if (wheelDelta <= 1e-6) {
+                                                System.out.println(
+                                                        "Wheel radius characterization skipped: wheel delta was too small.");
+                                                return;
                                             }
                                             double wheelRadius = (state.gyroDelta * Drive.DRIVE_BASE_RADIUS)
                                                     / wheelDelta;
