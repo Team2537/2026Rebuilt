@@ -29,7 +29,7 @@ public final class Constants {
      * Enable/disable robot mechanisms at init time.
      */
     public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
-            EnumSet.of(Mechanism.DRIVE, Mechanism.SHOOTER, Mechanism.TRANSFER, Mechanism.VISION);
+            EnumSet.of(Mechanism.DRIVE, Mechanism.SHOOTER, Mechanism.TRANSFER, Mechanism.VISION, Mechanism.INTAKE);
 
     /** Toggleable auto-align mode for right-bumper aiming in teleop. */
     public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.POSE_ODOMETRY;

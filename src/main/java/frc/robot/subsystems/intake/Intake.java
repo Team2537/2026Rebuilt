@@ -60,6 +60,14 @@ public class Intake extends SubsystemBase {
         return Commands.runOnce(() -> setExtended(true), this).withName("IntakeExtend");
     }
 
+    public Command toggleExtendedCommand() {
+        return Commands.either(
+                retractCommand(),
+                extendCommand(),
+                this::isExtended)
+                .withName("IntakeToggleExtended");
+    }
+
     public Command homeCommand() {
         BooleanSupplier atHomingStop =
                 () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;

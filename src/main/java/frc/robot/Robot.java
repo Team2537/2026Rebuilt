@@ -205,11 +205,7 @@ public final class Robot extends LoggedRobot {
 
         driverController.y().whileTrue(transfer.reverseCommand()).whileFalse(transfer.backgroundCommand());
 
-        driverController.b()
-                .onTrue(Commands.either(
-                        intake.retractCommand().andThen(intake.stopCommand()),
-                        intake.extendCommand().andThen(intake.backgroundCommand()),
-                        intake::isExtended));
+        driverController.b().onTrue(intake.toggleExtendedCommand());
         driverController.leftTrigger().onTrue(intake.spinRoller()).onFalse(intake.backgroundCommand());
 
         driverController.povUp().onTrue(Commands.runOnce(this::scheduleBackgroundManipulators));
@@ -230,6 +226,10 @@ public final class Robot extends LoggedRobot {
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
         Trigger shootOnlyTrigger = shootTrigger.and(aimTrigger.negate());
         Trigger aimAndShootTrigger = aimTrigger.and(shootTrigger);
+        Trigger shooterActiveTrigger = shootOnlyTrigger
+                .or(aimOnlyTrigger)
+                .or(aimAndShootTrigger)
+                .or(dashboardTuneTrigger);
 
         shootOnlyTrigger.whileTrue(shooter.shoot(hubDistanceSupplier));
         aimOnlyTrigger.whileTrue(Commands.parallel(
@@ -249,6 +249,7 @@ public final class Robot extends LoggedRobot {
                         hubTagOnlyHeadingSupplier),
                 shooter.shoot(hubDistanceSupplier)));
         dashboardTuneTrigger.whileTrue(shooter.dashboardTuneCommand());
+        shooterActiveTrigger.onFalse(Commands.runOnce(this::scheduleShooterBackgroundIfIdle));
 
         godController.leftBumper().onTrue(drive.toggleSlowMode());
         godController.povDown().onTrue(DriveCommands.resetOdometryAndHeading(drive));
@@ -391,5 +392,16 @@ public final class Robot extends LoggedRobot {
                 transfer.backgroundCommand(),
                 shooter.backgroundCommand(),
                 intake.backgroundCommand());
+    }
+
+    private void scheduleShooterBackgroundIfIdle() {
+        if (!isEnabled()) {
+            return;
+        }
+
+        Command currentShooterCommand = shooter.getCurrentCommand();
+        if (currentShooterCommand == null || "ShooterIdle".equals(currentShooterCommand.getName())) {
+            CommandScheduler.getInstance().schedule(shooter.backgroundCommand());
+        }
     }
 }
