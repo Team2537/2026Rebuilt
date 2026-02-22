@@ -144,10 +144,6 @@ public class IntakeIOReal implements IntakeIO {
         rollerMotor.setControl(rollerVelocityRequest.withVelocity(clampedRpm / 60.0));
     }
 
-    public void setCurrentLimits(double currentLimitAmps) {
-
-    }
-
     @Override
     public void retract() {
         configureLeftMotor(true);

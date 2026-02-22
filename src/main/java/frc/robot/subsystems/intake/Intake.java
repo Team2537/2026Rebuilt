@@ -49,7 +49,12 @@ public class Intake extends SubsystemBase {
     }
 
     public Command slowRetractCommand() {
-        return Commands.runOnce(() -> io.slowRetract(), this).withName("IntakeSlowRetract");
+        return Commands.runOnce(
+                () -> {
+                    extended = false;
+                    io.slowRetract();
+                },
+                this).withName("IntakeSlowRetract");
     }
 
     public Command extendCommand() {
@@ -108,6 +113,7 @@ public class Intake extends SubsystemBase {
     }
 
     public void stopAll() {
+        extended = false;
         io.stop();
     }
 }

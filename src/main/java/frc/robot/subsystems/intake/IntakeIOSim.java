@@ -12,6 +12,7 @@ public class IntakeIOSim implements IntakeIO {
     private static final double LOOP_PERIOD_SEC = 0.02;
     private static final double MAX_VOLTS = 12.0;
     private static final double MAX_ROLLER_RPM = 6500.0;
+    private static final double SLOW_RETRACT_VOLTS_LIMIT = 4.0;
     private static final double HOMING_VOLTS = -1.0;
     private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
 
@@ -35,6 +36,7 @@ public class IntakeIOSim implements IntakeIO {
 
     private double targetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
     private double targetRollerRpm = 0.0;
+    private double intakeVoltageLimit = MAX_VOLTS;
 
     private boolean intakePositionClosedLoop = false;
     private boolean rollerVelocityClosedLoop = false;
@@ -59,8 +61,8 @@ public class IntakeIOSim implements IntakeIO {
         } else if (intakePositionClosedLoop) {
             leftAppliedVolts = MathUtil.clamp(
                     intakePositionController.calculate(leftPositionRot, targetIntakePositionRot),
-                    -MAX_VOLTS,
-                    MAX_VOLTS);
+                    -intakeVoltageLimit,
+                    intakeVoltageLimit);
         } else {
             leftAppliedVolts = 0.0;
         }
@@ -118,6 +120,7 @@ public class IntakeIOSim implements IntakeIO {
         homingActive = false;
         homingAtStop = false;
         targetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
+        intakeVoltageLimit = MAX_VOLTS;
         intakePositionClosedLoop = true;
     }
 
@@ -126,6 +129,7 @@ public class IntakeIOSim implements IntakeIO {
         homingActive = false;
         homingAtStop = false;
         targetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
+        intakeVoltageLimit = SLOW_RETRACT_VOLTS_LIMIT;
         intakePositionClosedLoop = true;
     }
 
@@ -134,12 +138,14 @@ public class IntakeIOSim implements IntakeIO {
         homingActive = false;
         homingAtStop = false;
         targetIntakePositionRot = IntakeConstants.EXTENDED_POSITION_ROT;
+        intakeVoltageLimit = MAX_VOLTS;
         intakePositionClosedLoop = true;
     }
 
     @Override
     public void home() {
         intakePositionClosedLoop = false;
+        intakeVoltageLimit = MAX_VOLTS;
         homingActive = true;
         homingAtStop = false;
     }
@@ -156,6 +162,7 @@ public class IntakeIOSim implements IntakeIO {
         rollerVelocityClosedLoop = false;
         homingActive = false;
         homingAtStop = false;
+        intakeVoltageLimit = MAX_VOLTS;
         targetRollerRpm = 0.0;
         intakePositionController.reset();
         rollerVelocityController.reset();
