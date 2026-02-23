@@ -197,6 +197,7 @@ public class ShooterIOReal implements ShooterIO {
         kickerMotor.setControl(kickerTorqueRequest.withOutput(torque));
     }
 
+    @Override
     public void resetHoodEncoder() {
         hoodMotor.setPosition(0.0);
     }
@@ -206,6 +207,7 @@ public class ShooterIOReal implements ShooterIO {
         kickerMotor.setControl(kickerVoltageRequest.withOutput(volts));
     }
 
+    @Override
     public void setHoodVoltage(double volts) {
         hoodMotor.setControl(hoodVoltageRequest.withOutput(volts));
     }
