@@ -48,6 +48,7 @@ public final class Vision extends SubsystemBase {
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
     private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
+    private static final double UNIFIED_POSE_MAX_AGE_SECONDS = 0.5;
     private static final boolean ENABLE_VISION_EVENT_LOGS = false;
 
     private final Drive drive;
@@ -56,6 +57,8 @@ public final class Vision extends SubsystemBase {
     private final List<VisionIOInputsAutoLogged> inputs;
     private double hubYawRad = Double.NaN;
     private Pose2d hubTagRobotPose = null;
+    private Pose2d unifiedRobotPose = null;
+    private double unifiedRobotPoseTimestampSeconds = Double.NaN;
 
     public Vision(Drive drive) {
         super("vision");
@@ -77,9 +80,18 @@ public final class Vision extends SubsystemBase {
         return hubTagRobotPose;
     }
 
+    /**
+     * Returns the most recent best vision-only robot pose from all cameras, if fresh.
+     * Returns null when unavailable or stale.
+     */
+    public Pose2d getUnifiedRobotPose() {
+        return unifiedRobotPose;
+    }
+
     @Override
     public void periodic() {
         Pose2d currentPose = robotPoseSupplier.get();
+        PoseObservation bestUnifiedObservation = null;
 
         for (int index = 0; index < ios.size(); index++) {
             VisionIO io = ios.get(index);
@@ -94,6 +106,10 @@ public final class Vision extends SubsystemBase {
 
             PoseObservation bestObservation = selectBestObservation(input.poseObservations);
             if (bestObservation != null) {
+                if (isBetterObservation(bestObservation, bestUnifiedObservation)) {
+                    bestUnifiedObservation = bestObservation;
+                }
+
                 double stdDevFactor = Math.pow(bestObservation.averageTagDistance(), 2) / bestObservation.tagCount();
                 double clampedFactor = Math.max(1.0, stdDevFactor);
                 double linearStdDev = LINEAR_STD_DEV_BASELINE * clampedFactor;
@@ -136,6 +152,12 @@ public final class Vision extends SubsystemBase {
             }
         }
 
+        updateUnifiedPose(bestUnifiedObservation);
+        Logger.recordOutput(
+                "vision/unifiedRobotPose",
+                unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
+        Logger.recordOutput("vision/unifiedRobotPoseValid", unifiedRobotPose != null);
+
         Logger.recordOutput(
                 "vision/cameraPoses",
                 currentPose == null
@@ -165,36 +187,52 @@ public final class Vision extends SubsystemBase {
 
     private PoseObservation selectBestObservation(PoseObservation[] observations) {
         PoseObservation best = null;
-        int bestTagCount = -1;
-        double bestAmbiguity = Double.POSITIVE_INFINITY;
-        double bestAvgDist = Double.POSITIVE_INFINITY;
 
         for (PoseObservation observation : observations) {
             if (!isPoseValid(observation)) {
                 continue;
             }
 
-            boolean better = false;
-            if (observation.tagCount() > bestTagCount) {
-                better = true;
-            } else if (observation.tagCount() == bestTagCount) {
-                if (observation.ambiguity() < bestAmbiguity) {
-                    better = true;
-                } else if (observation.ambiguity() == bestAmbiguity
-                        && observation.averageTagDistance() < bestAvgDist) {
-                    better = true;
-                }
-            }
-
-            if (better) {
+            if (isBetterObservation(observation, best)) {
                 best = observation;
-                bestTagCount = observation.tagCount();
-                bestAmbiguity = observation.ambiguity();
-                bestAvgDist = observation.averageTagDistance();
             }
         }
 
         return best;
+    }
+
+    private static boolean isBetterObservation(PoseObservation candidate, PoseObservation currentBest) {
+        if (candidate == null) {
+            return false;
+        }
+        if (currentBest == null) {
+            return true;
+        }
+        if (candidate.tagCount() != currentBest.tagCount()) {
+            return candidate.tagCount() > currentBest.tagCount();
+        }
+        if (candidate.ambiguity() != currentBest.ambiguity()) {
+            return candidate.ambiguity() < currentBest.ambiguity();
+        }
+        return candidate.averageTagDistance() < currentBest.averageTagDistance();
+    }
+
+    private void updateUnifiedPose(PoseObservation bestUnifiedObservation) {
+        if (bestUnifiedObservation != null) {
+            unifiedRobotPose = bestUnifiedObservation.pose().toPose2d();
+            unifiedRobotPoseTimestampSeconds = bestUnifiedObservation.timestampSeconds();
+            return;
+        }
+
+        if (unifiedRobotPose == null) {
+            return;
+        }
+
+        double ageSeconds = Timer.getFPGATimestamp() - unifiedRobotPoseTimestampSeconds;
+        if (!Double.isFinite(ageSeconds) || ageSeconds > UNIFIED_POSE_MAX_AGE_SECONDS) {
+            unifiedRobotPose = null;
+            unifiedRobotPoseTimestampSeconds = Double.NaN;
+        }
     }
 
     private boolean isPoseValid(PoseObservation observation) {

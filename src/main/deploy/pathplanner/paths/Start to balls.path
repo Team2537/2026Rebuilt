@@ -1,0 +1,70 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 1.9573482349537041,
+        "y": 6.380838975694444
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 2.957348234953705,
+        "y": 6.380838975694444
+      },
+      "isLocked": false,
+      "linkedName": null
+    },
+    {
+      "anchor": {
+        "x": 4.631502314814815,
+        "y": 7.424505714699075
+      },
+      "prevControl": {
+        "x": 1.4849189041556494,
+        "y": 7.3958890046426236
+      },
+      "nextControl": {
+        "x": 8.909571469907407,
+        "y": 7.463412760416667
+      },
+      "isLocked": false,
+      "linkedName": null
+    },
+    {
+      "anchor": {
+        "x": 6.740027994791667,
+        "y": 5.9298321759259265
+      },
+      "prevControl": {
+        "x": 4.727424913194444,
+        "y": 5.762787760416668
+      },
+      "nextControl": null,
+      "isLocked": false,
+      "linkedName": "before collect balls"
+    }
+  ],
+  "rotationTargets": [],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [],
+  "globalConstraints": {
+    "maxVelocity": 3.0,
+    "maxAcceleration": 3.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": 0.0
+  },
+  "reversed": false,
+  "folder": null,
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": 0.0
+  },
+  "useDefaultConstraints": true
+}
