@@ -31,8 +31,8 @@ public class IntakeIOSim implements IntakeIO {
             LinearSystemId.createDCMotorSystem(ROLLER_GEARBOX, 0.003, 1.0),
             ROLLER_GEARBOX);
 
-    private final PIDController leftIntakePositionController = new PIDController(3.0, 0.0, 0.05);
-    private final PIDController rightIntakePositionController = new PIDController(3.0, 0.0, 0.05);
+    private final PIDController leftIntakePositionController = new PIDController(2.0, 0.0, 0.5);
+    private final PIDController rightIntakePositionController = new PIDController(2.0, 0.0, 0.5);
     private final PIDController rollerVelocityController = new PIDController(0.004, 0.0, 0.0);
 
     private double leftTargetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
