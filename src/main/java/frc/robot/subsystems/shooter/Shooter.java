@@ -194,7 +194,7 @@ public class Shooter extends SubsystemBase {
 
     public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
         double rawDistanceMeters = getHubDistanceMeters(robotPose);
-        Translation2d hubTarget = getHubTargetTranslation();
+        Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
         if (!Double.isFinite(rawDistanceMeters) || hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
             publishCompensationTargetInvalid();
@@ -606,20 +606,11 @@ public class Shooter extends SubsystemBase {
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {
-        Translation2d hubTarget = getHubTargetTranslation();
+        Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         if (hubTarget == null || robotPose == null) {
             return Double.NaN;
         }
         return robotPose.getTranslation().getDistance(hubTarget);
-    }
-
-    private static Translation2d getHubTargetTranslation() {
-        return FieldConstants.TAG_LAYOUT
-                .getTagPose(FieldConstants.HUB_TAG_ID)
-                .map(tagPose -> new Translation2d(
-                        tagPose.getX() + FieldConstants.HUB_TARGET_X_OFFSET_METERS,
-                        tagPose.getY()))
-                .orElse(null);
     }
 
     public Command homeCommand() {

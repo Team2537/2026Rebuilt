@@ -4,6 +4,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import java.util.function.BooleanSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Transfer extends SubsystemBase {
@@ -33,8 +34,12 @@ public class Transfer extends SubsystemBase {
         return Commands.runEnd(() -> io.setPercent(-TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferReverse");
     }
 
-    public Command backgroundCommand() {
-        return runCommand().withName("TransferBackground");
+    public Command runWhen(BooleanSupplier enabledSupplier) {
+        return Commands.runEnd(
+                () -> io.setPercent(enabledSupplier.getAsBoolean() ? TransferConstants.RUN_TRANSFER_PERCENT : 0.0),
+                io::stop,
+                this)
+                .withName("TransferRunWhen");
     }
 
     public Command stopCommand() {

@@ -9,17 +9,14 @@ package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.ProfiledPIDController;
-import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
@@ -34,22 +31,6 @@ public class DriveCommands {
     private static final double HUB_ALIGN_KD = 0.4;
     private static final double HUB_ALIGN_MAX_VELOCITY = 8.0;
     private static final double HUB_ALIGN_MAX_ACCELERATION = 20.0;
-    private static final double HUB_POSE_ALIGN_KP = 2.4;
-    private static final double HUB_POSE_ALIGN_KD = 0.16;
-    private static final double HUB_POSE_ALIGN_MAX_VELOCITY = 5.2;
-    private static final double HUB_POSE_ALIGN_MAX_ACCELERATION = 14.0;
-    private static final double HUB_POSE_ALIGN_TOLERANCE_RAD = Units.degreesToRadians(1.25);
-    private static final double HUB_POSE_ALIGN_HOLD_RELEASE_TOLERANCE_RAD = Units.degreesToRadians(1.7);
-    private static final double HUB_POSE_TARGET_FILTER_ALPHA = 0.2;
-    private static final double HUB_POSE_TARGET_FILTER_MAX_STEP_RAD = Units.degreesToRadians(4.0);
-    private static final double HUB_POSE_MAX_OMEGA_RAD_PER_SEC = 4.5;
-    private static final double HUB_POSE_OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 36.0;
-    private static final double HUB_POSE_TARGET_RATE_FILTER_ALPHA = 0.35;
-    private static final double HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC = 6.0;
-    private static final double HUB_POSE_TARGET_RATE_FF = 0.9;
-    private static final double HUB_POSE_MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC = 0.35;
-    private static final double HUB_POSE_TARGET_RATE_DT_MIN_SEC = 1e-3;
-    private static final double HUB_POSE_TARGET_RATE_DT_MAX_SEC = 0.1;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
 
     private DriveCommands() {
@@ -192,7 +173,7 @@ public class DriveCommands {
                 xSupplier,
                 ySupplier,
                 omegaFallbackSupplier,
-                () -> getHubFacingHeading(drive.getPose()));
+                () -> FieldConstants.getHubFacingHeading(drive.getPose()));
     }
 
     /**
@@ -205,71 +186,22 @@ public class DriveCommands {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> headingSupplier) {
-        HubPoseAlignState state = new HubPoseAlignState();
-        SlewRateLimiter omegaLimiter = new SlewRateLimiter(HUB_POSE_OMEGA_SLEW_RATE_RAD_PER_SEC_SQ);
-
-        ProfiledPIDController angleController = new ProfiledPIDController(
-                HUB_POSE_ALIGN_KP,
-                0.0,
-                HUB_POSE_ALIGN_KD,
-                new TrapezoidProfile.Constraints(HUB_POSE_ALIGN_MAX_VELOCITY, HUB_POSE_ALIGN_MAX_ACCELERATION));
-        angleController.enableContinuousInput(-Math.PI, Math.PI);
-        angleController.setTolerance(HUB_POSE_ALIGN_TOLERANCE_RAD);
+        HubAlignController alignController = new HubAlignController();
 
         return Commands.run(
                 () -> {
-                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
-                            -ySupplier.getAsDouble());
+                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(
+                            -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
 
                     Rotation2d targetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
-                    double omega;
-                    if (targetHeading != null) {
-                        if (state.filteredTargetHeading == null) {
-                            state.initializeTargetTracking(targetHeading, Timer.getFPGATimestamp());
-                            angleController.reset(drive.getRotation().getRadians());
-                        } else {
-                            state.filteredTargetHeading = filterTargetHeading(
-                                    state.filteredTargetHeading,
-                                    targetHeading);
-                        }
 
-                        double targetHeadingRateRadPerSec = updateTargetHeadingRateRadPerSec(
-                                state,
-                                Timer.getFPGATimestamp());
+                    double fallbackOmega = MathUtil.applyDeadband(
+                            omegaFallbackSupplier.getAsDouble(), DEADBAND);
+                    fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
+                    fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
 
-                        double currentHeadingRad = drive.getRotation().getRadians();
-                        double filteredTargetHeadingRad = state.filteredTargetHeading.getRadians();
-                        double headingErrorRad = MathUtil.angleModulus(filteredTargetHeadingRad - currentHeadingRad);
-                        boolean targetMoving = Math.abs(targetHeadingRateRadPerSec)
-                                >= HUB_POSE_MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC;
-
-                        if (state.holdAtTarget
-                                && !targetMoving
-                                && Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_HOLD_RELEASE_TOLERANCE_RAD) {
-                            omega = 0.0;
-                            angleController.reset(currentHeadingRad);
-                        } else if (!targetMoving && Math.abs(headingErrorRad) <= HUB_POSE_ALIGN_TOLERANCE_RAD) {
-                            state.holdAtTarget = true;
-                            omega = 0.0;
-                            angleController.reset(currentHeadingRad);
-                        } else {
-                            state.holdAtTarget = false;
-                            double feedbackOmega = angleController.calculate(currentHeadingRad, filteredTargetHeadingRad);
-                            double feedforwardOmega = targetHeadingRateRadPerSec * HUB_POSE_TARGET_RATE_FF;
-                            omega = MathUtil.clamp(
-                                    feedbackOmega + feedforwardOmega,
-                                    -HUB_POSE_MAX_OMEGA_RAD_PER_SEC,
-                                    HUB_POSE_MAX_OMEGA_RAD_PER_SEC);
-                        }
-                        omega = omegaLimiter.calculate(omega);
-                    } else {
-                        state.clearTargetTracking();
-                        double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
-                        fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
-                        omega = fallbackOmega * drive.getMaxAngularSpeedRadPerSec();
-                        omegaLimiter.reset(omega);
-                        angleController.reset(drive.getRotation().getRadians());
-                    }
+                    double omega = alignController.calculate(
+                            drive.getRotation().getRadians(), targetHeading, fallbackOmega);
 
                     ChassisSpeeds speeds = new ChassisSpeeds(
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
@@ -284,97 +216,14 @@ public class DriveCommands {
                 },
                 drive)
                 .beforeStarting(() -> {
-                    Rotation2d initialTargetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
-                    if (initialTargetHeading != null) {
-                        state.initializeTargetTracking(initialTargetHeading, Timer.getFPGATimestamp());
-                    } else {
-                        state.clearTargetTracking();
-                    }
-                    omegaLimiter.reset(0.0);
-                    angleController.reset(drive.getRotation().getRadians());
+                    Rotation2d initialTarget = applyHubAutoAlignHeadingOffset(headingSupplier.get());
+                    alignController.reset(drive.getRotation().getRadians(), initialTarget);
                 })
                 .withName("DriveAutoAlignToHubPose");
     }
 
     private static Rotation2d applyHubAutoAlignHeadingOffset(Rotation2d heading) {
         return heading == null ? null : heading.plus(HUB_AUTO_ALIGN_HEADING_OFFSET);
-    }
-
-    private static Rotation2d filterTargetHeading(Rotation2d filteredTargetHeading, Rotation2d targetHeading) {
-        double targetDelta = MathUtil.angleModulus(targetHeading.getRadians() - filteredTargetHeading.getRadians());
-        double filteredDeltaStep = MathUtil.clamp(
-                targetDelta * HUB_POSE_TARGET_FILTER_ALPHA,
-                -HUB_POSE_TARGET_FILTER_MAX_STEP_RAD,
-                HUB_POSE_TARGET_FILTER_MAX_STEP_RAD);
-        return new Rotation2d(filteredTargetHeading.getRadians() + filteredDeltaStep);
-    }
-
-    private static double updateTargetHeadingRateRadPerSec(HubPoseAlignState state, double nowSec) {
-        if (state.lastFilteredTargetHeading == null || !Double.isFinite(state.lastFilteredTargetHeadingTimestampSec)) {
-            state.lastFilteredTargetHeading = state.filteredTargetHeading;
-            state.lastFilteredTargetHeadingTimestampSec = nowSec;
-            state.filteredTargetHeadingRateRadPerSec = 0.0;
-            return 0.0;
-        }
-
-        double dtSec = MathUtil.clamp(
-                nowSec - state.lastFilteredTargetHeadingTimestampSec,
-                HUB_POSE_TARGET_RATE_DT_MIN_SEC,
-                HUB_POSE_TARGET_RATE_DT_MAX_SEC);
-        double targetHeadingDelta = MathUtil.angleModulus(
-                state.filteredTargetHeading.getRadians()
-                        - state.lastFilteredTargetHeading.getRadians());
-        double rawTargetHeadingRateRadPerSec = MathUtil.clamp(
-                targetHeadingDelta / dtSec,
-                -HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC,
-                HUB_POSE_TARGET_RATE_MAX_RAD_PER_SEC);
-        state.filteredTargetHeadingRateRadPerSec += HUB_POSE_TARGET_RATE_FILTER_ALPHA
-                * (rawTargetHeadingRateRadPerSec - state.filteredTargetHeadingRateRadPerSec);
-        state.lastFilteredTargetHeading = state.filteredTargetHeading;
-        state.lastFilteredTargetHeadingTimestampSec = nowSec;
-        return state.filteredTargetHeadingRateRadPerSec;
-    }
-
-    private static Rotation2d getHubFacingHeading(Pose2d robotPose) {
-        if (robotPose == null) {
-            return null;
-        }
-        return FieldConstants.TAG_LAYOUT.getTagPose(FieldConstants.HUB_TAG_ID)
-                .map(tagPose -> {
-                    Translation2d hubTarget = new Translation2d(
-                            tagPose.getX() + FieldConstants.HUB_TARGET_X_OFFSET_METERS,
-                            tagPose.getY());
-                    Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
-                    if (toHub.getNorm() <= 1e-6) {
-                        return null;
-                    }
-                    return toHub.getAngle();
-                })
-                .orElse(null);
-    }
-
-    private static class HubPoseAlignState {
-        Rotation2d filteredTargetHeading = null;
-        boolean holdAtTarget = false;
-        Rotation2d lastFilteredTargetHeading = null;
-        double lastFilteredTargetHeadingTimestampSec = Double.NaN;
-        double filteredTargetHeadingRateRadPerSec = 0.0;
-
-        void initializeTargetTracking(Rotation2d initialHeading, double nowSec) {
-            filteredTargetHeading = initialHeading;
-            holdAtTarget = false;
-            lastFilteredTargetHeading = initialHeading;
-            lastFilteredTargetHeadingTimestampSec = nowSec;
-            filteredTargetHeadingRateRadPerSec = 0.0;
-        }
-
-        void clearTargetTracking() {
-            filteredTargetHeading = null;
-            holdAtTarget = false;
-            lastFilteredTargetHeading = null;
-            lastFilteredTargetHeadingTimestampSec = Double.NaN;
-            filteredTargetHeadingRateRadPerSec = 0.0;
-        }
     }
 
 }

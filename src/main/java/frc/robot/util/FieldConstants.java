@@ -1,6 +1,9 @@
 package frc.robot.util;
 
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
@@ -30,6 +33,31 @@ public final class FieldConstants {
   public static final AprilTagFieldLayout TAG_LAYOUT = loadRebuiltLayout();
   public static final double FIELD_LENGTH_METERS = TAG_LAYOUT.getFieldLength();
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
+
+  /** Returns the hub scoring target position on the field, or null if the tag layout lacks the hub tag. */
+  public static Translation2d getHubTargetTranslation() {
+    return TAG_LAYOUT.getTagPose(HUB_TAG_ID)
+        .map(tagPose -> new Translation2d(
+            tagPose.getX() + HUB_TARGET_X_OFFSET_METERS,
+            tagPose.getY()))
+        .orElse(null);
+  }
+
+  /** Returns the field heading from the robot pose toward the hub target, or null if unavailable. */
+  public static Rotation2d getHubFacingHeading(Pose2d robotPose) {
+    if (robotPose == null) {
+      return null;
+    }
+    Translation2d hubTarget = getHubTargetTranslation();
+    if (hubTarget == null) {
+      return null;
+    }
+    Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
+    if (toHub.getNorm() <= 1e-6) {
+      return null;
+    }
+    return toHub.getAngle();
+  }
 
   private static AprilTagFieldLayout loadRebuiltLayout() {
     for (Path directory : LAYOUT_SEARCH_DIRECTORIES) {

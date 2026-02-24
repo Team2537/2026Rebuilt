@@ -35,7 +35,7 @@ public final class AutoNamedCommands {
                 AutoCommands.aimForHub(drive, shooter).withName("AutoNamed_ShooterAimHub"));
         NamedCommands.registerCommand(
                 "ShooterShootHub",
-                AutoCommands.shootHub(drive, shooter).withName("AutoNamed_ShooterShootHub"));
+                AutoCommands.shootHub(drive, shooter, transfer).withName("AutoNamed_ShooterShootHub"));
         NamedCommands.registerCommand("ShooterHome", shooter.homeCommand().withName("AutoNamed_ShooterHome"));
         NamedCommands.registerCommand("ShooterStop", shooter.stopCommand().withName("AutoNamed_ShooterStop"));
     }
