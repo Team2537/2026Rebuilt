@@ -102,15 +102,30 @@ public class Intake extends SubsystemBase {
     }
 
     public Command backgroundCommand() {
-        return spinRollerSlow().onlyIf(this::isExtended).withName("IntakeBackground");
+        return Commands.runEnd(
+                () -> {
+                    if (isExtended()) {
+                        io.setRollerRpm(IntakeConstants.SLOW_ROLLER_RPM);
+                    } else {
+                        io.stop();
+                    }
+                },
+                io::stop,
+                this).withName("IntakeBackground");
     }
 
     public Command stopCommand() {
-        return Commands.runOnce(this::stopAll, this).withName("IntakeStop");
+        return Commands.runOnce(io::stop, this).withName("IntakeStop");
+    }
+
+    public Command stopAndRetractCommand() {
+        return Commands.sequence(
+                retractCommand(),
+                stopCommand())
+                .withName("IntakeStopAndRetract");
     }
 
     public void stopAll() {
-        extended = false;
         io.stop();
     }
 }
