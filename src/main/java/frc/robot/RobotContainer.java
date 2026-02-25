@@ -460,11 +460,20 @@ public final class RobotContainer {
                 return;
             }
             Pose2d unifiedVisionPose = vision.getUnifiedRobotPose();
+            boolean usedRawOverride = false;
             if (unifiedVisionPose == null) {
-                DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: no recent vision pose is available.",
-                        false);
-                return;
+                unifiedVisionPose = vision.getUnifiedRobotPoseRaw();
+                usedRawOverride = unifiedVisionPose != null;
+                if (unifiedVisionPose == null) {
+                    DriverStation.reportWarning(
+                            "Cannot set odometry from unified vision pose: no recent vision pose is available.",
+                            false);
+                    return;
+                }
+                Logger.recordOutput("vision/odometryOverrideSource", "rawUnifiedVisionPose");
+            }
+            if (!usedRawOverride) {
+                Logger.recordOutput("vision/odometryOverrideSource", "filteredUnifiedVisionPose");
             }
             drive.setPose(unifiedVisionPose);
         }, drive).withName("DriveSetOdometryFromUnifiedVision"));
