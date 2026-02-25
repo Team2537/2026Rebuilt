@@ -1,6 +1,7 @@
 package frc.robot.autos;
 
 import com.pathplanner.lib.commands.PathPlannerAuto;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
+import org.littletonrobotics.junction.Logger;
 
 /** Builds the list of autonomous routine factories. */
 public final class AutoRoutines {
@@ -36,10 +38,14 @@ public final class AutoRoutines {
 
     private static List<AutoRoutine> loadPathPlannerRoutines() {
         Path autosDir = Filesystem.getDeployDirectory().toPath().resolve("pathplanner").resolve("autos");
+        Logger.recordOutput("auto/pathPlanner/autosDir", autosDir.toString());
         if (!Files.isDirectory(autosDir)) {
+            Logger.recordOutput("auto/pathPlanner/autosDirExists", false);
+            logPathPlannerLoadResult(List.of(), false, "", "");
             return List.of();
         }
 
+        Logger.recordOutput("auto/pathPlanner/autosDirExists", true);
         List<AutoRoutine> routines = new ArrayList<>();
         try (var autoFiles = Files.list(autosDir)) {
             autoFiles
@@ -52,9 +58,33 @@ public final class AutoRoutines {
                                 "pp/" + autoName,
                                 () -> new PathPlannerAuto(autoName).withName("AutoPathPlanner_" + autoName)));
                     });
-        } catch (IOException ignored) {
+        } catch (IOException exception) {
+            String errorMessage =
+                    "Failed to load PathPlanner autos from "
+                            + autosDir
+                            + ": "
+                            + exception.getClass().getSimpleName()
+                            + " - "
+                            + exception.getMessage();
+            DriverStation.reportError(errorMessage, exception.getStackTrace());
+            logPathPlannerLoadResult(List.of(), true, errorMessage, exception.getClass().getSimpleName());
             return List.of();
         }
+
+        logPathPlannerLoadResult(routines, false, "", "");
         return routines;
+    }
+
+    private static void logPathPlannerLoadResult(
+            List<AutoRoutine> routines,
+            boolean loadFailed,
+            String failureMessage,
+            String failureType) {
+        String[] routineNames = routines.stream().map(AutoRoutine::name).toArray(String[]::new);
+        Logger.recordOutput("auto/pathPlanner/loadFailed", loadFailed);
+        Logger.recordOutput("auto/pathPlanner/loadFailureMessage", failureMessage);
+        Logger.recordOutput("auto/pathPlanner/loadFailureType", failureType);
+        Logger.recordOutput("auto/pathPlanner/routineCount", routineNames.length);
+        Logger.recordOutput("auto/pathPlanner/routineNames", routineNames);
     }
 }

@@ -73,7 +73,8 @@ public final class ShooterConstants {
     public static final double HOOD_KI = 0.0;
     public static final double HOOD_KD = 0.0;
     public static final double HOOD_KS = 0.0;
-    public static final double HOOD_KV = 0.15;
+    public static final double HOOD_KV = 0.0;
+    public static final double HOOD_KG = 0.15;
 
     public static final double SHOOTER_STATOR_CURRENT_LIMIT_AMPS = 120.0;
     public static final double SHOOTER_SUPPLY_CURRENT_LIMIT_AMPS = 70.0;

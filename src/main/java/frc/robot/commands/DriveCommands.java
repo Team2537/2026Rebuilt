@@ -8,29 +8,22 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
-import frc.robot.subsystems.vision.Vision;
 import frc.robot.util.FieldConstants;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
-public class DriveCommands {
+public final class DriveCommands {
     private static final double DEADBAND = 0.1;
-    private static final double HUB_ALIGN_KP = 5.0;
-    private static final double HUB_ALIGN_KD = 0.4;
-    private static final double HUB_ALIGN_MAX_VELOCITY = 8.0;
-    private static final double HUB_ALIGN_MAX_ACCELERATION = 20.0;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
 
     private DriveCommands() {
@@ -53,9 +46,7 @@ public class DriveCommands {
     private static Rotation2d getAllianceAdjustedFieldHeading(Drive drive) {
         boolean isFlipped = DriverStation.getAlliance().isPresent()
                 && DriverStation.getAlliance().get() == Alliance.Red;
-        return isFlipped
-                ? drive.getRotation().plus(new Rotation2d(Math.PI))
-                : drive.getRotation();
+        return isFlipped ? drive.getRotation().plus(Rotation2d.kPi) : drive.getRotation();
     }
 
     /**
@@ -102,61 +93,6 @@ public class DriveCommands {
     /** Returns a command that resets odometry and sets heading to 0 radians. */
     public static Command resetOdometryAndHeading(Drive drive) {
         return Commands.runOnce(drive::resetOdometryAndHeadingToZero, drive);
-    }
-
-    /**
-     * Drive command that keeps translational joystick control and auto-rotates to
-     * face the hub using only observed hub AprilTag transforms.
-     */
-    public static Command autoAlignToHub(
-            Drive drive,
-            Vision vision,
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier) {
-        ProfiledPIDController hubYawController = new ProfiledPIDController(
-                HUB_ALIGN_KP,
-                0.0,
-                HUB_ALIGN_KD,
-                new TrapezoidProfile.Constraints(HUB_ALIGN_MAX_VELOCITY, HUB_ALIGN_MAX_ACCELERATION));
-        hubYawController.enableContinuousInput(-Math.PI, Math.PI);
-
-        return Commands.run(
-                () -> {
-                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
-                            -ySupplier.getAsDouble());
-
-                    double hubYawRad = vision.getHubYawRad();
-                    double omega;
-                    if (Double.isFinite(hubYawRad)) {
-                        double adjustedHubYawRad = MathUtil.angleModulus(hubYawRad + HUB_AUTO_ALIGN_HEADING_OFFSET.getRadians());
-                        omega = hubYawController.calculate(-adjustedHubYawRad, 0.0);
-                    } else {
-                        double fallbackOmega = MathUtil.applyDeadband(omegaFallbackSupplier.getAsDouble(), DEADBAND);
-                        fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
-                        omega = fallbackOmega * drive.getMaxAngularSpeedRadPerSec();
-                        hubYawController.reset(0.0);
-                    }
-
-                    ChassisSpeeds speeds = new ChassisSpeeds(
-                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                            omega);
-
-                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
-                            : speeds;
-
-                    drive.runVelocity(commandSpeeds);
-                },
-                drive).beforeStarting(() -> {
-                    double initialHubYaw = vision.getHubYawRad();
-                    double adjustedInitialHubYaw = Double.isFinite(initialHubYaw)
-                            ? MathUtil.angleModulus(initialHubYaw + HUB_AUTO_ALIGN_HEADING_OFFSET.getRadians())
-                            : Double.NaN;
-                    hubYawController.reset(Double.isFinite(adjustedInitialHubYaw) ? -adjustedInitialHubYaw : 0.0);
-                })
-                .withName("DriveAutoAlignToHub");
     }
 
     /**

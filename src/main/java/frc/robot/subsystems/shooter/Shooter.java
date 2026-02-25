@@ -31,6 +31,15 @@ public class Shooter extends SubsystemBase {
     private static final String DASHBOARD_KICKER_TORQUE_KEY = "Shooter/Tuning/KickerTorqueAmps";
 
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
+    public record ReadinessDiagnostics(
+            double leftVelocityErrorRpm,
+            double rightVelocityErrorRpm,
+            double hoodAngleErrorRad,
+            boolean leftVelocityAtSetpoint,
+            boolean rightVelocityAtSetpoint,
+            boolean hoodAngleAtSetpoint,
+            boolean atSetpoint,
+            boolean readyToFire) {}
     public record MotionCompensation(
             double rawDistanceMeters,
             double compensatedDistanceMeters,
@@ -79,7 +88,6 @@ public class Shooter extends SubsystemBase {
             stopKicker();
             io.stop();
         } else {
-            // applyShooterTargets();
             applyKickerOutput();
         }
 
@@ -88,15 +96,19 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/TargetHoodDeg", Units.radiansToDegrees(targetHoodAngleRad));
         Logger.recordOutput("Shooter/KickerTorqueAmps", kickerControlMode == KickerControlMode.TORQUE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
-        Logger.recordOutput("Shooter/AtSetpoint", atSetpoint());
-        Logger.recordOutput("Shooter/ReadyToFire", readyToFire());
+        logReadinessOutputs(getReadinessDiagnostics());
         Logger.recordOutput("Shooter/TuningEnabled", isDashboardTuningEnabled());
     }
 
-    private void applyShooterTargets() {
-        io.setLeftVelocity(targetLeftRpm);
-        io.setRightVelocity(targetRightRpm);
-        io.setHoodAngle(targetHoodAngleRad);
+    private static void logReadinessOutputs(ReadinessDiagnostics readiness) {
+        Logger.recordOutput("Shooter/Readiness/LeftVelocityErrorRpm", readiness.leftVelocityErrorRpm());
+        Logger.recordOutput("Shooter/Readiness/RightVelocityErrorRpm", readiness.rightVelocityErrorRpm());
+        Logger.recordOutput("Shooter/Readiness/HoodAngleErrorDeg", Units.radiansToDegrees(readiness.hoodAngleErrorRad()));
+        Logger.recordOutput("Shooter/Readiness/LeftVelocityAtSetpoint", readiness.leftVelocityAtSetpoint());
+        Logger.recordOutput("Shooter/Readiness/RightVelocityAtSetpoint", readiness.rightVelocityAtSetpoint());
+        Logger.recordOutput("Shooter/Readiness/HoodAngleAtSetpoint", readiness.hoodAngleAtSetpoint());
+        Logger.recordOutput("Shooter/AtSetpoint", readiness.atSetpoint());
+        Logger.recordOutput("Shooter/ReadyToFire", readiness.readyToFire());
     }
 
     private void applyKickerOutput() {
@@ -113,11 +125,11 @@ public class Shooter extends SubsystemBase {
 
     public void setTargets(double leftRpm, double rightRpm, double hoodAngleRad) {
         targetLeftRpm = MathUtil.clamp(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        io.setLeftVelocity(leftRpm);
+        io.setLeftVelocity(targetLeftRpm);
         targetRightRpm = MathUtil.clamp(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
-        io.setRightVelocity(rightRpm);
+        io.setRightVelocity(targetRightRpm);
         targetHoodAngleRad = MathUtil.clamp(hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD);
-        io.setHoodAngle(hoodAngleRad);
+        io.setHoodAngle(targetHoodAngleRad);
     }
 
     public void setTargetsForDistance(double distanceMeters) {
@@ -166,14 +178,37 @@ public class Shooter extends SubsystemBase {
     }
 
     public boolean atSetpoint() {
-        // return Math.abs(inputs.shooterLeftVelocityRpm - targetLeftRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
-        //         && Math.abs(inputs.shooterRightVelocityRpm - targetRightRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
-        //         && Math.abs(inputs.hoodPositionRad - targetHoodAngleRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
-        return true;
+        return getReadinessDiagnostics().atSetpoint();
     }
 
     public boolean readyToFire() {
-        return atSetpoint() && Math.abs(targetLeftRpm) > 1.0 && Math.abs(targetRightRpm) > 1.0;
+        return getReadinessDiagnostics().readyToFire();
+    }
+
+    public ReadinessDiagnostics getReadinessDiagnostics() {
+        double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
+        double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
+        double hoodAngleErrorRad = targetHoodAngleRad - inputs.hoodPositionRad;
+
+        boolean leftVelocityAtSetpoint =
+                Math.abs(leftVelocityErrorRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE;
+        boolean rightVelocityAtSetpoint =
+                Math.abs(rightVelocityErrorRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE;
+        boolean hoodAngleAtSetpoint =
+                Math.abs(hoodAngleErrorRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
+
+        boolean atSetpoint = leftVelocityAtSetpoint && rightVelocityAtSetpoint && hoodAngleAtSetpoint;
+        boolean readyToFire = atSetpoint && Math.abs(targetLeftRpm) > 1.0 && Math.abs(targetRightRpm) > 1.0;
+
+        return new ReadinessDiagnostics(
+                leftVelocityErrorRpm,
+                rightVelocityErrorRpm,
+                hoodAngleErrorRad,
+                leftVelocityAtSetpoint,
+                rightVelocityAtSetpoint,
+                hoodAngleAtSetpoint,
+                atSetpoint,
+                readyToFire);
     }
 
     public boolean isKickerActive() {
@@ -425,13 +460,10 @@ public class Shooter extends SubsystemBase {
         return Commands.run(action, this).finallyDo(cleanup).withName(name);
     }
 
-    private Command runTargetingCommand(Runnable action, String name) {
-        return runCommandWithCleanup(action, this::stopAll, name);
-    }
-
     public Command aimForDistance(DoubleSupplier distanceMetersSupplier) {
-        return runTargetingCommand(
+        return runCommandWithCleanup(
                 () -> setAimTargets(distanceMetersSupplier.getAsDouble()),
+                this::stopAll,
                 "ShooterAimForDistance");
     }
 
@@ -482,10 +514,6 @@ public class Shooter extends SubsystemBase {
 
     public Command stopCommand() {
         return Commands.runOnce(this::stopAll, this).withName("ShooterStop");
-    }
-
-    public Command idleCommand() {
-        return Commands.run(this::stopAll, this).withName("ShooterIdle");
     }
 
     public void setShotMapPoint(double distanceMeters, double leftRpm, double rightRpm, double hoodAngleDeg) {

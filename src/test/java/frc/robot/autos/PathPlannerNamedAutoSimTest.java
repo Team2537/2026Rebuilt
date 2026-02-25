@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj.simulation.SimHooks;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIOSim;
@@ -63,8 +64,9 @@ class PathPlannerNamedAutoSimTest {
         Shooter shooter = new Shooter(new ShooterIOSim());
         Transfer transfer = new Transfer(new TransferIOSim());
         Intake intake = new Intake(new IntakeIOSim());
+        ShootCoordinator shootCoordinator = new ShootCoordinator(shooter, transfer);
 
-        AutoNamedCommands.registerAll(drive, shooter, transfer, intake);
+        AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         assertTrue(
                 AutoRoutines.create(drive).stream()
                         .map(AutoRoutines.AutoRoutine::name)

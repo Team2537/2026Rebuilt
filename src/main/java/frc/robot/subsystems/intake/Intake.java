@@ -48,15 +48,6 @@ public class Intake extends SubsystemBase {
         return moveToPositionCommand(false).withName("IntakeRetract");
     }
 
-    public Command slowRetractCommand() {
-        return Commands.runOnce(
-                () -> {
-                    extended = false;
-                    io.slowRetract();
-                },
-                this).withName("IntakeSlowRetract");
-    }
-
     public Command extendCommand() {
         return moveToPositionCommand(true).withName("IntakeExtend");
     }
@@ -82,46 +73,43 @@ public class Intake extends SubsystemBase {
     }
 
     private Command homeLeftCommand() {
-        BooleanSupplier atHomingStop =
-                () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;
-        return Commands.sequence(
-                Commands.runOnce(io::homeLeft),
-                Commands.waitUntil(atHomingStop)
-                        .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
-                        .withName("IntakeHomeLeftWaitUntil"),
-                Commands.runOnce(() ->
-                    io.stopLeft()
-                ),
-                Commands.either(
-                        Commands.none().withName("IntakeHomeLeftSuccess"),
-                        Commands.runOnce(
-                                () -> DriverStation.reportWarning(
-                                        "Left intake homing timed out before current threshold; continuing.",
-                                        false)),
-                        atHomingStop))
-                .withName("IntakeHomeLeft");
+        return homeSideCommand(
+                io::homeLeft,
+                io::stopLeft,
+                () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
+                "IntakeHomeLeftWaitUntil",
+                "Left intake homing timed out before current threshold; continuing.",
+                "IntakeHomeLeft");
     }
 
     private Command homeRightCommand() {
-        BooleanSupplier atHomingStop =
-                () -> Math.abs(inputs.rightStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS;
+        return homeSideCommand(
+                io::homeRight,
+                io::stopRight,
+                () -> Math.abs(inputs.rightStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
+                "IntakeHomeRightWaitUntil",
+                "Right intake homing timed out before current threshold; continuing.",
+                "IntakeHomeRight");
+    }
+
+    private Command homeSideCommand(
+            Runnable homeAction,
+            Runnable stopAction,
+            BooleanSupplier atHomingStop,
+            String waitCommandName,
+            String timeoutWarning,
+            String commandName) {
         return Commands.sequence(
-                Commands.runOnce(io::homeRight, this),
-                Commands.waitUntil(atHomingStop)
-                        .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
-                        .withName("IntakeHomeRightWaitUntil"),
-                Commands.runOnce(() ->
-                    io.stopRight()
-                ),
-                Commands.either(
-                        Commands.none().withName("IntakeHomeRightSuccess"),
-                        Commands.runOnce(
-                                () -> DriverStation.reportWarning(
-                                        "Right intake homing timed out before current threshold; continuing.",
-                                        false),
-                                this),
-                        atHomingStop))
-                .withName("IntakeHomeRight");
+                        Commands.runOnce(homeAction),
+                        Commands.waitUntil(atHomingStop)
+                                .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
+                                .withName(waitCommandName),
+                        Commands.runOnce(stopAction),
+                        Commands.either(
+                                Commands.none(),
+                                Commands.runOnce(() -> DriverStation.reportWarning(timeoutWarning, false)),
+                                atHomingStop))
+                .withName(commandName);
     }
 
     public Command spinRoller() {
@@ -129,13 +117,6 @@ public class Intake extends SubsystemBase {
                 () -> io.setRollerRpm(IntakeConstants.ROLLER_RPM),
                 io::stopRoller)
                 .withName("IntakeSpinRoller");
-    }
-
-    public Command spinRollerSlow() {
-        return this.runEnd(
-                () -> io.setRollerRpm(IntakeConstants.SLOW_ROLLER_RPM),
-                io::stopRoller)
-                .withName("IntakeSpinRollerSlow");
     }
 
     public Command backgroundCommand() {

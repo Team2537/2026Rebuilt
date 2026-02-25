@@ -59,6 +59,9 @@ public final class Vision extends SubsystemBase {
     private Pose2d hubTagRobotPose = null;
     private Pose2d unifiedRobotPose = null;
     private double unifiedRobotPoseTimestampSeconds = Double.NaN;
+    private int visionEventSequence = 0;
+    private int visionRejectEventCount = 0;
+    private int visionJumpEventCount = 0;
 
     public Vision(Drive drive) {
         super("vision");
@@ -66,6 +69,12 @@ public final class Vision extends SubsystemBase {
         this.robotPoseSupplier = drive::getPose;
         this.ios = createIOs();
         this.inputs = ios.stream().map(io -> new VisionIOInputsAutoLogged()).toList();
+        Logger.recordOutput("vision/events/sequence", visionEventSequence);
+        Logger.recordOutput("vision/events/rejectCount", visionRejectEventCount);
+        Logger.recordOutput("vision/events/jumpCount", visionJumpEventCount);
+        Logger.recordOutput("vision/events/last/type", "none");
+        Logger.recordOutput("vision/events/last/cameraIndex", -1);
+        Logger.recordOutput("vision/events/last/tagIds", new int[0]);
     }
 
     public double getHubYawRad() {
@@ -423,10 +432,39 @@ public final class Vision extends SubsystemBase {
             double linearStdDev,
             double angularStdDev,
             int cameraIndex) {
+        int[] safeTagIds = tagIds == null ? new int[0] : Arrays.copyOf(tagIds, tagIds.length);
+        visionEventSequence++;
+        if ("reject".equals(eventType)) {
+            visionRejectEventCount++;
+        } else if ("jump".equals(eventType)) {
+            visionJumpEventCount++;
+        }
+
+        Logger.recordOutput("vision/events/sequence", visionEventSequence);
+        Logger.recordOutput("vision/events/rejectCount", visionRejectEventCount);
+        Logger.recordOutput("vision/events/jumpCount", visionJumpEventCount);
+        Logger.recordOutput("vision/events/last/type", eventType);
+        Logger.recordOutput("vision/events/last/timestampSeconds", timestampSeconds);
+        Logger.recordOutput("vision/events/last/cameraIndex", cameraIndex);
+        Logger.recordOutput("vision/events/last/measuredPose", measuredPose);
+        Logger.recordOutput("vision/events/last/odometryPose", odometryPose);
+        Logger.recordOutput(
+                "vision/events/last/translationDeltaMeters",
+                innovation.translationMeters());
+        Logger.recordOutput(
+                "vision/events/last/headingDeltaDegrees",
+                innovation.headingDegrees());
+        Logger.recordOutput("vision/events/last/tagCount", tagCount);
+        Logger.recordOutput("vision/events/last/tagIds", safeTagIds);
+        Logger.recordOutput("vision/events/last/ambiguity", ambiguity);
+        Logger.recordOutput("vision/events/last/avgDistanceMeters", avgDistance);
+        Logger.recordOutput("vision/events/last/linearStdDev", linearStdDev);
+        Logger.recordOutput("vision/events/last/angularStdDev", angularStdDev);
+
         if (!ENABLE_VISION_EVENT_LOGS) {
             return;
         }
-        String tagList = tagIds == null ? "[]" : Arrays.toString(tagIds);
+        String tagList = Arrays.toString(safeTagIds);
         System.out.printf(
                 "Vision %s @%.3f s cam=%d pose=%s odom=%s dPos=%.3fm dYawDeg=%.1f tags=%d %s amb=%.3f avgDist=%.3fm stdDev=[%.3f,%.3f]%n",
                 eventType,

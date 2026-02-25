@@ -1,6 +1,8 @@
 package frc.robot;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
@@ -14,7 +16,7 @@ import frc.robot.autos.AutoNamedCommands;
 import frc.robot.autos.AutoRoutines;
 import frc.robot.autos.AutoSelector;
 import frc.robot.commands.DriveCommands;
-import frc.robot.commands.ShootCommands;
+import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.generated.TunerConstants;
 import frc.robot.sim.FuelSim;
 import frc.robot.subsystems.drive.Drive;
@@ -46,6 +48,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
@@ -61,6 +64,7 @@ public final class RobotContainer {
     private final Shooter shooter;
     private final Transfer transfer;
     private final Intake intake;
+    private final ShootCoordinator shootCoordinator;
     private final AutoSelector autoSelector;
 
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -72,6 +76,7 @@ public final class RobotContainer {
     private final Map<Command, Integer> commandRunIds = new IdentityHashMap<>();
     private final ArrayDeque<String> recentCommandEvents = new ArrayDeque<>();
     private int nextCommandRunId = 1;
+    private boolean teleopHubTagsFallbackWarningLogged = false;
 
     public RobotContainer() {
         drive = createDrive();
@@ -79,8 +84,10 @@ public final class RobotContainer {
         shooter = createShooter();
         transfer = createTransfer();
         intake = createIntake();
+        shootCoordinator = new ShootCoordinator(shooter, transfer);
+        Logger.recordOutput("mechanismPoses", new Pose3d[0]);
 
-        AutoNamedCommands.registerAll(drive, shooter, transfer, intake);
+        AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         autoSelector = new AutoSelector(AutoRoutines.create(drive));
 
         configureCommandTelemetry();
@@ -93,8 +100,6 @@ public final class RobotContainer {
 
     public void robotPeriodic() {
         updateCommandLoggingOutputs(Timer.getFPGATimestamp());
-        shooter.getMotionCompensationToHub(drive.getPose(), drive.getMeasuredChassisSpeeds());
-        MechanismVisualizer.updatePoses();
     }
 
     public void disabledInit() {
@@ -148,10 +153,6 @@ public final class RobotContainer {
 
     private void bindOnTrue(Trigger trigger, String source, Command command) {
         trigger.onTrue(withCommandSource(source, command));
-    }
-
-    private void bindOnFalse(Trigger trigger, String source, Command command) {
-        trigger.onFalse(withCommandSource(source, command));
     }
 
     private void bindWhileTrue(Trigger trigger, String source, Command command) {
@@ -446,8 +447,11 @@ public final class RobotContainer {
         bindOnTrue(
                 driverController.povUp(),
                 "driver.povUp.onTrue",
-                Commands.runOnce(() -> scheduleBackgroundManipulators("driver.povUp"))
-                        .withName("ScheduleBackgroundManipulators"));
+                Commands.runOnce(
+                                () -> schedule(
+                                        "driver.povUp.shooterBackground",
+                                        shooter.backgroundCommand()))
+                        .withName("ScheduleShooterBackground"));
         bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
         bindOnTrue(driverController.povLeft(), "driver.povLeft.onTrue", Commands.runOnce(() -> {
             if (vision == null) {
@@ -472,6 +476,10 @@ public final class RobotContainer {
                 drive.getPose(), drive.getMeasuredChassisSpeeds());
         Supplier<Rotation2d> hubTagOnlyHeadingSupplier = () -> FieldConstants.getHubFacingHeading(
                 vision != null ? vision.getHubTagRobotPose() : null);
+        Supplier<Rotation2d> teleopAutoAlignHeadingSupplier =
+                selectTeleopAutoAlignHeadingSupplier(hubHeadingSupplier, hubTagOnlyHeadingSupplier);
+        BooleanSupplier teleopAimReadySupplier =
+                createTeleopAimReadySupplier(teleopAutoAlignHeadingSupplier);
 
         Trigger rightTriggerPressed = driverController.rightTrigger();
         Trigger dashboardTuneTrigger = rightTriggerPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
@@ -483,16 +491,15 @@ public final class RobotContainer {
                 driverController::getLeftX,
                 () -> -driverController.getRightX(),
                 hubDistanceSupplier,
-                hubHeadingSupplier,
-                hubTagOnlyHeadingSupplier));
+                teleopAutoAlignHeadingSupplier,
+                teleopAimReadySupplier));
         bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", Commands.parallel(
                 createTeleopAutoAlignCommand(
                         () -> driverController.getLeftY(),
                         driverController::getLeftX,
                         () -> -driverController.getRightX(),
-                        hubHeadingSupplier,
-                        hubTagOnlyHeadingSupplier),
-                shooter.aimForDistance(hubDistanceSupplier))
+                        teleopAutoAlignHeadingSupplier),
+                shootCoordinator.aimForDistance(hubDistanceSupplier))
                 .withName("ShooterAimOnly"));
         bindWhileTrue(
                 dashboardTuneTrigger,
@@ -513,24 +520,53 @@ public final class RobotContainer {
                 drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
     }
 
+    private Supplier<Rotation2d> selectTeleopAutoAlignHeadingSupplier(
+            Supplier<Rotation2d> odometryHeadingSupplier,
+            Supplier<Rotation2d> hubTagOnlyHeadingSupplier) {
+        if (Constants.TELEOP_AUTO_ALIGN_MODE == Constants.AutoAlignMode.HUB_TAGS_ONLY
+                && vision == null) {
+            if (!teleopHubTagsFallbackWarningLogged) {
+                DriverStation.reportWarning(
+                        "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION is disabled; "
+                                + "falling back to POSE_ODOMETRY teleop heading.",
+                        false);
+                teleopHubTagsFallbackWarningLogged = true;
+            }
+            return odometryHeadingSupplier;
+        }
+
+        return switch (Constants.TELEOP_AUTO_ALIGN_MODE) {
+            case HUB_TAGS_ONLY -> hubTagOnlyHeadingSupplier;
+            case POSE_ODOMETRY -> odometryHeadingSupplier;
+        };
+    }
+
+    private BooleanSupplier createTeleopAimReadySupplier(
+            Supplier<Rotation2d> targetHeadingSupplier) {
+        return () -> {
+            Rotation2d targetHeading = targetHeadingSupplier.get();
+            if (targetHeading == null) {
+                return false;
+            }
+
+            Rotation2d desiredRobotHeading = targetHeading.plus(Rotation2d.kPi);
+            double headingErrorRad = MathUtil.angleModulus(
+                    desiredRobotHeading.minus(drive.getRotation()).getRadians());
+            return Math.abs(headingErrorRad) <= Constants.SHOOTING_AIM_TOLERANCE_RAD;
+        };
+    }
+
     private Command createTeleopAutoAlignCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
-            Supplier<Rotation2d> hubHeadingSupplier,
-            Supplier<Rotation2d> hubTagOnlyHeadingSupplier) {
-        return switch (Constants.TELEOP_AUTO_ALIGN_MODE) {
-            case HUB_TAGS_ONLY -> {
-                if (vision == null) {
-                    throw new IllegalStateException(
-                            "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION mechanism is disabled.");
-                }
-                yield DriveCommands.autoAlignToHubPose(
-                        drive, xSupplier, ySupplier, omegaFallbackSupplier, hubTagOnlyHeadingSupplier);
-            }
-            case POSE_ODOMETRY -> DriveCommands.autoAlignToHubPose(
-                    drive, xSupplier, ySupplier, omegaFallbackSupplier, hubHeadingSupplier);
-        };
+            Supplier<Rotation2d> targetHeadingSupplier) {
+        return DriveCommands.autoAlignToHubPose(
+                drive,
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                targetHeadingSupplier);
     }
 
     private Command createTeleopShootCommand(
@@ -538,16 +574,15 @@ public final class RobotContainer {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
-            Supplier<Rotation2d> hubHeadingSupplier,
-            Supplier<Rotation2d> hubTagOnlyHeadingSupplier) {
+            Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier aimReadySupplier) {
         return Commands.parallel(
                 createTeleopAutoAlignCommand(
                         xSupplier,
                         ySupplier,
                         omegaFallbackSupplier,
-                        hubHeadingSupplier,
-                        hubTagOnlyHeadingSupplier),
-                ShootCommands.shootWithFeed(shooter, transfer, distanceMetersSupplier))
+                        targetHeadingSupplier),
+                shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier))
                 .withName("ShooterTriggerAimAndShoot");
     }
 
@@ -556,7 +591,4 @@ public final class RobotContainer {
                 .withName("StopManipulators");
     }
 
-    private void scheduleBackgroundManipulators(String source) {
-        schedule(source + ".shooterBackground", shooter.backgroundCommand());
-    }
 }

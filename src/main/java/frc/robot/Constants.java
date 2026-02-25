@@ -15,6 +15,13 @@ public final class Constants {
         HUB_TAGS_ONLY
     }
 
+    /** Selects when the feed path is allowed to open during shooting. */
+    public enum FeedGateMode {
+        IMMEDIATE,
+        SHOOTER_AT_SETPOINT,
+        SHOOTER_AND_AIM
+    }
+
     public enum Mechanism {
         DRIVE,
         VISION,
@@ -34,6 +41,8 @@ public final class Constants {
     /** Toggleable auto-align mode for right-bumper aiming in teleop. */
     // public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.POSE_ODOMETRY;
     public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.HUB_TAGS_ONLY;
+    public static final FeedGateMode SHOOTING_FEED_GATE_MODE = FeedGateMode.IMMEDIATE;
+    public static final double SHOOTING_AIM_TOLERANCE_RAD = Math.toRadians(1.0);
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {
         return ENABLED_MECHANISMS.contains(mechanism);

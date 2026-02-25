@@ -261,7 +261,8 @@ public class ShooterIOReal implements ShooterIO {
                 .withKI(ShooterConstants.HOOD_KI)
                 .withKD(ShooterConstants.HOOD_KD)
                 .withKS(ShooterConstants.HOOD_KS)
-                .withKV(ShooterConstants.HOOD_KV);
+                .withKV(ShooterConstants.HOOD_KV)
+                .withKG(ShooterConstants.HOOD_KG);
         config.MotionMagic = new MotionMagicConfigs()
                 .withMotionMagicCruiseVelocity(1.0)
                 .withMotionMagicAcceleration(1.0);

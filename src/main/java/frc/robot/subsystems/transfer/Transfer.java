@@ -1,10 +1,10 @@
 package frc.robot.subsystems.transfer;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import java.util.function.BooleanSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Transfer extends SubsystemBase {
@@ -26,20 +26,18 @@ public class Transfer extends SubsystemBase {
         }
     }
 
+    public void setPercent(double percent) {
+        double clampedPercent = MathUtil.clamp(percent, -1.0, 1.0);
+        io.setPercent(clampedPercent);
+        Logger.recordOutput("Transfer/CommandedPercent", clampedPercent);
+    }
+
     public Command runCommand() {
-        return Commands.runEnd(() -> io.setPercent(TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferRun");
+        return Commands.runEnd(() -> setPercent(TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferRun");
     }
 
     public Command reverseCommand() {
-        return Commands.runEnd(() -> io.setPercent(-TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferReverse");
-    }
-
-    public Command runWhen(BooleanSupplier enabledSupplier) {
-        return Commands.runEnd(
-                () -> io.setPercent(enabledSupplier.getAsBoolean() ? TransferConstants.RUN_TRANSFER_PERCENT : 0.0),
-                io::stop,
-                this)
-                .withName("TransferRunWhen");
+        return Commands.runEnd(() -> setPercent(-TransferConstants.RUN_TRANSFER_PERCENT), io::stop, this).withName("TransferReverse");
     }
 
     public Command stopCommand() {
