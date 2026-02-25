@@ -41,7 +41,7 @@ public final class Constants {
     /** Toggleable auto-align mode for right-bumper aiming in teleop. */
     // public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.POSE_ODOMETRY;
     public static final AutoAlignMode TELEOP_AUTO_ALIGN_MODE = AutoAlignMode.HUB_TAGS_ONLY;
-    public static final FeedGateMode SHOOTING_FEED_GATE_MODE = FeedGateMode.IMMEDIATE;
+    public static final FeedGateMode SHOOTING_FEED_GATE_MODE = FeedGateMode.SHOOTER_AND_AIM;
     public static final double SHOOTING_AIM_TOLERANCE_RAD = Math.toRadians(1.0);
 
     public static boolean isMechanismEnabled(Mechanism mechanism) {

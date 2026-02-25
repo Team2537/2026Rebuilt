@@ -39,7 +39,6 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
-import frc.robot.util.FieldConstants;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -130,7 +129,7 @@ public final class RobotContainer {
         }
         fuelSim.update(
                 drive.getPose(),
-                shooter.getTargetAverageShooterRpm(),
+                shooter.getMeasuredAverageShooterRpm(),
                 shooter.getTargetHoodAngleRad(),
                 shooter.isKickerActive(),
                 0.02);
@@ -470,14 +469,12 @@ public final class RobotContainer {
             drive.setPose(unifiedVisionPose);
         }, drive).withName("DriveSetOdometryFromUnifiedVision"));
 
+        Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
         DoubleSupplier hubDistanceSupplier = () -> shooter.getMotionCompensatedHubDistanceMeters(
-                drive.getPose(), drive.getMeasuredChassisSpeeds());
+                shootingPoseSupplier.get(), drive.getMeasuredChassisSpeeds());
         Supplier<Rotation2d> hubHeadingSupplier = () -> shooter.getMotionCompensatedHubHeading(
-                drive.getPose(), drive.getMeasuredChassisSpeeds());
-        Supplier<Rotation2d> hubTagOnlyHeadingSupplier = () -> FieldConstants.getHubFacingHeading(
-                vision != null ? vision.getHubTagRobotPose() : null);
-        Supplier<Rotation2d> teleopAutoAlignHeadingSupplier =
-                selectTeleopAutoAlignHeadingSupplier(hubHeadingSupplier, hubTagOnlyHeadingSupplier);
+                shootingPoseSupplier.get(), drive.getMeasuredChassisSpeeds());
+        Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = hubHeadingSupplier;
         BooleanSupplier teleopAimReadySupplier =
                 createTeleopAimReadySupplier(teleopAutoAlignHeadingSupplier);
 
@@ -520,25 +517,26 @@ public final class RobotContainer {
                 drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
     }
 
-    private Supplier<Rotation2d> selectTeleopAutoAlignHeadingSupplier(
-            Supplier<Rotation2d> odometryHeadingSupplier,
-            Supplier<Rotation2d> hubTagOnlyHeadingSupplier) {
-        if (Constants.TELEOP_AUTO_ALIGN_MODE == Constants.AutoAlignMode.HUB_TAGS_ONLY
-                && vision == null) {
-            if (!teleopHubTagsFallbackWarningLogged) {
-                DriverStation.reportWarning(
-                        "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION is disabled; "
-                                + "falling back to POSE_ODOMETRY teleop heading.",
-                        false);
-                teleopHubTagsFallbackWarningLogged = true;
+    private Supplier<Pose2d> createShootingPoseSupplier() {
+        if (Constants.TELEOP_AUTO_ALIGN_MODE == Constants.AutoAlignMode.HUB_TAGS_ONLY) {
+            if (vision == null) {
+                if (!teleopHubTagsFallbackWarningLogged) {
+                    DriverStation.reportWarning(
+                            "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION is disabled; "
+                                    + "falling back to POSE_ODOMETRY for shooting pose.",
+                            false);
+                    teleopHubTagsFallbackWarningLogged = true;
+                }
+                return drive::getPose;
             }
-            return odometryHeadingSupplier;
+            // Use hub tag pose for position (more accurate when tags visible),
+            // fall back to odometry when tags are not visible
+            return () -> {
+                Pose2d tagPose = vision.getHubTagRobotPose();
+                return tagPose != null ? tagPose : drive.getPose();
+            };
         }
-
-        return switch (Constants.TELEOP_AUTO_ALIGN_MODE) {
-            case HUB_TAGS_ONLY -> hubTagOnlyHeadingSupplier;
-            case POSE_ODOMETRY -> odometryHeadingSupplier;
-        };
+        return drive::getPose;
     }
 
     private BooleanSupplier createTeleopAimReadySupplier(

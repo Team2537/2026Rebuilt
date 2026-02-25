@@ -219,6 +219,10 @@ public class Shooter extends SubsystemBase {
         return (targetLeftRpm + targetRightRpm) / 2.0;
     }
 
+    public double getMeasuredAverageShooterRpm() {
+        return (inputs.shooterLeftVelocityRpm + inputs.shooterRightVelocityRpm) / 2.0;
+    }
+
     public double getTargetHoodAngleRad() {
         return targetHoodAngleRad;
     }
@@ -359,7 +363,7 @@ public class Shooter extends SubsystemBase {
         Rotation2d compensatedRobotHeading =
                 new Rotation2d(robotPose.getRotation().getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
         boolean hasValidTarget = compensatedHeading != null;
-        publishCompensationTarget(compensatedRobot, compensatedRobotHeading, hasValidTarget);
+        publishCompensationTarget(compensatedRobot, compensatedRobotHeading, hubTarget, hasValidTarget);
 
         return publishMotionCompensation(
                 rawDistanceMeters,
@@ -402,14 +406,21 @@ public class Shooter extends SubsystemBase {
                 && distanceMeters <= shotMapMaxDistanceMeters;
     }
 
-    private void publishCompensationTarget(Translation2d compensatedRobot, Rotation2d compensatedRobotHeading, boolean hasValidTarget) {
+    private void publishCompensationTarget(
+            Translation2d compensatedRobot,
+            Rotation2d compensatedRobotHeading,
+            Translation2d targetTranslation,
+            boolean hasValidTarget) {
         Pose3d robotPose = new Pose3d(
                 compensatedRobot.getX(),
                 compensatedRobot.getY(),
                 0.0,
                 new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians()));
+        Pose3d targetPose = targetTranslation != null
+                ? new Pose3d(targetTranslation.getX(), targetTranslation.getY(), 0.0, new Rotation3d())
+                : new Pose3d();
         Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, robotPose);
-        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, robotPose);
+        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, targetPose);
         Logger.recordOutput("Shooter/Comp/TargetValid", hasValidTarget);
     }
 
