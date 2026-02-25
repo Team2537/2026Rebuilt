@@ -34,7 +34,7 @@ public final class Vision extends SubsystemBase {
                     new Rotation3d(Units.degreesToRadians(0.5), Units.degreesToRadians(-45.0), Units.degreesToRadians(160.0))),
             new Transform3d(
                     new Translation3d(-0.325145, 0.299705, 0.13633),
-                    new Rotation3d(Units.degreesToRadians(2.0), Units.degreesToRadians(-23.0), Units.degreesToRadians(203.0))));
+                    new Rotation3d(Units.degreesToRadians(2.0), Units.degreesToRadians(-23.0), Units.degreesToRadians(197.0))));
 
     private static final double MAX_AMBIGUITY = 0.3;
     private static final double MAX_Z_ERROR = 0.75;
@@ -56,7 +56,7 @@ public final class Vision extends SubsystemBase {
     private static final double UNIFIED_POSE_SMOOTH_ALPHA = 0.35;
     private static final double UNIFIED_POSE_MAX_STEP_METERS = 0.35;
     private static final double UNIFIED_POSE_MAX_STEP_DEGREES = 10.0;
-    private static final boolean ENABLE_VISION_EVENT_LOGS = true;
+    private static final boolean ENABLE_VISION_EVENT_LOGS = false;
 
     private final Drive drive;
     private final Supplier<Pose2d> robotPoseSupplier;

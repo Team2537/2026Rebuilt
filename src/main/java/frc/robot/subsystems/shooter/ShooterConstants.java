@@ -48,7 +48,7 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.55, 1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
 
-    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.0, 1.8890, 2.8542, 3.9718, 5.3942, 10.0 };
+    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.4, 2.2890, 3.2542, 4.3718, 5.7942, 10.0 };
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
     private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {8.0, 15.0, 18.0, 24.0, 27.0, 27.0};
