@@ -33,8 +33,9 @@ public final class ShooterConstants {
     public static final double STATUS_UPDATE_HZ = 50.0;
 
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
-    public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(0.5);
+    public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
+    public static final double MOTION_COMP_TIME_SCALE = 0.25;
 
     /**
      * Seed shot map for interpolation.
@@ -69,12 +70,12 @@ public final class ShooterConstants {
     public static final double SHOOTER_KS = 0.0;
     public static final double SHOOTER_KV = 0.12;
 
-    public static final double HOOD_KP = 100.0;
+    public static final double HOOD_KP = 200.0;
     public static final double HOOD_KI = 0.0;
-    public static final double HOOD_KD = 0.0;
-    public static final double HOOD_KS = 0.0;
-    public static final double HOOD_KV = 0.0;
-    public static final double HOOD_KG = 0.15;
+    public static final double HOOD_KD = 5.0;
+    public static final double HOOD_KS = 0.34;
+    public static final double HOOD_KV = 7.0;
+    public static final double HOOD_KG = 0.04;
 
     public static final double SHOOTER_STATOR_CURRENT_LIMIT_AMPS = 120.0;
     public static final double SHOOTER_SUPPLY_CURRENT_LIMIT_AMPS = 70.0;

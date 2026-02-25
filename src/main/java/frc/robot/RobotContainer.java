@@ -5,6 +5,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -75,7 +76,6 @@ public final class RobotContainer {
     private final Map<Command, Integer> commandRunIds = new IdentityHashMap<>();
     private final ArrayDeque<String> recentCommandEvents = new ArrayDeque<>();
     private int nextCommandRunId = 1;
-    private boolean teleopHubTagsFallbackWarningLogged = false;
 
     public RobotContainer() {
         drive = createDrive();
@@ -470,10 +470,12 @@ public final class RobotContainer {
         }, drive).withName("DriveSetOdometryFromUnifiedVision"));
 
         Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
-        DoubleSupplier hubDistanceSupplier = () -> shooter.getMotionCompensatedHubDistanceMeters(
-                shootingPoseSupplier.get(), drive.getMeasuredChassisSpeeds());
-        Supplier<Rotation2d> hubHeadingSupplier = () -> shooter.getMotionCompensatedHubHeading(
-                shootingPoseSupplier.get(), drive.getMeasuredChassisSpeeds());
+        Supplier<Shooter.MotionCompensation> motionCompensationSupplier =
+                createTeleopMotionCompensationSupplier(shootingPoseSupplier);
+        DoubleSupplier hubDistanceSupplier =
+                () -> motionCompensationSupplier.get().compensatedDistanceMeters();
+        Supplier<Rotation2d> hubHeadingSupplier =
+                () -> motionCompensationSupplier.get().compensatedHeading();
         Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = hubHeadingSupplier;
         BooleanSupplier teleopAimReadySupplier =
                 createTeleopAimReadySupplier(teleopAutoAlignHeadingSupplier);
@@ -518,39 +520,78 @@ public final class RobotContainer {
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
-        if (Constants.TELEOP_AUTO_ALIGN_MODE == Constants.AutoAlignMode.HUB_TAGS_ONLY) {
-            if (vision == null) {
-                if (!teleopHubTagsFallbackWarningLogged) {
-                    DriverStation.reportWarning(
-                            "TELEOP_AUTO_ALIGN_MODE is HUB_TAGS_ONLY but VISION is disabled; "
-                                    + "falling back to POSE_ODOMETRY for shooting pose.",
-                            false);
-                    teleopHubTagsFallbackWarningLogged = true;
-                }
-                return drive::getPose;
+        // Single-source aiming pose: estimator translation + live gyro heading.
+        // This avoids frame discontinuities from switching between tag and odometry heading sources.
+        return () -> new Pose2d(drive.getPose().getTranslation(), drive.getRotation());
+    }
+
+    private Supplier<Shooter.MotionCompensation> createTeleopMotionCompensationSupplier(
+            Supplier<Pose2d> shootingPoseSupplier) {
+        final long[] cachedLoop = new long[] {Long.MIN_VALUE};
+        final Shooter.MotionCompensation[] cachedCompensation = new Shooter.MotionCompensation[] {
+                new Shooter.MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null)
+        };
+
+        return () -> {
+            long loop = RobotController.getFPGATime() / 20_000L;
+            if (loop != cachedLoop[0]) {
+                cachedLoop[0] = loop;
+                cachedCompensation[0] = shooter.getMotionCompensationToHub(
+                        shootingPoseSupplier.get(),
+                        drive.getMeasuredChassisSpeeds());
             }
-            // Use hub tag pose for position (more accurate when tags visible),
-            // fall back to odometry when tags are not visible
-            return () -> {
-                Pose2d tagPose = vision.getHubTagRobotPose();
-                return tagPose != null ? tagPose : drive.getPose();
-            };
-        }
-        return drive::getPose;
+            return cachedCompensation[0];
+        };
     }
 
     private BooleanSupplier createTeleopAimReadySupplier(
             Supplier<Rotation2d> targetHeadingSupplier) {
+        final boolean[] aimReadyLatched = new boolean[] {false};
+        final Rotation2d[] lastValidTargetHeading = new Rotation2d[] {null};
+        final double[] lastValidTargetTimestampSec = new double[] {Double.NaN};
         return () -> {
             Rotation2d targetHeading = targetHeadingSupplier.get();
+            double nowSec = Timer.getFPGATimestamp();
+            if (targetHeading != null) {
+                lastValidTargetHeading[0] = targetHeading;
+                lastValidTargetTimestampSec[0] = nowSec;
+            } else if (lastValidTargetHeading[0] != null) {
+                double targetAgeSec = nowSec - lastValidTargetTimestampSec[0];
+                if (Double.isFinite(targetAgeSec)
+                        && targetAgeSec <= Constants.SHOOTING_AIM_TARGET_HOLD_SEC) {
+                    targetHeading = lastValidTargetHeading[0];
+                }
+            }
+
+            boolean targetAvailable = targetHeading != null;
+            Rotation2d robotHeading = drive.getRotation();
+            Logger.recordOutput("Shooting/AimTargetAvailable", targetAvailable);
+            Logger.recordOutput("Shooting/RobotHeadingDeg", robotHeading.getDegrees());
             if (targetHeading == null) {
+                Logger.recordOutput("Shooting/TargetHeadingDeg", Double.NaN);
+                Logger.recordOutput("Shooting/DesiredRobotHeadingDeg", Double.NaN);
+                Logger.recordOutput("Shooting/AimErrorRad", Double.NaN);
+                Logger.recordOutput("Shooting/AimErrorDeg", Double.NaN);
+                Logger.recordOutput("Shooting/AimReadyLatched", false);
+                aimReadyLatched[0] = false;
                 return false;
             }
 
             Rotation2d desiredRobotHeading = targetHeading.plus(Rotation2d.kPi);
             double headingErrorRad = MathUtil.angleModulus(
-                    desiredRobotHeading.minus(drive.getRotation()).getRadians());
-            return Math.abs(headingErrorRad) <= Constants.SHOOTING_AIM_TOLERANCE_RAD;
+                    desiredRobotHeading.minus(robotHeading).getRadians());
+            Logger.recordOutput("Shooting/TargetHeadingDeg", targetHeading.getDegrees());
+            Logger.recordOutput("Shooting/DesiredRobotHeadingDeg", desiredRobotHeading.getDegrees());
+            Logger.recordOutput("Shooting/AimErrorRad", headingErrorRad);
+            Logger.recordOutput("Shooting/AimErrorDeg", Math.toDegrees(headingErrorRad));
+            double absHeadingErrorRad = Math.abs(headingErrorRad);
+            if (aimReadyLatched[0]) {
+                aimReadyLatched[0] = absHeadingErrorRad <= Constants.SHOOTING_AIM_RELEASE_TOLERANCE_RAD;
+            } else {
+                aimReadyLatched[0] = absHeadingErrorRad <= Constants.SHOOTING_AIM_TOLERANCE_RAD;
+            }
+            Logger.recordOutput("Shooting/AimReadyLatched", aimReadyLatched[0]);
+            return aimReadyLatched[0];
         };
     }
 

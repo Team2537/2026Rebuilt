@@ -7,38 +7,27 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
+import org.littletonrobotics.junction.Logger;
 
 /**
- * Heading alignment controller for tracking a dynamic target heading (e.g., hub-facing).
- * Encapsulates filtered target tracking, derivative-based feedforward, hold-at-target logic,
- * and profiled PID control with slew-rate-limited output.
+ * Heading alignment controller for tracking a dynamic target heading.
+ * Uses a profiled PID with a short target-loss hold window and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 2.4;
-    private static final double KD = 0.16;
-    private static final double MAX_VELOCITY = 5.2;
-    private static final double MAX_ACCELERATION = 14.0;
-    private static final double TOLERANCE_RAD = Units.degreesToRadians(1.25);
-    private static final double HOLD_RELEASE_TOLERANCE_RAD = Units.degreesToRadians(1.7);
-    private static final double TARGET_FILTER_ALPHA = 0.2;
-    private static final double TARGET_FILTER_MAX_STEP_RAD = Units.degreesToRadians(4.0);
-    private static final double MAX_OMEGA_RAD_PER_SEC = 4.5;
-    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 36.0;
-    private static final double TARGET_RATE_FILTER_ALPHA = 0.35;
-    private static final double TARGET_RATE_MAX_RAD_PER_SEC = 6.0;
-    private static final double TARGET_RATE_FF = 0.9;
-    private static final double MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC = 0.35;
-    private static final double TARGET_RATE_DT_MIN_SEC = 1e-3;
-    private static final double TARGET_RATE_DT_MAX_SEC = 0.1;
+    private static final double KP = 3.8;
+    private static final double KD = 0.20;
+    private static final double MAX_VELOCITY = 6.0;
+    private static final double MAX_ACCELERATION = 18.0;
+    private static final double TOLERANCE_RAD = Units.degreesToRadians(1.2);
+    private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
+    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 30.0;
+    private static final double TARGET_HOLD_SEC = 0.12;
 
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
 
-    private Rotation2d filteredTargetHeading = null;
-    private boolean holdAtTarget = false;
-    private Rotation2d lastFilteredTargetHeading = null;
-    private double lastFilteredTargetTimestampSec = Double.NaN;
-    private double filteredTargetRateRadPerSec = 0.0;
+    private Rotation2d lastTargetHeading = null;
+    private double lastTargetTimestampSec = Double.NaN;
 
     public HubAlignController() {
         pidController = new ProfiledPIDController(
@@ -57,20 +46,20 @@ public class HubAlignController {
      */
     public void reset(double currentHeadingRad, Rotation2d initialTarget) {
         if (initialTarget != null) {
-            initializeTargetTracking(initialTarget, Timer.getFPGATimestamp());
+            lastTargetHeading = initialTarget;
+            lastTargetTimestampSec = Timer.getFPGATimestamp();
         } else {
             clearTargetTracking();
         }
         omegaLimiter.reset(0.0);
-        pidController.reset(currentHeadingRad);
+        pidController.reset(currentHeadingRad, 0.0);
     }
 
     /**
      * Calculate the angular velocity command for heading alignment.
      *
-     * <p>When {@code targetHeading} is non-null, returns a PID-controlled omega with
-     * derivative feedforward and slew-rate limiting. When {@code targetHeading} is null,
-     * resets internal tracking state and returns {@code fallbackOmega} unchanged.
+     * <p>When {@code targetHeading} is unavailable, holds the most recent target briefly
+     * before falling back to driver omega input.
      *
      * @param currentHeadingRad the robot's current heading in radians
      * @param targetHeading     the desired heading, or null if no target is available
@@ -78,98 +67,56 @@ public class HubAlignController {
      * @return angular velocity command in rad/s
      */
     public double calculate(double currentHeadingRad, Rotation2d targetHeading, double fallbackOmega) {
-        if (targetHeading == null) {
-            clearTargetTracking();
-            omegaLimiter.reset(fallbackOmega);
-            pidController.reset(currentHeadingRad);
-            return fallbackOmega;
-        }
-
         double nowSec = Timer.getFPGATimestamp();
-        if (filteredTargetHeading == null) {
-            initializeTargetTracking(targetHeading, nowSec);
-            pidController.reset(currentHeadingRad);
-        } else {
-            filteredTargetHeading = filterTargetHeading(filteredTargetHeading, targetHeading);
+        if (targetHeading != null) {
+            lastTargetHeading = targetHeading;
+            lastTargetTimestampSec = nowSec;
         }
 
-        double targetRateRadPerSec = updateTargetRate(nowSec);
-        double filteredTargetRad = filteredTargetHeading.getRadians();
-        double headingErrorRad = MathUtil.angleModulus(filteredTargetRad - currentHeadingRad);
-        boolean targetMoving =
-                Math.abs(targetRateRadPerSec) >= MOVING_TARGET_RATE_THRESHOLD_RAD_PER_SEC;
-
-        double omega;
-        if (holdAtTarget && !targetMoving
-                && Math.abs(headingErrorRad) <= HOLD_RELEASE_TOLERANCE_RAD) {
-            omega = 0.0;
-            pidController.reset(currentHeadingRad);
-        } else if (!targetMoving && Math.abs(headingErrorRad) <= TOLERANCE_RAD) {
-            holdAtTarget = true;
-            omega = 0.0;
-            pidController.reset(currentHeadingRad);
-        } else {
-            holdAtTarget = false;
-            double feedbackOmega = pidController.calculate(currentHeadingRad, filteredTargetRad);
-            double feedforwardOmega = targetRateRadPerSec * TARGET_RATE_FF;
-            omega = MathUtil.clamp(
-                    feedbackOmega + feedforwardOmega,
-                    -MAX_OMEGA_RAD_PER_SEC,
-                    MAX_OMEGA_RAD_PER_SEC);
+        boolean targetHeld = false;
+        Rotation2d effectiveTarget = targetHeading;
+        if (effectiveTarget == null && lastTargetHeading != null && Double.isFinite(lastTargetTimestampSec)) {
+            double targetAgeSec = nowSec - lastTargetTimestampSec;
+            if (targetAgeSec <= TARGET_HOLD_SEC) {
+                effectiveTarget = lastTargetHeading;
+                targetHeld = true;
+            }
         }
 
-        return omegaLimiter.calculate(omega);
-    }
+        Logger.recordOutput("Drive/AutoAlign/RawTargetDeg",
+                targetHeading != null ? targetHeading.getDegrees() : Double.NaN);
+        Logger.recordOutput("Drive/AutoAlign/EffectiveTargetDeg",
+                effectiveTarget != null ? effectiveTarget.getDegrees() : Double.NaN);
+        Logger.recordOutput("Drive/AutoAlign/TargetHeld", targetHeld);
+        Logger.recordOutput("Drive/AutoAlign/UsingFallback", effectiveTarget == null);
+        Logger.recordOutput(
+                "Drive/AutoAlign/TargetAgeSec",
+                Double.isFinite(lastTargetTimestampSec) ? nowSec - lastTargetTimestampSec : Double.NaN);
 
-    private void initializeTargetTracking(Rotation2d initialHeading, double nowSec) {
-        filteredTargetHeading = initialHeading;
-        holdAtTarget = false;
-        lastFilteredTargetHeading = initialHeading;
-        lastFilteredTargetTimestampSec = nowSec;
-        filteredTargetRateRadPerSec = 0.0;
+        if (effectiveTarget == null) {
+            clearTargetTracking();
+            pidController.reset(currentHeadingRad, 0.0);
+            double fallbackLimited = omegaLimiter.calculate(fallbackOmega);
+            Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", fallbackLimited);
+            return fallbackLimited;
+        }
+
+        double targetHeadingRad = effectiveTarget.getRadians();
+        double headingErrorRad = MathUtil.angleModulus(targetHeadingRad - currentHeadingRad);
+        double feedbackOmega = pidController.calculate(currentHeadingRad, targetHeadingRad);
+        double commandedOmega = Math.abs(headingErrorRad) <= TOLERANCE_RAD
+                ? 0.0
+                : MathUtil.clamp(feedbackOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
+        double limitedOmega = omegaLimiter.calculate(commandedOmega);
+
+        Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Units.radiansToDegrees(headingErrorRad));
+        Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", limitedOmega);
+        return limitedOmega;
     }
 
     private void clearTargetTracking() {
-        filteredTargetHeading = null;
-        holdAtTarget = false;
-        lastFilteredTargetHeading = null;
-        lastFilteredTargetTimestampSec = Double.NaN;
-        filteredTargetRateRadPerSec = 0.0;
-    }
-
-    private static Rotation2d filterTargetHeading(Rotation2d filtered, Rotation2d raw) {
-        double delta = MathUtil.angleModulus(raw.getRadians() - filtered.getRadians());
-        double step = MathUtil.clamp(
-                delta * TARGET_FILTER_ALPHA,
-                -TARGET_FILTER_MAX_STEP_RAD,
-                TARGET_FILTER_MAX_STEP_RAD);
-        return new Rotation2d(filtered.getRadians() + step);
-    }
-
-    private double updateTargetRate(double nowSec) {
-        if (lastFilteredTargetHeading == null
-                || !Double.isFinite(lastFilteredTargetTimestampSec)) {
-            lastFilteredTargetHeading = filteredTargetHeading;
-            lastFilteredTargetTimestampSec = nowSec;
-            filteredTargetRateRadPerSec = 0.0;
-            return 0.0;
-        }
-
-        double dtSec = MathUtil.clamp(
-                nowSec - lastFilteredTargetTimestampSec,
-                TARGET_RATE_DT_MIN_SEC,
-                TARGET_RATE_DT_MAX_SEC);
-        double headingDelta = MathUtil.angleModulus(
-                filteredTargetHeading.getRadians()
-                        - lastFilteredTargetHeading.getRadians());
-        double rawRate = MathUtil.clamp(
-                headingDelta / dtSec,
-                -TARGET_RATE_MAX_RAD_PER_SEC,
-                TARGET_RATE_MAX_RAD_PER_SEC);
-        filteredTargetRateRadPerSec +=
-                TARGET_RATE_FILTER_ALPHA * (rawRate - filteredTargetRateRadPerSec);
-        lastFilteredTargetHeading = filteredTargetHeading;
-        lastFilteredTargetTimestampSec = nowSec;
-        return filteredTargetRateRadPerSec;
+        lastTargetHeading = null;
+        lastTargetTimestampSec = Double.NaN;
     }
 }

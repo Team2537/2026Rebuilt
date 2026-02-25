@@ -265,7 +265,7 @@ public class ShooterIOReal implements ShooterIO {
                 .withKG(ShooterConstants.HOOD_KG);
         config.MotionMagic = new MotionMagicConfigs()
                 .withMotionMagicCruiseVelocity(1.0)
-                .withMotionMagicAcceleration(1.0);
+                .withMotionMagicAcceleration(10.0);
         config.CurrentLimits.StatorCurrentLimit = ShooterConstants.HOOD_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = ShooterConstants.HOOD_SUPPLY_CURRENT_LIMIT_AMPS;

@@ -23,6 +23,25 @@ public class Shooter extends SubsystemBase {
     private static final String LOG_COMP_ROBOT_POSE_KEY = "Shooter/Comp/RobotPose";
     private static final String LOG_COMP_TARGET_POSE_KEY = "Shooter/Comp/TargetPose";
     private static final String LOG_COMP_FAILURE_KEY = "Shooter/Comp/LastFailure";
+    private static final String LOG_COMP_TIME_LOOKUP_DISTANCE_KEY = "Shooter/Comp/TimeLookupDistanceMeters";
+    private static final String LOG_COMP_TIME_LOOKUP_CLAMPED_KEY = "Shooter/Comp/TimeLookupDistanceClamped";
+    private static final String LOG_COMP_RAW_ROBOT_POSE_KEY = "Shooter/Comp/RawRobotPose";
+    private static final String LOG_COMP_HEADING_PREDICTED_POSE_KEY = "Shooter/Comp/HeadingPredictedRobotPose";
+    private static final String LOG_COMP_DISTANCE_PREDICTED_POSE_KEY = "Shooter/Comp/DistancePredictedRobotPose";
+    private static final String LOG_COMP_RAW_AIM_LINE_KEY = "Shooter/Comp/RawAimLine";
+    private static final String LOG_COMP_HEADING_AIM_LINE_KEY = "Shooter/Comp/HeadingAimLine";
+    private static final String LOG_COMP_DISTANCE_AIM_LINE_KEY = "Shooter/Comp/DistanceAimLine";
+    private static final String LOG_COMP_RAW_HEADING_DEG_KEY = "Shooter/Comp/RawHubHeadingDeg";
+    private static final String LOG_COMP_UNCLAMPED_HEADING_DEG_KEY = "Shooter/Comp/UnclampedCompensatedHubHeadingDeg";
+    private static final String LOG_COMP_LEAD_DEG_UNCLAMPED_KEY = "Shooter/Comp/LeadAngleDegUnclamped";
+    private static final String LOG_COMP_LEAD_DEG_CLAMPED_KEY = "Shooter/Comp/LeadAngleDegClamped";
+    private static final String LOG_COMP_APPLIED_TIME_SEC_KEY = "Shooter/Comp/AppliedTimeInAirSec";
+    private static final String LOG_COMP_CLAMPED_KEY = "Shooter/Comp/CompensationClamped";
+    private static final String LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY = "Shooter/Comp/TowardDisplacementMetersUnclamped";
+    private static final String LOG_COMP_TOWARD_DISP_CLAMPED_KEY = "Shooter/Comp/TowardDisplacementMetersClamped";
+    private static final String LOG_COMP_PERP_DISP_UNCLAMPED_KEY = "Shooter/Comp/PerpendicularDisplacementMetersUnclamped";
+    private static final String LOG_COMP_PERP_DISP_CLAMPED_KEY = "Shooter/Comp/PerpendicularDisplacementMetersClamped";
+    private static final String LOG_COMP_FORWARD_COMPONENT_METERS_KEY = "Shooter/Comp/ForwardComponentMeters";
     private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
     private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
     private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
@@ -236,24 +255,26 @@ public class Shooter extends SubsystemBase {
     }
 
     public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
-        double rawDistanceMeters = getHubDistanceMeters(robotPose);
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
-        if (!Double.isFinite(rawDistanceMeters) || hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
+        if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
             publishCompensationTargetInvalid();
+            clearCompensationDiagnosticsOutputs();
             return publishMotionCompensation(
-                    rawDistanceMeters,
-                    rawDistanceMeters,
+                    Double.NaN,
+                    Double.NaN,
                     Double.NaN,
                     Double.NaN,
                     Double.NaN,
                     null);
         }
 
+        double rawDistanceMeters = getHubDistanceMeters(robotPose);
         Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
         double rangeMeters = toHubVector.getNorm();
-        if (rangeMeters <= 1e-6) {
+        if (!Double.isFinite(rawDistanceMeters) || !Double.isFinite(rangeMeters) || rangeMeters <= 1e-6) {
             publishCompensationTargetInvalid();
+            clearCompensationDiagnosticsOutputs();
             return publishMotionCompensation(
                     rawDistanceMeters,
                     rawDistanceMeters,
@@ -274,96 +295,73 @@ public class Shooter extends SubsystemBase {
         double velocityPerpendicularHubMetersPerSec =
                 robotFieldVelocity.getX() * perpendicularUnit.getX()
                         + robotFieldVelocity.getY() * perpendicularUnit.getY();
+        double timeLookupDistanceMeters = clampDistanceToShotMap(rawDistanceMeters);
+        boolean timeLookupDistanceClamped =
+                Double.isFinite(rawDistanceMeters)
+                        && Double.isFinite(timeLookupDistanceMeters)
+                        && Math.abs(timeLookupDistanceMeters - rawDistanceMeters) > 1e-6;
+        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, timeLookupDistanceMeters);
+        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, timeLookupDistanceClamped);
 
-        if (!isDistanceWithinShotMapRange(rawDistanceMeters)) {
+        double timeInAirSec = timeInAirSecondsByDistance.get(timeLookupDistanceMeters);
+        if (!Double.isFinite(timeInAirSec) || timeInAirSec < 0.0) {
             reportCompensationFailure(String.format(
-                    "Raw distance %.3f m out of shot map range [%.3f, %.3f]",
-                    rawDistanceMeters,
-                    shotMapMinDistanceMeters,
-                    shotMapMaxDistanceMeters));
-            publishCompensationTargetInvalid();
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    Double.NaN,
-                    Double.NaN,
-                    velocityTowardHubMetersPerSec,
-                    velocityPerpendicularHubMetersPerSec,
-                    null);
-        }
-
-        double firstPassTimeSec = timeInAirSecondsByDistance.get(rawDistanceMeters);
-        if (!Double.isFinite(firstPassTimeSec)) {
-            reportCompensationFailure(String.format(
-                    "Time-in-air lookup invalid for raw distance %.3f m",
-                    rawDistanceMeters));
-            publishCompensationTargetInvalid();
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    Double.NaN,
-                    Double.NaN,
-                    velocityTowardHubMetersPerSec,
-                    velocityPerpendicularHubMetersPerSec,
-                    null);
-        }
-        Translation2d firstPassVector = toHubVector
-                .minus(robotFieldVelocity.times(firstPassTimeSec));
-        double firstPassDistance = firstPassVector.getNorm();
-        if (!isDistanceWithinShotMapRange(firstPassDistance)) {
-            reportCompensationFailure(String.format(
-                    "First-pass distance %.3f m out of shot map range [%.3f, %.3f]",
-                    firstPassDistance,
-                    shotMapMinDistanceMeters,
-                    shotMapMaxDistanceMeters));
-            publishCompensationTargetInvalid();
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    Double.NaN,
-                    Double.NaN,
-                    velocityTowardHubMetersPerSec,
-                    velocityPerpendicularHubMetersPerSec,
-                    null);
+                    "Time-in-air lookup invalid for distance %.3f m",
+                    timeLookupDistanceMeters));
+            timeInAirSec = 0.0;
         }
 
-        double timeInAirSec = timeInAirSecondsByDistance.get(firstPassDistance);
-        if (!Double.isFinite(timeInAirSec)) {
-            reportCompensationFailure(String.format(
-                    "Time-in-air lookup invalid for first-pass distance %.3f m",
-                    firstPassDistance));
-            publishCompensationTargetInvalid();
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    Double.NaN,
-                    Double.NaN,
-                    velocityTowardHubMetersPerSec,
-                    velocityPerpendicularHubMetersPerSec,
-                    null);
-        }
-        Translation2d compensatedVector = toHubVector
-                .minus(robotFieldVelocity.times(timeInAirSec));
-        double compensatedDistanceMeters = compensatedVector.getNorm();
-        if (!isDistanceWithinShotMapRange(compensatedDistanceMeters)) {
-            reportCompensationFailure(String.format(
-                    "Compensated distance %.3f m out of shot map range [%.3f, %.3f]",
-                    compensatedDistanceMeters,
-                    shotMapMinDistanceMeters,
-                    shotMapMaxDistanceMeters));
-            publishCompensationTargetInvalid();
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    Double.NaN,
-                    timeInAirSec,
-                    velocityTowardHubMetersPerSec,
-                    velocityPerpendicularHubMetersPerSec,
-                    null);
-        }
+        double appliedTimeInAirSec = timeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
+        double towardDisplacementMeters = velocityTowardHubMetersPerSec * appliedTimeInAirSec;
+        double perpendicularDisplacementMeters = velocityPerpendicularHubMetersPerSec * appliedTimeInAirSec;
+        // "Aim from predicted pose" model: project robot translation forward, then compute a stationary shot
+        // solution from each predicted pose.
+        Translation2d rawRobotTranslation = robotPose.getTranslation();
+        Rotation2d rawRobotHeading = robotPose.getRotation();
+        Translation2d headingPredictedRobotTranslation =
+                rawRobotTranslation.plus(robotFieldVelocity.times(appliedTimeInAirSec));
+        Translation2d distancePredictedRobotTranslation =
+                rawRobotTranslation.plus(robotFieldVelocity.times(timeInAirSec));
 
-        Rotation2d compensatedHeading = compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : null;
-        Translation2d compensatedRobot = robotPose.getTranslation()
-                .plus(robotFieldVelocity.times(timeInAirSec));
-        Rotation2d compensatedRobotHeading =
-                new Rotation2d(robotPose.getRotation().getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
-        boolean hasValidTarget = compensatedHeading != null;
-        publishCompensationTarget(compensatedRobot, compensatedRobotHeading, hubTarget, hasValidTarget);
+        Rotation2d headingPredictedRobotHeading = new Rotation2d(
+                rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * appliedTimeInAirSec);
+        Rotation2d distancePredictedRobotHeading = new Rotation2d(
+                rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
+
+        Translation2d distanceCompensatedVector = hubTarget.minus(distancePredictedRobotTranslation);
+        double compensatedDistanceMeters = distanceCompensatedVector.getNorm();
+        if (!Double.isFinite(compensatedDistanceMeters)) {
+            compensatedDistanceMeters = rawDistanceMeters;
+        }
+        Translation2d headingCompensatedVector = hubTarget.minus(headingPredictedRobotTranslation);
+        double forwardComponentMeters = rangeMeters - towardDisplacementMeters;
+        Rotation2d rawHeading = toHubVector.getAngle();
+        Rotation2d compensatedHeading =
+                headingCompensatedVector.getNorm() > 1e-6 ? headingCompensatedVector.getAngle() : rawHeading;
+        double unclampedLeadRad = MathUtil.angleModulus(compensatedHeading.minus(rawHeading).getRadians());
+        double clampedLeadRad = unclampedLeadRad;
+        Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, rawHeading.getDegrees());
+        Logger.recordOutput(
+                LOG_COMP_UNCLAMPED_HEADING_DEG_KEY,
+                compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
+        Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
+        Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Units.radiansToDegrees(clampedLeadRad));
+        Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, appliedTimeInAirSec);
+        Logger.recordOutput(LOG_COMP_CLAMPED_KEY, timeLookupDistanceClamped);
+        Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, towardDisplacementMeters);
+        Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, towardDisplacementMeters);
+        Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, perpendicularDisplacementMeters);
+        Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, perpendicularDisplacementMeters);
+        Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, forwardComponentMeters);
+        publishCompensationVisualization(
+                rawRobotTranslation,
+                rawRobotHeading,
+                headingPredictedRobotTranslation,
+                headingPredictedRobotHeading,
+                distancePredictedRobotTranslation,
+                distancePredictedRobotHeading,
+                hubTarget,
+                compensatedHeading != null);
 
         return publishMotionCompensation(
                 rawDistanceMeters,
@@ -398,36 +396,87 @@ public class Shooter extends SubsystemBase {
                 compensatedHeading);
     }
 
-    private boolean isDistanceWithinShotMapRange(double distanceMeters) {
-        return Double.isFinite(distanceMeters)
-                && Double.isFinite(shotMapMinDistanceMeters)
-                && Double.isFinite(shotMapMaxDistanceMeters)
-                && distanceMeters >= shotMapMinDistanceMeters
-                && distanceMeters <= shotMapMaxDistanceMeters;
+    private double clampDistanceToShotMap(double distanceMeters) {
+        if (!Double.isFinite(distanceMeters)) {
+            return distanceMeters;
+        }
+        if (!Double.isFinite(shotMapMinDistanceMeters) || !Double.isFinite(shotMapMaxDistanceMeters)) {
+            return distanceMeters;
+        }
+        return MathUtil.clamp(distanceMeters, shotMapMinDistanceMeters, shotMapMaxDistanceMeters);
     }
 
-    private void publishCompensationTarget(
-            Translation2d compensatedRobot,
-            Rotation2d compensatedRobotHeading,
+    private void publishCompensationVisualization(
+            Translation2d rawRobot,
+            Rotation2d rawRobotHeading,
+            Translation2d headingPredictedRobot,
+            Rotation2d headingPredictedRobotHeading,
+            Translation2d distancePredictedRobot,
+            Rotation2d distancePredictedRobotHeading,
             Translation2d targetTranslation,
             boolean hasValidTarget) {
-        Pose3d robotPose = new Pose3d(
-                compensatedRobot.getX(),
-                compensatedRobot.getY(),
-                0.0,
-                new Rotation3d(0.0, 0.0, compensatedRobotHeading.getRadians()));
+        Pose3d rawRobotPose = toPose3d(rawRobot, rawRobotHeading);
+        Pose3d headingPredictedPose = toPose3d(headingPredictedRobot, headingPredictedRobotHeading);
+        Pose3d distancePredictedPose = toPose3d(distancePredictedRobot, distancePredictedRobotHeading);
         Pose3d targetPose = targetTranslation != null
                 ? new Pose3d(targetTranslation.getX(), targetTranslation.getY(), 0.0, new Rotation3d())
                 : new Pose3d();
-        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, robotPose);
+
+        Logger.recordOutput(LOG_COMP_RAW_ROBOT_POSE_KEY, rawRobotPose);
+        Logger.recordOutput(LOG_COMP_HEADING_PREDICTED_POSE_KEY, headingPredictedPose);
+        Logger.recordOutput(LOG_COMP_DISTANCE_PREDICTED_POSE_KEY, distancePredictedPose);
+        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, headingPredictedPose); // legacy key for dashboards
         Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, targetPose);
+        Logger.recordOutput(LOG_COMP_RAW_AIM_LINE_KEY, createAimLine(rawRobot, targetTranslation));
+        Logger.recordOutput(LOG_COMP_HEADING_AIM_LINE_KEY, createAimLine(headingPredictedRobot, targetTranslation));
+        Logger.recordOutput(LOG_COMP_DISTANCE_AIM_LINE_KEY, createAimLine(distancePredictedRobot, targetTranslation));
         Logger.recordOutput("Shooter/Comp/TargetValid", hasValidTarget);
     }
 
     private void publishCompensationTargetInvalid() {
+        Logger.recordOutput(LOG_COMP_RAW_ROBOT_POSE_KEY, new Pose3d());
+        Logger.recordOutput(LOG_COMP_HEADING_PREDICTED_POSE_KEY, new Pose3d());
+        Logger.recordOutput(LOG_COMP_DISTANCE_PREDICTED_POSE_KEY, new Pose3d());
         Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
         Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
+        Logger.recordOutput(LOG_COMP_RAW_AIM_LINE_KEY, new Pose3d[0]);
+        Logger.recordOutput(LOG_COMP_HEADING_AIM_LINE_KEY, new Pose3d[0]);
+        Logger.recordOutput(LOG_COMP_DISTANCE_AIM_LINE_KEY, new Pose3d[0]);
         Logger.recordOutput("Shooter/Comp/TargetValid", false);
+    }
+
+    private static Pose3d toPose3d(Translation2d translation, Rotation2d heading) {
+        return new Pose3d(
+                translation.getX(),
+                translation.getY(),
+                0.0,
+                new Rotation3d(0.0, 0.0, heading.getRadians()));
+    }
+
+    private static Pose3d[] createAimLine(Translation2d fromTranslation, Translation2d targetTranslation) {
+        if (fromTranslation == null || targetTranslation == null) {
+            return new Pose3d[0];
+        }
+        return new Pose3d[] {
+                new Pose3d(fromTranslation.getX(), fromTranslation.getY(), 0.05, new Rotation3d()),
+                new Pose3d(targetTranslation.getX(), targetTranslation.getY(), 0.05, new Rotation3d())
+        };
+    }
+
+    private static void clearCompensationDiagnosticsOutputs() {
+        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, false);
+        Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_UNCLAMPED_HEADING_DEG_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_CLAMPED_KEY, false);
+        Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, Double.NaN);
+        Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, Double.NaN);
     }
 
     private void reportCompensationFailure(String reason) {
