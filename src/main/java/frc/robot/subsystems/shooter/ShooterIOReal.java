@@ -5,11 +5,13 @@ import static frc.robot.util.PhoenixUtil.tryUntilOk;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.TorqueCurrentFOC;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.ParentDevice;
@@ -33,6 +35,7 @@ public class ShooterIOReal implements ShooterIO {
     private final VelocityTorqueCurrentFOC rightVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final PositionVoltage hoodPositionRequest = new PositionVoltage(0.0);
     private final VoltageOut hoodVoltageRequest = new VoltageOut(0.0);
+    private final MotionMagicVoltage hoodMotionMagicRequest = new MotionMagicVoltage(0.0);
     private final TorqueCurrentFOC kickerTorqueRequest = new TorqueCurrentFOC(0.0);
     private final VoltageOut kickerVoltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
@@ -72,7 +75,7 @@ public class ShooterIOReal implements ShooterIO {
         rightVelocityRequest.Slot = 0;
         hoodPositionRequest.Slot = 0;
         hoodPositionRequest.EnableFOC = true;
-        kickerTorqueRequest.Deadband = 1.0;
+        kickerTorqueRequest.Deadband = 0.0;
         kickerTorqueRequest.MaxAbsDutyCycle = 1.0;
 
         leftPosition = leftShooterMotor.getPosition();
@@ -189,7 +192,7 @@ public class ShooterIOReal implements ShooterIO {
 
     @Override
     public void setHoodAngle(double angle) {
-        hoodMotor.setControl(hoodPositionRequest.withPosition(Units.radiansToRotations(angle)));
+        hoodMotor.setControl(hoodMotionMagicRequest.withPosition(Units.radiansToRotations(angle)));
     }
 
     @Override
@@ -259,6 +262,9 @@ public class ShooterIOReal implements ShooterIO {
                 .withKD(ShooterConstants.HOOD_KD)
                 .withKS(ShooterConstants.HOOD_KS)
                 .withKV(ShooterConstants.HOOD_KV);
+        config.MotionMagic = new MotionMagicConfigs()
+                .withMotionMagicCruiseVelocity(1.0)
+                .withMotionMagicAcceleration(1.0);
         config.CurrentLimits.StatorCurrentLimit = ShooterConstants.HOOD_STATOR_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
         config.CurrentLimits.SupplyCurrentLimit = ShooterConstants.HOOD_SUPPLY_CURRENT_LIMIT_AMPS;
