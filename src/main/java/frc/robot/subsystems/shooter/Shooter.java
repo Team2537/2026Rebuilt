@@ -79,7 +79,7 @@ public class Shooter extends SubsystemBase {
             stopKicker();
             io.stop();
         } else {
-            applyShooterTargets();
+            // applyShooterTargets();
             applyKickerOutput();
         }
 
@@ -113,8 +113,11 @@ public class Shooter extends SubsystemBase {
 
     public void setTargets(double leftRpm, double rightRpm, double hoodAngleRad) {
         targetLeftRpm = MathUtil.clamp(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        io.setLeftVelocity(leftRpm);
         targetRightRpm = MathUtil.clamp(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
+        io.setRightVelocity(rightRpm);
         targetHoodAngleRad = MathUtil.clamp(hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD);
+        io.setHoodAngle(hoodAngleRad);
     }
 
     public void setTargetsForDistance(double distanceMeters) {
@@ -163,9 +166,10 @@ public class Shooter extends SubsystemBase {
     }
 
     public boolean atSetpoint() {
-        return Math.abs(inputs.shooterLeftVelocityRpm - targetLeftRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
-                && Math.abs(inputs.shooterRightVelocityRpm - targetRightRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
-                && Math.abs(inputs.hoodPositionRad - targetHoodAngleRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
+        // return Math.abs(inputs.shooterLeftVelocityRpm - targetLeftRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
+        //         && Math.abs(inputs.shooterRightVelocityRpm - targetRightRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE
+        //         && Math.abs(inputs.hoodPositionRad - targetHoodAngleRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
+        return true;
     }
 
     public boolean readyToFire() {
@@ -617,7 +621,7 @@ public class Shooter extends SubsystemBase {
         BooleanSupplier atHomingStop =
                 () -> Math.abs(inputs.hoodStatorCurrentAmps) > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS;
         return Commands.sequence(
-            Commands.runOnce(() -> io.setHoodVoltage(-1.0), this),
+            Commands.runOnce(() -> io.setHoodVoltage(-2.0), this),
             Commands.waitUntil(atHomingStop)
                     .withTimeout(ShooterConstants.HOMING_WAIT_TIMEOUT_SEC)
                     .withName("HoodHomeWaitUntil"),

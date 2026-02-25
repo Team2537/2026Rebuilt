@@ -181,17 +181,35 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     @Override
-    public void home() {
+    public void homeLeft() {
         setLeftCurrentLimits(true);
-        setRightCurrentLimits(true);
         leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-2.0));
-        rightIntakeMotor.setControl(rightVoltageRequest.withOutput(applyRightAlignment(-2.0)));
+    }
+
+    @Override
+    public void homeRight() {
+        setRightCurrentLimits(true);
+        rightIntakeMotor.setControl(rightVoltageRequest.withOutput(-2.0));
     }
 
     @Override
     public void stop() {
+        stopLeft();
+        stopRight();
+    }
+
+    @Override
+    public void stopLeft(){
         leftIntakeMotor.setControl(neutralRequest);
+    }
+
+    @Override
+    public void stopRight() {
         rightIntakeMotor.setControl(neutralRequest);
+    }
+
+    @Override
+    public void stopRoller() {
         rollerMotor.setControl(neutralRequest);
     }
 
@@ -253,7 +271,7 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     private double applyRightAlignment(double leftReference) {
-        return IntakeConstants.RIGHT_OPPOSES_LEFT ? -leftReference : leftReference;
+        return IntakeConstants.RIGHT_OPPOSES_LEFT ? leftReference : -leftReference;
     }
 
     private void configureRightMotor() {

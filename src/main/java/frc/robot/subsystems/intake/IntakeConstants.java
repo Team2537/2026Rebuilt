@@ -7,7 +7,7 @@ public final class IntakeConstants {
     public static final int LEFT_MOTOR_ID = 23;
     public static final int RIGHT_MOTOR_ID = 24;
 
-    public static final double ROLLER_RPM = 3000.0;
+    public static final double ROLLER_RPM = 2000.0;
     public static final double SLOW_ROLLER_RPM = 1000.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
@@ -45,9 +45,11 @@ public final class IntakeConstants {
 
     public static final double TRAVEL_IN_PER_MOTOR_REV = 0.5233;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;
-    public static final double FULL_TRAVEL_IN = 12.65;
+    public static final double FULL_TRAVEL_IN = 12.7;
     public static final double RETRACTED_POSITION_ROT = 0.0;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
+    public static final double POSITION_TOLERANCE_ROT = 0.25;
+    public static final double MOVE_TIMEOUT_SEC = 1.5;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;

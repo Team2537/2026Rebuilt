@@ -21,7 +21,7 @@ public final class FieldConstants {
 
   // Hub / scoring target constants (game-specific, centralised here)
   public static final int HUB_TAG_ID = 26;
-  public static final double HUB_TARGET_X_OFFSET_METERS = Units.inchesToMeters(26.0);
+  public static final double HUB_TARGET_X_OFFSET_METERS = 1.0;
 
   private static final String REBUILT_LAYOUT_TOKEN = "rebuilt";
   private static final List<Path> LAYOUT_SEARCH_DIRECTORIES =

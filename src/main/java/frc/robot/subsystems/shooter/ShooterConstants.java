@@ -32,8 +32,8 @@ public final class ShooterConstants {
 
     public static final double STATUS_UPDATE_HZ = 50.0;
 
-    public static final double SHOOTER_RPM_TOLERANCE = 50.0;
-    public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(0.2);
+    public static final double SHOOTER_RPM_TOLERANCE = 200.0;
+    public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(0.5);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
 
     /**
@@ -47,7 +47,7 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.55, 1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
 
-    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 0, 0.8890, 1.8542, 2.9718, 4.3942, 10.0 };
+    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 0, 1.8890, 2.8542, 3.9718, 5.3942, 10.0 };
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
     private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {8.0, 15.0, 18.0, 24.0, 27.0, 27.0};
@@ -82,7 +82,7 @@ public final class ShooterConstants {
     public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 70.0;
     public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 45.0;
 
-    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 10.0;
+    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
 
 

@@ -36,7 +36,15 @@ public interface IntakeIO {
     public default void extend(){
     }
 
-    public default void home(){
+    public default void homeLeft(){
+    }
+
+    public default void homeRight(){
+    }
+
+    public default void home() {
+        homeLeft();
+        homeRight();
     }
 
     public default void slowRetract(){
@@ -46,5 +54,14 @@ public interface IntakeIO {
     }
 
     public default void stop(){
+    }
+
+    public default void stopLeft(){
+    }
+
+    public default void stopRight(){
+    }
+
+    public default void stopRoller(){
     }
 }

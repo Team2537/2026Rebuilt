@@ -198,16 +198,38 @@ public class IntakeIOSim implements IntakeIO {
     public void stop() {
         leftIntakePositionClosedLoop = false;
         rightIntakePositionClosedLoop = false;
-        rollerVelocityClosedLoop = false;
         leftHomingActive = false;
         rightHomingActive = false;
         leftHomingAtStop = false;
         rightHomingAtStop = false;
         leftIntakeVoltageLimit = MAX_VOLTS;
         rightIntakeVoltageLimit = MAX_VOLTS;
-        targetRollerRpm = 0.0;
         leftIntakePositionController.reset();
         rightIntakePositionController.reset();
+    }
+
+    @Override
+    public void stopLeft() {
+        leftIntakePositionClosedLoop = false;
+        leftHomingActive = false;
+        leftHomingAtStop = false;
+        leftIntakeVoltageLimit = MAX_VOLTS;
+        leftIntakePositionController.reset();
+    }
+
+    @Override
+    public void stopRight() {
+        rightIntakePositionClosedLoop = false;
+        rightHomingActive = false;
+        rightHomingAtStop = false;
+        rightIntakeVoltageLimit = MAX_VOLTS;
+        rightIntakePositionController.reset();
+    }
+
+    @Override
+    public void stopRoller() {
+        rollerVelocityClosedLoop = false;
+        targetRollerRpm = 0.0;
         rollerVelocityController.reset();
     }
 

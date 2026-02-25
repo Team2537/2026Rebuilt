@@ -441,8 +441,7 @@ public final class RobotContainer {
 
         bindOnTrue(driverController.b(), "driver.b.onTrue", intake.toggleExtendedCommand());
         Trigger intakeRollerTrigger = driverController.leftTrigger();
-        bindOnTrue(intakeRollerTrigger, "driver.leftTrigger.onTrue", intake.spinRoller());
-        bindOnFalse(intakeRollerTrigger, "driver.leftTrigger.onFalse", intake.backgroundCommand());
+        bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.spinRoller());
 
         bindOnTrue(
                 driverController.povUp(),
@@ -559,6 +558,5 @@ public final class RobotContainer {
 
     private void scheduleBackgroundManipulators(String source) {
         schedule(source + ".shooterBackground", shooter.backgroundCommand());
-        schedule(source + ".intakeBackground", intake.backgroundCommand());
     }
 }
