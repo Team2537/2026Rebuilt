@@ -35,7 +35,7 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final double MOTION_COMP_TIME_SCALE = 0.25;
+    public static final double MOTION_COMP_TIME_SCALE = 0.5;
 
     /**
      * Seed shot map for interpolation.
@@ -84,7 +84,7 @@ public final class ShooterConstants {
     public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 70.0;
     public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 45.0;
 
-    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
+    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 5.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
 
 
