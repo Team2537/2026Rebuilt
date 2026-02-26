@@ -42,6 +42,10 @@ public final class AutoNamedCommands {
         register(
                 "ShooterShootHub",
                 AutoCommands.shootHub(drive, shooter, shootCoordinator).withName("AutoNamed_ShooterShootHub"));
+        register(
+                "ShooterShootHubOnMove",
+                AutoCommands.shootHubOnMove(drive, shooter, shootCoordinator)
+                        .withName("AutoNamed_ShooterShootHubOnMove"));
         register("ShooterHome", shooter.homeCommand().withName("AutoNamed_ShooterHome"));
         register("ShooterStop", shooter.stopCommand().withName("AutoNamed_ShooterStop"));
     }

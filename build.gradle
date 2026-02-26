@@ -82,6 +82,13 @@ dependencies {
 test {
     useJUnitPlatform()
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
+    if (System.getProperty('shooter.sim.motionCompTimeScale') != null) {
+        systemProperty 'shooter.sim.motionCompTimeScale', System.getProperty('shooter.sim.motionCompTimeScale')
+    }
+    if (System.getProperty('shooter.sim.motionCompDistanceTimeScale') != null) {
+        systemProperty 'shooter.sim.motionCompDistanceTimeScale',
+                System.getProperty('shooter.sim.motionCompDistanceTimeScale')
+    }
 }
 
 // Simulation configuration (e.g. environment variables).
