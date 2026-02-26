@@ -48,6 +48,20 @@ public class Intake extends SubsystemBase {
         return moveToPositionCommand(false).withName("IntakeRetract");
     }
 
+    public Command slowRetractCommand() {
+        return Commands.sequence(
+                        Commands.runOnce(io::slowRetract, this),
+                        Commands.waitUntil(() -> isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT))
+                                .withTimeout(IntakeConstants.MOVE_TIMEOUT_SEC)
+                                .withName("IntakeWaitForSlowRetract"),
+                        Commands.runOnce(() -> {
+                            if (isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT)) {
+                                extended = false;
+                            }
+                        }, this))
+                .withName("IntakeSlowRetract");
+    }
+
     public Command extendCommand() {
         return moveToPositionCommand(true).withName("IntakeExtend");
     }

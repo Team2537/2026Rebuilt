@@ -457,6 +457,8 @@ public final class RobotContainer {
         bindWhileTrue(reverseTransferTrigger, "driver.y.whileTrue", transfer.reverseCommand());
 
         bindOnTrue(driverController.b(), "driver.b.onTrue", intake.toggleExtendedCommand());
+        Trigger slowRetractTrigger = driverController.x();
+        bindWhileTrue(slowRetractTrigger, "driver.x.whileTrue", intake.slowRetractCommand());
         Trigger intakeRollerTrigger = driverController.leftTrigger();
         bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.spinRoller());
 
