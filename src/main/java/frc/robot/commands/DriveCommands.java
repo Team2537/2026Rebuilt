@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
+    private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(1.2);
 
     private DriveCommands() {
     }
@@ -95,6 +96,31 @@ public final class DriveCommands {
         return Commands.runOnce(drive::resetOdometryAndHeadingToZero, drive);
     }
 
+    /** Returns a command that snaps heading to the nearest cardinal direction. */
+    public static Command headingSnap(Drive drive) {
+        HubAlignController alignController = new HubAlignController();
+        final Rotation2d[] targetHeading = new Rotation2d[] {Rotation2d.kZero};
+
+        return Commands.run(
+                () -> {
+                    double omega = alignController.calculate(
+                            drive.getRotation().getRadians(),
+                            targetHeading[0],
+                            0.0);
+                    drive.runVelocity(new ChassisSpeeds(0.0, 0.0, omega));
+                },
+                drive)
+                .beforeStarting(() -> {
+                    Rotation2d snappedHeading = snapToNearestCardinal(drive.getRotation());
+                    targetHeading[0] = snappedHeading;
+                    alignController.reset(drive.getRotation().getRadians(), snappedHeading);
+                })
+                .until(() -> Math.abs(MathUtil.angleModulus(
+                        targetHeading[0].minus(drive.getRotation()).getRadians())) <= HEADING_SNAP_TOLERANCE_RAD)
+                .andThen(Commands.runOnce(drive::stop, drive))
+                .withName("DriveHeadingSnap");
+    }
+
     /**
      * Drive command that keeps translational joystick control and auto-rotates to
      * face the hub using odometry + field layout.
@@ -160,6 +186,12 @@ public final class DriveCommands {
 
     private static Rotation2d applyHubAutoAlignHeadingOffset(Rotation2d heading) {
         return heading == null ? null : heading.plus(HUB_AUTO_ALIGN_HEADING_OFFSET);
+    }
+
+    private static Rotation2d snapToNearestCardinal(Rotation2d heading) {
+        double cardinalStepRad = Math.PI / 2.0;
+        double snappedRad = Math.round(heading.getRadians() / cardinalStepRad) * cardinalStepRad;
+        return Rotation2d.fromRadians(MathUtil.angleModulus(snappedRad));
     }
 
 }

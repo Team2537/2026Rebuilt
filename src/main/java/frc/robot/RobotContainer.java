@@ -444,6 +444,8 @@ public final class RobotContainer {
                 DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
         bindOnTrue(driverController.start(), "driver.start.onTrue",
                 DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
+        bindOnTrue(driverController.rightStick(), "driver.rightStick.onTrue",
+                DriveCommands.headingSnap(drive).withName("DriveHeadingSnap"));
 
         Trigger reverseTransferTrigger = driverController.y();
         bindWhileTrue(reverseTransferTrigger, "driver.y.whileTrue", transfer.reverseCommand());
