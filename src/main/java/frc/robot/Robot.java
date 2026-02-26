@@ -18,7 +18,9 @@ import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 public final class Robot extends LoggedRobot {
+    private static final int POWER_DISTRIBUTION_CAN_ID = 1;
     private final RobotContainer robotContainer;
+    private PowerDistribution powerDistribution = null;
 
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
@@ -34,17 +36,19 @@ public final class Robot extends LoggedRobot {
             case REAL -> {
                 Logger.addDataReceiver(new NT4Publisher());
                 Logger.addDataReceiver(createWpiLogWriter());
-                new PowerDistribution(1, PowerDistribution.ModuleType.kRev);
+                powerDistribution = new PowerDistribution(POWER_DISTRIBUTION_CAN_ID, PowerDistribution.ModuleType.kRev);
             }
             case SIMULATION -> {
                 Logger.addDataReceiver(new NT4Publisher());
                 Logger.addDataReceiver(createWpiLogWriter());
+                powerDistribution = null;
             }
             case REPLAY -> {
                 setUseTiming(false);
                 String logFile = LogFileUtil.findReplayLog();
                 Logger.setReplaySource(new WPILOGReader(logFile));
                 Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logFile, "_replayed")));
+                powerDistribution = null;
             }
         }
 
@@ -73,8 +77,21 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void robotPeriodic() {
+        logPowerDistribution();
         CommandScheduler.getInstance().run();
         robotContainer.robotPeriodic();
+    }
+
+    private void logPowerDistribution() {
+        if (powerDistribution == null) {
+            return;
+        }
+
+        Logger.recordOutput("PowerDistribution/totalVoltageVolts", powerDistribution.getVoltage());
+        Logger.recordOutput("PowerDistribution/totalCurrentAmps", powerDistribution.getTotalCurrent());
+        Logger.recordOutput("PowerDistribution/totalPowerWatts", powerDistribution.getTotalPower());
+        Logger.recordOutput("PowerDistribution/temperatureCelsius", powerDistribution.getTemperature());
+        Logger.recordOutput("PowerDistribution/busVoltage", powerDistribution.getVoltage());
     }
 
     @Override

@@ -14,13 +14,14 @@ import org.littletonrobotics.junction.Logger;
  * Uses a profiled PID with a short target-loss hold window and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 3.8;
-    private static final double KD = 0.20;
-    private static final double MAX_VELOCITY = 6.0;
-    private static final double MAX_ACCELERATION = 18.0;
+    private static final double KP = 7.5;
+    private static final double KD = 0.15;
+    private static final double MAX_VELOCITY = 9.0;
+    private static final double MAX_ACCELERATION = 36.0;
     private static final double TOLERANCE_RAD = Units.degreesToRadians(1.2);
-    private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
-    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 30.0;
+    private static final double MIN_OMEGA_RAD_PER_SEC = 0.2;
+    private static final double MAX_OMEGA_RAD_PER_SEC = 8.0;
+    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 45.0;
     private static final double TARGET_HOLD_SEC = 0.12;
 
     private final ProfiledPIDController pidController;
@@ -108,6 +109,9 @@ public class HubAlignController {
         double commandedOmega = Math.abs(headingErrorRad) <= TOLERANCE_RAD
                 ? 0.0
                 : MathUtil.clamp(feedbackOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
+        if (Math.abs(commandedOmega) > 0.0 && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
+            commandedOmega = Math.copySign(MIN_OMEGA_RAD_PER_SEC, commandedOmega);
+        }
         double limitedOmega = omegaLimiter.calculate(commandedOmega);
 
         Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Units.radiansToDegrees(headingErrorRad));

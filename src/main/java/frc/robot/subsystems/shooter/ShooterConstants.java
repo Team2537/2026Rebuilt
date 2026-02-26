@@ -35,7 +35,7 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final double MOTION_COMP_TIME_SCALE = 0.5;
+    public static final double MOTION_COMP_TIME_SCALE = 0.25;
 
     /**
      * Seed shot map for interpolation.
@@ -48,11 +48,11 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.55, 1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
 
-    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.4, 2.2890, 3.2542, 4.3718, 5.7942, 10.0 };
-    private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
-    private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3250.0, 3500.0, 3700.0, 4200.0, 4200.0 };
-    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {8.0, 15.0, 18.0, 24.0, 27.0, 27.0};
-    private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.55, 1.55, 1.66, 1.78, 1.93, 1.93};
+    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.4, 2.04, 3.0, 4.0, 5.0, 6.0, 7.0 };
+    private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3400.0, 3650.0, 3950.0, 4200.0, 4550.0 };
+    private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3250.0, 3400.0, 3650.0, 3950.0, 4200.0, 4550.0 };
+    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {6.0, 12.0, 15.5, 19.0, 22.0, 25.0, 28.0};
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.55, 1.55, 1.66, 1.78, 1.93, 1.93, 2.21};
 
     public static final double[] SHOT_MAP_DISTANCE_METERS =
         isReal ? SHOT_MAP_DISTANCE_METERS_REAL : SHOT_MAP_DISTANCE_METERS_SIM;

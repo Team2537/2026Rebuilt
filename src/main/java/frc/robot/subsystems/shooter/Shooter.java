@@ -504,7 +504,7 @@ public class Shooter extends SubsystemBase {
         return runCommandWithCleanup(
                 () -> {
                     setTargets(getDashboardShotSetpoint());
-                    if (SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false)) {
+                    if (isDashboardFeedKickerEnabled()) {
                         setKickerTorqueAmps(SmartDashboard.getNumber(
                                 DASHBOARD_KICKER_TORQUE_KEY,
                                 ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS));
@@ -679,6 +679,10 @@ public class Shooter extends SubsystemBase {
 
     public boolean isDashboardTuningEnabled() {
         return SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
+    }
+
+    public boolean isDashboardFeedKickerEnabled() {
+        return SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
     }
 
     private ShotSetpoint getDashboardShotSetpoint() {

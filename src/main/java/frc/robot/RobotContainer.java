@@ -489,6 +489,7 @@ public final class RobotContainer {
 
         Trigger rightTriggerPressed = driverController.rightTrigger();
         Trigger dashboardTuneTrigger = rightTriggerPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
+        Trigger dashboardTransferTuneTrigger = dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
         Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
         Trigger aimTrigger = driverController.rightBumper();
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
@@ -511,6 +512,10 @@ public final class RobotContainer {
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",
                 shooter.dashboardTuneCommand().withName("ShooterDashboardTune"));
+        bindWhileTrue(
+                dashboardTransferTuneTrigger,
+                "driver.dashboardTuneTransfer.whileTrue",
+                transfer.runCommand().withName("TransferDashboardTune"));
 
         bindOnTrue(godController.leftBumper(), "god.leftBumper.onTrue",
                 drive.toggleSlowMode().withName("DriveToggleSlowMode"));
