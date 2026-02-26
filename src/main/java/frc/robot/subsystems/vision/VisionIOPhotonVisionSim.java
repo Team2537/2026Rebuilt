@@ -4,6 +4,7 @@ import edu.wpi.first.math.MatBuilder;
 import edu.wpi.first.math.Nat;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.wpilibj.RobotController;
 import frc.robot.util.FieldConstants;
 import java.util.function.Supplier;
 import org.photonvision.simulation.PhotonCameraSim;
@@ -13,6 +14,7 @@ import org.photonvision.simulation.VisionSystemSim;
 /** Simulation implementation of the PhotonVision IO layer. */
 public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
     private static VisionSystemSim sharedVisionSim;
+    private static long lastVisionSimUpdateLoop = Long.MIN_VALUE;
 
     private final Supplier<Pose2d> poseSupplier;
     private final PhotonCameraSim cameraSim;
@@ -58,8 +60,18 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
 
     @Override
     public void updateInputs(VisionIOInputs inputs) {
-        getOrCreateVisionSim().update(poseSupplier.get());
+        updateVisionSimIfNeeded(poseSupplier.get());
         super.updateInputs(inputs);
+    }
+
+    private static synchronized void updateVisionSimIfNeeded(Pose2d pose) {
+        long currentLoop = RobotController.getFPGATime() / 20_000L;
+        if (currentLoop == lastVisionSimUpdateLoop) {
+            return;
+        }
+
+        getOrCreateVisionSim().update(pose);
+        lastVisionSimUpdateLoop = currentLoop;
     }
 
     private static synchronized VisionSystemSim getOrCreateVisionSim() {

@@ -57,6 +57,7 @@ import org.littletonrobotics.junction.Logger;
 public final class RobotContainer {
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final int COMMAND_EVENT_HISTORY_LIMIT = 40;
+    private static final int COMMAND_LOG_EVERY_CYCLES = 1;
     private static final String UNKNOWN_COMMAND_SOURCE = "unknown";
 
     private final Drive drive;
@@ -68,16 +69,22 @@ public final class RobotContainer {
     private final AutoSelector autoSelector;
 
     private final CommandXboxController driverController = new CommandXboxController(0);
-    private final CommandXboxController godController = new CommandXboxController(GOD_CONTROLLER_PORT);
+    private final CommandXboxController godController;
 
     private FuelSim fuelSim;
     private final Map<Command, String> commandSources = new WeakHashMap<>();
     private final Map<Command, Double> commandStartTimesSec = new IdentityHashMap<>();
     private final Map<Command, Integer> commandRunIds = new IdentityHashMap<>();
     private final ArrayDeque<String> recentCommandEvents = new ArrayDeque<>();
+    private int commandTelemetryCycle = 0;
     private int nextCommandRunId = 1;
 
     public RobotContainer() {
+        godController =
+                DriverStation.isJoystickConnected(GOD_CONTROLLER_PORT)
+                        ? new CommandXboxController(GOD_CONTROLLER_PORT)
+                        : null;
+
         drive = createDrive();
         vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION) ? new Vision(drive) : null;
         shooter = createShooter();
@@ -98,7 +105,10 @@ public final class RobotContainer {
     }
 
     public void robotPeriodic() {
-        updateCommandLoggingOutputs(Timer.getFPGATimestamp());
+        commandTelemetryCycle++;
+        if ((commandTelemetryCycle & (COMMAND_LOG_EVERY_CYCLES - 1)) == 0) {
+            updateCommandLoggingOutputs(Timer.getFPGATimestamp());
+        }
     }
 
     public void disabledInit() {
@@ -517,18 +527,22 @@ public final class RobotContainer {
                 "driver.dashboardTuneTransfer.whileTrue",
                 transfer.runCommand().withName("TransferDashboardTune"));
 
-        bindOnTrue(godController.leftBumper(), "god.leftBumper.onTrue",
-                drive.toggleSlowMode().withName("DriveToggleSlowMode"));
-        bindOnTrue(godController.povDown(), "god.povDown.onTrue",
-                DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
-        bindWhileTrue(godController.a(), "god.a.whileTrue",
-                drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward).withName("DriveSysIdQuasistaticForward"));
-        bindWhileTrue(godController.b(), "god.b.whileTrue",
-                drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdQuasistaticReverse"));
-        bindWhileTrue(godController.x(), "god.x.whileTrue",
-                drive.sysIdDynamic(SysIdRoutine.Direction.kForward).withName("DriveSysIdDynamicForward"));
-        bindWhileTrue(godController.y(), "god.y.whileTrue",
-                drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
+        if (godController != null) {
+            bindOnTrue(godController.leftBumper(), "god.leftBumper.onTrue",
+                    drive.toggleSlowMode().withName("DriveToggleSlowMode"));
+            bindOnTrue(godController.povDown(), "god.povDown.onTrue",
+                    DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
+            bindWhileTrue(godController.a(), "god.a.whileTrue",
+                    drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward)
+                            .withName("DriveSysIdQuasistaticForward"));
+            bindWhileTrue(godController.b(), "god.b.whileTrue",
+                    drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse)
+                            .withName("DriveSysIdQuasistaticReverse"));
+            bindWhileTrue(godController.x(), "god.x.whileTrue",
+                    drive.sysIdDynamic(SysIdRoutine.Direction.kForward).withName("DriveSysIdDynamicForward"));
+            bindWhileTrue(godController.y(), "god.y.whileTrue",
+                    drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
+        }
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
