@@ -15,8 +15,12 @@ import com.pathplanner.lib.config.ModuleConfig;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.path.PathConstraints;
 import com.pathplanner.lib.pathfinding.Pathfinding;
+import com.pathplanner.lib.util.DriveFeedforwards;
 import com.pathplanner.lib.util.PathPlannerLogging;
+import com.pathplanner.lib.util.swerve.SwerveSetpoint;
+import com.pathplanner.lib.util.swerve.SwerveSetpointGenerator;
 import edu.wpi.first.hal.FRCNetComm.tInstances;
 import edu.wpi.first.hal.FRCNetComm.tResourceType;
 import edu.wpi.first.hal.HAL;
@@ -46,6 +50,8 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotType;
 import frc.robot.generated.TunerConstants;
 import frc.robot.util.LocalADStarAK;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -68,7 +74,7 @@ public class Drive extends SubsystemBase {
     private static final double ROBOT_MASS_KG = 74.088;
     private static final double ROBOT_MOI = 6.883;
     private static final double WHEEL_COF = 1.2;
-    private static final double DRIVER_LINEAR_SPEED_LIMIT_MPS = 4.0;
+    private static final double LOOP_PERIOD_SECONDS = 0.02;
     private static final RobotConfig PP_CONFIG = new RobotConfig(
             ROBOT_MASS_KG,
             ROBOT_MOI,
@@ -90,11 +96,16 @@ public class Drive extends SubsystemBase {
     private final GyroIOInputsAutoLogged gyroInputs = new GyroIOInputsAutoLogged();
     private final Module[] modules = new Module[4]; // FL, FR, BL, BR
     private final SysIdRoutine sysId;
+    private final SwerveSetpointGenerator setpointGenerator = new SwerveSetpointGenerator(
+            PP_CONFIG,
+            DriveConstants.MAX_STEER_VELOCITY_RAD_PER_SEC);
+    private final EnumSet<DriveConstants.ConstraintProfile> activeConstraintProfiles =
+            EnumSet.noneOf(DriveConstants.ConstraintProfile.class);
     private final Alert gyroDisconnectedAlert = new Alert("Disconnected gyro, using kinematics as fallback.",
             AlertType.kError);
     private StringLogEntry sysIdStateLogEntry;
     private double characterizationVolts = 0.0;
-    private boolean slowMode = false;
+    private SwerveSetpoint previousSetpoint;
     private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
     private Rotation2d rawGyroRotation = Rotation2d.kZero;
     private SwerveModulePosition[] lastModulePositions = // For delta tracking
@@ -122,6 +133,8 @@ public class Drive extends SubsystemBase {
         modules[1] = new Module(frModuleIO, 1, TunerConstants.FrontRight);
         modules[2] = new Module(blModuleIO, 2, TunerConstants.BackLeft);
         modules[3] = new Module(brModuleIO, 3, TunerConstants.BackRight);
+        previousSetpoint = createStoppedSetpointFromModuleAngles();
+        logConstraintState();
 
         // Usage reporting for swerve template
         HAL.report(tResourceType.kResourceType_RobotDrive, tInstances.kRobotDriveSwerve_AdvantageKit);
@@ -134,7 +147,7 @@ public class Drive extends SubsystemBase {
                 this::getPose,
                 this::setPose,
                 this::getChassisSpeeds,
-                this::runVelocity,
+                (speeds, feedforwards) -> runVelocity(speeds, feedforwards),
                 new PPHolonomicDriveController(
                         new PIDConstants(7.0, 0.0, 0.0), new PIDConstants(5.0, 0.0, 0.0)),
                 PP_CONFIG,
@@ -206,8 +219,10 @@ public class Drive extends SubsystemBase {
             for (var module : modules) {
                 module.stop();
             }
+            previousSetpoint = createStoppedSetpointFromModuleAngles();
             Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
             Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
+            Logger.recordOutput("SwerveChassisSpeeds/Setpoints", new ChassisSpeeds());
         }
 
         // Update odometry
@@ -248,22 +263,60 @@ public class Drive extends SubsystemBase {
      * @param speeds Speeds in meters/sec
      */
     public void runVelocity(ChassisSpeeds speeds) {
-        // Calculate module setpoints
-        ChassisSpeeds discreteSpeeds = ChassisSpeeds.discretize(speeds, 0.02);
-        SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(discreteSpeeds);
-        SwerveDriveKinematics.desaturateWheelSpeeds(setpointStates, TunerConstants.kSpeedAt12Volts);
+        applySetpoint(speeds, null, null);
+    }
 
-        // Log unoptimized setpoints and setpoint speeds
-        Logger.recordOutput("SwerveStates/Setpoints", setpointStates);
-        Logger.recordOutput("SwerveChassisSpeeds/Setpoints", discreteSpeeds);
+    /**
+     * Runs the drive at the desired velocity and logs pathplanner feedforwards.
+     *
+     * @param speeds Speeds in meters/sec
+     * @param feedforwards PathPlanner-generated feedforwards in module order FL,FR,BL,BR
+     */
+    public void runVelocity(ChassisSpeeds speeds, DriveFeedforwards feedforwards) {
+        applySetpoint(speeds, null, feedforwards);
+    }
 
-        // Send setpoints to modules
+    /**
+     * Runs the drive at the desired driver-commanded velocity using active teleop
+     * constraints.
+     *
+     * @param speeds Speeds in meters/sec
+     */
+    public void runDriverVelocity(ChassisSpeeds speeds) {
+        applySetpoint(speeds, getResolvedDriverConstraints(), null);
+    }
+
+    private void applySetpoint(
+            ChassisSpeeds desiredSpeeds,
+            PathConstraints constraints,
+            DriveFeedforwards pathplannerFeedforwards) {
+        SwerveSetpoint generatedSetpoint =
+                setpointGenerator.generateSetpoint(previousSetpoint, desiredSpeeds, constraints, LOOP_PERIOD_SECONDS);
+        SwerveModuleState[] rawSetpointStates = copyModuleStates(generatedSetpoint.moduleStates());
+        SwerveModuleState[] appliedSetpointStates = copyModuleStates(rawSetpointStates);
+        DriveFeedforwards selectedFeedforwards =
+                pathplannerFeedforwards != null ? pathplannerFeedforwards : generatedSetpoint.feedforwards();
+
+        Logger.recordOutput("SwerveChassisSpeeds/Requested", desiredSpeeds);
+        Logger.recordOutput("Drive/SetpointGenerator/UsingExternalFeedforwards", pathplannerFeedforwards != null);
+        Logger.recordOutput("Drive/SetpointGenerator/FeedforwardTorqueCurrentsAmps",
+                selectedFeedforwards.torqueCurrentsAmps());
+        Logger.recordOutput("Drive/SetpointGenerator/FeedforwardLinearForcesN",
+                selectedFeedforwards.linearForcesNewtons());
+
         for (int i = 0; i < 4; i++) {
-            modules[i].runSetpoint(setpointStates[i]);
+            modules[i].runSetpoint(appliedSetpointStates[i], true);
         }
 
-        // Log optimized setpoints (runSetpoint mutates each state)
-        Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
+        ChassisSpeeds appliedSpeeds = kinematics.toChassisSpeeds(appliedSetpointStates);
+        previousSetpoint = new SwerveSetpoint(
+                appliedSpeeds,
+                copyModuleStates(appliedSetpointStates),
+                generatedSetpoint.feedforwards());
+
+        Logger.recordOutput("SwerveChassisSpeeds/Setpoints", appliedSpeeds);
+        Logger.recordOutput("SwerveStates/Setpoints", rawSetpointStates);
+        Logger.recordOutput("SwerveStates/SetpointsOptimized", appliedSetpointStates);
     }
 
     /** Runs the drive in a straight line with the specified drive output. */
@@ -296,8 +349,12 @@ public class Drive extends SubsystemBase {
         SwerveModuleState[] setpointStates = kinematics.toSwerveModuleStates(new ChassisSpeeds());
         SwerveModuleState[] rawSetpointStates = copyModuleStates(setpointStates);
         for (int i = 0; i < 4; i++) {
-            modules[i].runSetpoint(setpointStates[i]);
+            modules[i].runSetpoint(setpointStates[i], false);
         }
+        previousSetpoint = new SwerveSetpoint(
+                new ChassisSpeeds(),
+                copyModuleStates(setpointStates),
+                DriveFeedforwards.zeros(modules.length));
 
         Logger.recordOutput("SwerveStates/Setpoints", rawSetpointStates);
         Logger.recordOutput("SwerveStates/SetpointsOptimized", setpointStates);
@@ -412,6 +469,60 @@ public class Drive extends SubsystemBase {
         return copy;
     }
 
+    private SwerveSetpoint createStoppedSetpointFromModuleAngles() {
+        SwerveModuleState[] holdStates = getModuleStates();
+        for (SwerveModuleState state : holdStates) {
+            state.speedMetersPerSecond = 0.0;
+        }
+        return new SwerveSetpoint(
+                new ChassisSpeeds(),
+                holdStates,
+                DriveFeedforwards.zeros(modules.length));
+    }
+
+    private PathConstraints getResolvedDriverConstraints() {
+        ArrayList<PathConstraints> overlays = new ArrayList<>(activeConstraintProfiles.size());
+        for (DriveConstants.ConstraintProfile profile : activeConstraintProfiles) {
+            overlays.add(DriveConstants.constraintsForProfile(profile));
+        }
+        return DriveConstants.mergeConstraints(DriveConstants.DRIVER_DEFAULT_LIMITS, overlays);
+    }
+
+    private void logConstraintState() {
+        PathConstraints resolved = getResolvedDriverConstraints();
+        String[] activeProfiles = activeConstraintProfiles.stream()
+                .map(Enum::name)
+                .sorted()
+                .toArray(String[]::new);
+        Logger.recordOutput("Drive/ConstraintProfilesActive", activeProfiles);
+        Logger.recordOutput(
+                "Drive/ConstraintProfile/SlowMode",
+                isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE));
+        Logger.recordOutput(
+                "Drive/ConstraintProfile/ShootingOnMove",
+                isConstraintProfileActive(DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE));
+        Logger.recordOutput("Drive/ConstraintMaxVelocityMps", resolved.maxVelocityMPS());
+        Logger.recordOutput("Drive/ConstraintMaxAccelerationMpsSq", resolved.maxAccelerationMPSSq());
+        Logger.recordOutput("Drive/ConstraintMaxAngularVelocityRadPerSec", resolved.maxAngularVelocityRadPerSec());
+        Logger.recordOutput(
+                "Drive/ConstraintMaxAngularAccelerationRadPerSecSq",
+                resolved.maxAngularAccelerationRadPerSecSq());
+        Logger.recordOutput(
+                "Drive/SlowMode",
+                isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE));
+    }
+
+    public void setConstraintProfileActive(DriveConstants.ConstraintProfile profile, boolean enabled) {
+        boolean changed = enabled ? activeConstraintProfiles.add(profile) : activeConstraintProfiles.remove(profile);
+        if (changed) {
+            logConstraintState();
+        }
+    }
+
+    public boolean isConstraintProfileActive(DriveConstants.ConstraintProfile profile) {
+        return activeConstraintProfiles.contains(profile);
+    }
+
     /** Adds a new timestamped vision measurement. */
     public void addVisionMeasurement(
             Pose2d visionRobotPoseMeters,
@@ -423,12 +534,12 @@ public class Drive extends SubsystemBase {
 
     /** Returns the maximum linear speed in meters per sec. */
     public double getMaxLinearSpeedMetersPerSec() {
-        return slowMode ? DRIVER_LINEAR_SPEED_LIMIT_MPS / 2.0 : DRIVER_LINEAR_SPEED_LIMIT_MPS;
+        return getResolvedDriverConstraints().maxVelocityMPS();
     }
 
     /** Returns the maximum angular speed in radians per sec. */
     public double getMaxAngularSpeedRadPerSec() {
-        return getMaxLinearSpeedMetersPerSec() / DRIVE_BASE_RADIUS;
+        return getResolvedDriverConstraints().maxAngularVelocityRadPerSec();
     }
 
     /** Returns whether drive is field oriented. */
@@ -480,8 +591,8 @@ public class Drive extends SubsystemBase {
     /** Returns a command that toggles slow mode. */
     public Command toggleSlowMode() {
         return Commands.runOnce(() -> {
-            slowMode = !slowMode;
-            Logger.recordOutput("Drive/SlowMode", slowMode);
+            boolean enableSlowMode = !isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE);
+            setConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE, enableSlowMode);
         }, this);
     }
 }

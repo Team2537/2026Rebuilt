@@ -65,16 +65,23 @@ public class Module {
         turnEncoderDisconnectedAlert.set(!inputs.turnEncoderConnected);
     }
 
-    /**
-     * Runs the module with the specified setpoint state. Mutates the state to
-     * optimize it.
-     */
+    /** Runs the module with the specified setpoint state and optimizes it by default. */
     public void runSetpoint(SwerveModuleState state) {
-        // Optimize velocity setpoint
-        state.optimize(getAngle());
-        state.cosineScale(inputs.turnPosition);
+        runSetpoint(state, true);
+    }
 
-        // Apply setpoints
+    /**
+     * Runs the module with the specified setpoint state.
+     *
+     * @param state Setpoint to apply
+     * @param optimizeState If true, optimize/cosine-scale before applying
+     */
+    public void runSetpoint(SwerveModuleState state, boolean optimizeState) {
+        if (optimizeState) {
+            state.optimize(getAngle());
+            state.cosineScale(inputs.turnPosition);
+        }
+
         io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius);
         io.setTurnPosition(state.angle);
     }

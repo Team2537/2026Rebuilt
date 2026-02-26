@@ -20,6 +20,7 @@ import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.generated.TunerConstants;
 import frc.robot.sim.FuelSim;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.drive.DriveConstants;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.GyroIOSim;
@@ -504,13 +505,15 @@ public final class RobotContainer {
         Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
         Trigger aimTrigger = driverController.rightBumper();
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
-        bindWhileTrue(shootTrigger, "driver.shoot.whileTrue", createTeleopShootCommand(
-                () -> -driverController.getLeftY(),
-                () -> -driverController.getLeftX(),
-                () -> -driverController.getRightX(),
-                hubDistanceSupplier,
-                teleopAutoAlignHeadingSupplier,
-                teleopAimReadySupplier));
+        bindWhileTrue(shootTrigger, "driver.shoot.whileTrue", withConstraintProfile(
+                createTeleopShootCommand(
+                        () -> -driverController.getLeftY(),
+                        () -> -driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        hubDistanceSupplier,
+                        teleopAutoAlignHeadingSupplier,
+                        teleopAimReadySupplier),
+                DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE));
         bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", Commands.parallel(
                 createTeleopAutoAlignCommand(
                         () -> -driverController.getLeftY(),
@@ -651,6 +654,12 @@ public final class RobotContainer {
                         targetHeadingSupplier),
                 shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier))
                 .withName("ShooterTriggerAimAndShoot");
+    }
+
+    private Command withConstraintProfile(Command command, DriveConstants.ConstraintProfile profile) {
+        return command
+                .beforeStarting(() -> drive.setConstraintProfileActive(profile, true))
+                .finallyDo((interrupted) -> drive.setConstraintProfileActive(profile, false));
     }
 
     private Command stopManipulatorsCommand() {

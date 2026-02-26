@@ -81,7 +81,7 @@ public final class DriveCommands {
                             ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
                             : speeds;
 
-                    drive.runVelocity(commandSpeeds);
+                    drive.runDriverVelocity(commandSpeeds);
                 },
                 drive);
     }
@@ -107,7 +107,7 @@ public final class DriveCommands {
                             drive.getRotation().getRadians(),
                             targetHeading[0],
                             0.0);
-                    drive.runVelocity(new ChassisSpeeds(0.0, 0.0, omega));
+                    drive.runDriverVelocity(new ChassisSpeeds(0.0, 0.0, omega));
                 },
                 drive)
                 .beforeStarting(() -> {
@@ -174,7 +174,7 @@ public final class DriveCommands {
                             ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
                             : speeds;
 
-                    drive.runVelocity(commandSpeeds);
+                    drive.runDriverVelocity(commandSpeeds);
                 },
                 drive)
                 .beforeStarting(() -> {
