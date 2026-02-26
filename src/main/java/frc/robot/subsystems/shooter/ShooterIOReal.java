@@ -109,22 +109,25 @@ public class ShooterIOReal implements ShooterIO {
                 leftVelocity,
                 leftAppliedVolts,
                 leftSupplyCurrent,
-                leftTemp,
                 rightPosition,
                 rightVelocity,
                 rightAppliedVolts,
                 rightSupplyCurrent,
-                rightTemp,
                 hoodPosition,
                 hoodVelocity,
                 hoodAppliedVolts,
                 hoodSupplyCurrent,
                 hoodStatorCurrent,
-                hoodTemp,
                 kickerPosition,
                 kickerVelocity,
                 kickerAppliedVolts,
-                kickerSupplyCurrent,
+                kickerSupplyCurrent);
+        // Temperature changes slowly; 4Hz is sufficient and saves CAN bandwidth
+        BaseStatusSignal.setUpdateFrequencyForAll(
+                4.0,
+                leftTemp,
+                rightTemp,
+                hoodTemp,
                 kickerTemp);
         ParentDevice.optimizeBusUtilizationForAll(leftShooterMotor, rightShooterMotor, hoodMotor, kickerMotor);
     }

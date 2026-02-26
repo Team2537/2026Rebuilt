@@ -40,7 +40,8 @@ public class TransferIOReal implements TransferIO {
         temp = transferMotor.getDeviceTemp();
 
         BaseStatusSignal.setUpdateFrequencyForAll(
-                TransferConstants.STATUS_UPDATE_HZ, position, velocity, appliedVolts, supplyCurrent, temp);
+                TransferConstants.STATUS_UPDATE_HZ, position, velocity, appliedVolts, supplyCurrent);
+        BaseStatusSignal.setUpdateFrequencyForAll(4.0, temp);
         ParentDevice.optimizeBusUtilizationForAll(transferMotor);
     }
 

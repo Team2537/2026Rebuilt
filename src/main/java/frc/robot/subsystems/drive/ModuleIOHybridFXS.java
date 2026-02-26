@@ -189,14 +189,23 @@ public class ModuleIOHybridFXS implements ModuleIO {
         inputs.turnAppliedVolts = turnAppliedVolts.getValueAsDouble();
         inputs.turnCurrentAmps = turnCurrent.getValueAsDouble();
 
-        // Update odometry inputs
-        inputs.odometryTimestamps = timestampQueue.stream().mapToDouble((Double value) -> value).toArray();
-        inputs.odometryDrivePositionsRad = drivePositionQueue.stream()
-                .mapToDouble((Double value) -> Units.rotationsToRadians(value))
-                .toArray();
-        inputs.odometryTurnPositions = turnPositionQueue.stream()
-                .map((Double value) -> Rotation2d.fromRotations(value))
-                .toArray(Rotation2d[]::new);
+        // Update odometry inputs (drain queues with for-loops to avoid stream allocation)
+        int odomSampleCount = timestampQueue.size();
+        inputs.odometryTimestamps = new double[odomSampleCount];
+        inputs.odometryDrivePositionsRad = new double[odomSampleCount];
+        inputs.odometryTurnPositions = new Rotation2d[odomSampleCount];
+        int odomIdx = 0;
+        for (double ts : timestampQueue) {
+            inputs.odometryTimestamps[odomIdx++] = ts;
+        }
+        odomIdx = 0;
+        for (double drivePos : drivePositionQueue) {
+            inputs.odometryDrivePositionsRad[odomIdx++] = Units.rotationsToRadians(drivePos);
+        }
+        odomIdx = 0;
+        for (double turnPos : turnPositionQueue) {
+            inputs.odometryTurnPositions[odomIdx++] = Rotation2d.fromRotations(turnPos);
+        }
         timestampQueue.clear();
         drivePositionQueue.clear();
         turnPositionQueue.clear();

@@ -57,6 +57,7 @@ public final class Vision extends SubsystemBase {
     private static final double UNIFIED_POSE_MAX_STEP_METERS = 0.35;
     private static final double UNIFIED_POSE_MAX_STEP_DEGREES = 10.0;
     private static final boolean ENABLE_VISION_EVENT_LOGS = false;
+    private static final boolean ENABLE_VERBOSE_VISION_DIAGNOSTICS = false;
 
     private final Drive drive;
     private final Supplier<Pose2d> robotPoseSupplier;
@@ -85,13 +86,15 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput("vision/events/sequence", visionEventSequence);
         Logger.recordOutput("vision/events/rejectCount", visionRejectEventCount);
         Logger.recordOutput("vision/events/jumpCount", visionJumpEventCount);
-        Logger.recordOutput("vision/events/rejectCountByCamera", Arrays.copyOf(visionRejectEventCountByCamera, visionRejectEventCountByCamera.length));
-        Logger.recordOutput("vision/events/jumpCountByCamera", Arrays.copyOf(visionJumpEventCountByCamera, visionJumpEventCountByCamera.length));
         Logger.recordOutput("vision/events/last/type", "none");
         Logger.recordOutput("vision/events/last/cameraIndex", -1);
         Logger.recordOutput("vision/events/last/tagIds", new int[0]);
-        resetFrameEventOutputs();
-        resetJumpDiagnosticsOutputs();
+        if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+            Logger.recordOutput("vision/events/rejectCountByCamera", Arrays.copyOf(visionRejectEventCountByCamera, visionRejectEventCountByCamera.length));
+            Logger.recordOutput("vision/events/jumpCountByCamera", Arrays.copyOf(visionJumpEventCountByCamera, visionJumpEventCountByCamera.length));
+            resetFrameEventOutputs();
+            resetJumpDiagnosticsOutputs();
+        }
     }
 
     public double getHubYawRad() {
@@ -128,10 +131,13 @@ public final class Vision extends SubsystemBase {
         PoseObservation bestRawObservation = null;
         PoseObservation bestConsistentObservation = null;
         Pose2d bestConsistentMeasuredPose = null;
-        List<CandidateObservationDiagnostics> candidateDiagnostics = new ArrayList<>();
+        List<CandidateObservationDiagnostics> candidateDiagnostics =
+                ENABLE_VERBOSE_VISION_DIAGNOSTICS ? new ArrayList<>() : null;
 
-        resetFrameEventOutputs();
-        resetJumpDiagnosticsOutputs();
+        if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+            resetFrameEventOutputs();
+            resetJumpDiagnosticsOutputs();
+        }
 
         for (int index = 0; index < ios.size(); index++) {
             VisionIO io = ios.get(index);
@@ -161,14 +167,16 @@ public final class Vision extends SubsystemBase {
             PoseDelta innovation = calculatePoseDelta(measuredPose, currentPose);
             boolean consistent = isVisionMeasurementConsistent(innovation);
 
-            candidateDiagnostics.add(new CandidateObservationDiagnostics(
-                    measuredPose,
-                    innovation,
-                    index,
-                    bestObservation.tagCount(),
-                    bestObservation.ambiguity(),
-                    bestObservation.averageTagDistance(),
-                    consistent));
+            if (candidateDiagnostics != null) {
+                candidateDiagnostics.add(new CandidateObservationDiagnostics(
+                        measuredPose,
+                        innovation,
+                        index,
+                        bestObservation.tagCount(),
+                        bestObservation.ambiguity(),
+                        bestObservation.averageTagDistance(),
+                        consistent));
+            }
 
             if (!consistent) {
                 logVisionRejection(
@@ -217,21 +225,25 @@ public final class Vision extends SubsystemBase {
                 bestConsistentMeasuredPose,
                 bestConsistentObservation != null ? bestConsistentObservation.timestampSeconds() : Double.NaN);
 
-        logCandidateDiagnostics(candidateDiagnostics);
-        logUnifiedPoseDiagnostics(currentPose);
+        if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+            logCandidateDiagnostics(candidateDiagnostics);
+            logUnifiedPoseDiagnostics(currentPose);
+        }
 
         Logger.recordOutput("vision/unifiedRobotPoseRaw", unifiedRobotPoseRaw != null ? unifiedRobotPoseRaw : new Pose2d());
         Logger.recordOutput("vision/unifiedRobotPoseRawValid", unifiedRobotPoseRaw != null);
         Logger.recordOutput("vision/unifiedRobotPose", unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
         Logger.recordOutput("vision/unifiedRobotPoseValid", unifiedRobotPose != null);
 
-        Logger.recordOutput(
-                "vision/cameraPoses",
-                currentPose == null
-                        ? new Pose3d[0]
-                        : ROBOT_TO_CAMERAS.stream()
-                                .map(transform -> new Pose3d(currentPose).transformBy(transform))
-                                .toArray(Pose3d[]::new));
+        if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+            Logger.recordOutput(
+                    "vision/cameraPoses",
+                    currentPose == null
+                            ? new Pose3d[0]
+                            : ROBOT_TO_CAMERAS.stream()
+                                    .map(transform -> new Pose3d(currentPose).transformBy(transform))
+                                    .toArray(Pose3d[]::new));
+        }
 
         updateHubTagTracking();
     }
@@ -287,7 +299,9 @@ public final class Vision extends SubsystemBase {
     private void updateUnifiedRawPose(PoseObservation bestRawObservation) {
         if (bestRawObservation != null) {
             Pose2d newRawPose = bestRawObservation.pose().toPose2d();
-            logUnifiedRawStepDiagnostics(newRawPose);
+            if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+                logUnifiedRawStepDiagnostics(newRawPose);
+            }
             unifiedRobotPoseRaw = newRawPose;
             unifiedRobotPoseRawTimestampSeconds = bestRawObservation.timestampSeconds();
             return;
@@ -311,7 +325,9 @@ public final class Vision extends SubsystemBase {
                     ? bestConsistentPose
                     : smoothPose(previousPose, bestConsistentPose);
             unifiedRobotPoseTimestampSeconds = bestConsistentTimestampSeconds;
-            logUnifiedFilteredStepDiagnostics(previousPose, unifiedRobotPose);
+            if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+                logUnifiedFilteredStepDiagnostics(previousPose, unifiedRobotPose);
+            }
             return;
         }
 
@@ -660,13 +676,15 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput("vision/events/sequence", visionEventSequence);
         Logger.recordOutput("vision/events/rejectCount", visionRejectEventCount);
         Logger.recordOutput("vision/events/jumpCount", visionJumpEventCount);
-        Logger.recordOutput("vision/events/rejectCountByCamera", Arrays.copyOf(visionRejectEventCountByCamera, visionRejectEventCountByCamera.length));
-        Logger.recordOutput("vision/events/jumpCountByCamera", Arrays.copyOf(visionJumpEventCountByCamera, visionJumpEventCountByCamera.length));
 
         recordVisionEventDetails("vision/events/last", eventType, timestampSeconds, measuredPose, odometryPose, innovation,
                 tagCount, safeTagIds, ambiguity, avgDistance, linearStdDev, angularStdDev, cameraIndex);
-        recordVisionEventDetails("vision/events/frame", eventType, timestampSeconds, measuredPose, odometryPose, innovation,
-                tagCount, safeTagIds, ambiguity, avgDistance, linearStdDev, angularStdDev, cameraIndex);
+        if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
+            Logger.recordOutput("vision/events/rejectCountByCamera", Arrays.copyOf(visionRejectEventCountByCamera, visionRejectEventCountByCamera.length));
+            Logger.recordOutput("vision/events/jumpCountByCamera", Arrays.copyOf(visionJumpEventCountByCamera, visionJumpEventCountByCamera.length));
+            recordVisionEventDetails("vision/events/frame", eventType, timestampSeconds, measuredPose, odometryPose, innovation,
+                    tagCount, safeTagIds, ambiguity, avgDistance, linearStdDev, angularStdDev, cameraIndex);
+        }
 
         if (!ENABLE_VISION_EVENT_LOGS) {
             return;

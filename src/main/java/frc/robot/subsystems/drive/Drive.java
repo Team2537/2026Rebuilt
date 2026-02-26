@@ -101,6 +101,9 @@ public class Drive extends SubsystemBase {
                     new SwerveModulePosition(),
                     new SwerveModulePosition()
             };
+    // Pre-allocated arrays reused each odometry cycle to avoid GC pressure
+    private final SwerveModulePosition[] odomModulePositions = new SwerveModulePosition[4];
+    private final SwerveModulePosition[] odomModuleDeltas = new SwerveModulePosition[4];
     private SwerveDrivePoseEstimator poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation,
             lastModulePositions, Pose2d.kZero);
     private boolean fieldOriented = true;
@@ -195,15 +198,11 @@ public class Drive extends SubsystemBase {
             odometryLock.unlock();
         }
 
-        // Stop moving when disabled
+        // Stop moving and log empty setpoints when disabled
         if (DriverStation.isDisabled()) {
             for (var module : modules) {
                 module.stop();
             }
-        }
-
-        // Log empty setpoint states when disabled
-        if (DriverStation.isDisabled()) {
             Logger.recordOutput("SwerveStates/Setpoints", new SwerveModuleState[] {});
             Logger.recordOutput("SwerveStates/SetpointsOptimized", new SwerveModuleState[] {});
         }
@@ -212,16 +211,14 @@ public class Drive extends SubsystemBase {
         double[] sampleTimestamps = modules[0].getOdometryTimestamps(); // All signals are sampled together
         int sampleCount = sampleTimestamps.length;
         for (int i = 0; i < sampleCount; i++) {
-            // Read wheel positions and deltas from each module
-            SwerveModulePosition[] modulePositions = new SwerveModulePosition[4];
-            SwerveModulePosition[] moduleDeltas = new SwerveModulePosition[4];
+            // Read wheel positions and deltas from each module (reuse pre-allocated arrays)
             for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
-                modulePositions[moduleIndex] = modules[moduleIndex].getOdometryPositions()[i];
-                moduleDeltas[moduleIndex] = new SwerveModulePosition(
-                        modulePositions[moduleIndex].distanceMeters
-                                - lastModulePositions[moduleIndex].distanceMeters,
-                        modulePositions[moduleIndex].angle);
-                lastModulePositions[moduleIndex] = modulePositions[moduleIndex];
+                SwerveModulePosition pos = modules[moduleIndex].getOdometryPositions()[i];
+                odomModulePositions[moduleIndex] = pos;
+                odomModuleDeltas[moduleIndex] = new SwerveModulePosition(
+                        pos.distanceMeters - lastModulePositions[moduleIndex].distanceMeters,
+                        pos.angle);
+                lastModulePositions[moduleIndex] = pos;
             }
 
             // Update gyro angle
@@ -230,12 +227,12 @@ public class Drive extends SubsystemBase {
                 rawGyroRotation = gyroInputs.odometryYawPositions[i];
             } else {
                 // Use the angle delta from the kinematics and module deltas
-                Twist2d twist = kinematics.toTwist2d(moduleDeltas);
+                Twist2d twist = kinematics.toTwist2d(odomModuleDeltas);
                 rawGyroRotation = rawGyroRotation.plus(new Rotation2d(twist.dtheta));
             }
 
             // Apply update
-            poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, modulePositions);
+            poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, odomModulePositions);
         }
 
         // Update gyro alert
@@ -465,14 +462,16 @@ public class Drive extends SubsystemBase {
         }
     }
 
+    private static final Translation2d[] MODULE_TRANSLATIONS = new Translation2d[] {
+            new Translation2d(TunerConstants.FrontLeft.LocationX, TunerConstants.FrontLeft.LocationY),
+            new Translation2d(TunerConstants.FrontRight.LocationX, TunerConstants.FrontRight.LocationY),
+            new Translation2d(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
+            new Translation2d(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)
+    };
+
     /** Returns an array of module translations. */
     public static Translation2d[] getModuleTranslations() {
-        return new Translation2d[] {
-                new Translation2d(TunerConstants.FrontLeft.LocationX, TunerConstants.FrontLeft.LocationY),
-                new Translation2d(TunerConstants.FrontRight.LocationX, TunerConstants.FrontRight.LocationY),
-                new Translation2d(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
-                new Translation2d(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)
-        };
+        return MODULE_TRANSLATIONS;
     }
 
     /** Returns a command that toggles slow mode. */

@@ -91,17 +91,20 @@ public class PhoenixOdometryThread extends Thread {
     @Override
     public void run() {
         while (true) {
-            // Wait for updates from all signals. Always use refreshAll to support
-            // mixed-bus setups (e.g., CANivore modules + RIO Pigeon) where waitForAll
-            // can stall or fail to block correctly across buses.
-            signalsLock.lock();
+            // Sleep outside the lock so signal registration is never blocked by the wait.
             try {
                 Thread.sleep((long) (1000.0 / Drive.ODOMETRY_FREQUENCY));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            // Refresh signals under signalsLock to prevent concurrent modification,
+            // but hold the lock only for the refresh itself.
+            signalsLock.lock();
+            try {
                 if (phoenixSignals.length > 0) {
                     BaseStatusSignal.refreshAll(phoenixSignals);
                 }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
             } finally {
                 signalsLock.unlock();
             }
@@ -109,9 +112,9 @@ public class PhoenixOdometryThread extends Thread {
             // Save new data to queues
             Drive.odometryLock.lock();
             try {
-                // Sample timestamp is current FPGA time minus average CAN latency
+                // Sample timestamp is current FPGA time minus average CAN latency.
                 // Default timestamps from Phoenix are NOT compatible with
-                // FPGA timestamps, this solution is imperfect but close
+                // FPGA timestamps; this solution is imperfect but close.
                 double timestamp = RobotController.getFPGATime() / 1e6;
                 double totalLatency = 0.0;
                 for (BaseStatusSignal signal : phoenixSignals) {

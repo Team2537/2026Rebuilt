@@ -5,7 +5,6 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -553,15 +552,16 @@ public final class RobotContainer {
 
     private Supplier<Shooter.MotionCompensation> createTeleopMotionCompensationSupplier(
             Supplier<Pose2d> shootingPoseSupplier) {
-        final long[] cachedLoop = new long[] {Long.MIN_VALUE};
+        // Use the periodic cycle counter instead of FPGA time division so the cache
+        // stays correct even if loop timing jitters.
+        final int[] cachedCycle = new int[] {Integer.MIN_VALUE};
         final Shooter.MotionCompensation[] cachedCompensation = new Shooter.MotionCompensation[] {
                 new Shooter.MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null)
         };
 
         return () -> {
-            long loop = RobotController.getFPGATime() / 20_000L;
-            if (loop != cachedLoop[0]) {
-                cachedLoop[0] = loop;
+            if (commandTelemetryCycle != cachedCycle[0]) {
+                cachedCycle[0] = commandTelemetryCycle;
                 cachedCompensation[0] = shooter.getMotionCompensationToHub(
                         shootingPoseSupplier.get(),
                         drive.getMeasuredChassisSpeeds());

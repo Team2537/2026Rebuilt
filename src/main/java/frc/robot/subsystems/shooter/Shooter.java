@@ -67,6 +67,8 @@ public class Shooter extends SubsystemBase {
             double velocityPerpendicularHubMps,
             Rotation2d compensatedHeading) {}
 
+    private static final boolean ENABLE_VERBOSE_COMPENSATION_LOGS = false;
+
     private enum KickerControlMode {
         OFF,
         TORQUE,
@@ -88,6 +90,9 @@ public class Shooter extends SubsystemBase {
     private double targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
     private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
+    private ReadinessDiagnostics cachedReadiness = new ReadinessDiagnostics(0, 0, 0, false, false, false, false, false);
+    private boolean cachedDashboardTuningEnabled = false;
+    private boolean cachedDashboardFeedKickerEnabled = false;
 
     public Shooter(ShooterIO io) {
         super("shooter");
@@ -115,8 +120,12 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/TargetHoodDeg", Units.radiansToDegrees(targetHoodAngleRad));
         Logger.recordOutput("Shooter/KickerTorqueAmps", kickerControlMode == KickerControlMode.TORQUE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
-        logReadinessOutputs(getReadinessDiagnostics());
-        Logger.recordOutput("Shooter/TuningEnabled", isDashboardTuningEnabled());
+        cachedReadiness = computeReadinessDiagnostics();
+        logReadinessOutputs(cachedReadiness);
+        // Cache SmartDashboard reads once per cycle to avoid repeated NT lookups
+        cachedDashboardTuningEnabled = SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
+        cachedDashboardFeedKickerEnabled = SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
+        Logger.recordOutput("Shooter/TuningEnabled", cachedDashboardTuningEnabled);
     }
 
     private static void logReadinessOutputs(ReadinessDiagnostics readiness) {
@@ -197,14 +206,19 @@ public class Shooter extends SubsystemBase {
     }
 
     public boolean atSetpoint() {
-        return getReadinessDiagnostics().atSetpoint();
+        return cachedReadiness.atSetpoint();
     }
 
     public boolean readyToFire() {
-        return getReadinessDiagnostics().readyToFire();
+        return cachedReadiness.readyToFire();
     }
 
+    /** Returns the cached readiness diagnostics computed in periodic(). */
     public ReadinessDiagnostics getReadinessDiagnostics() {
+        return cachedReadiness;
+    }
+
+    private ReadinessDiagnostics computeReadinessDiagnostics() {
         double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
         double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
         double hoodAngleErrorRad = targetHoodAngleRad - inputs.hoodPositionRad;
@@ -256,10 +270,14 @@ public class Shooter extends SubsystemBase {
 
     public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
-        Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
+        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+            Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
+        }
         if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
-            publishCompensationTargetInvalid();
-            clearCompensationDiagnosticsOutputs();
+            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+                publishCompensationTargetInvalid();
+                clearCompensationDiagnosticsOutputs();
+            }
             return publishMotionCompensation(
                     Double.NaN,
                     Double.NaN,
@@ -273,8 +291,10 @@ public class Shooter extends SubsystemBase {
         Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
         double rangeMeters = toHubVector.getNorm();
         if (!Double.isFinite(rawDistanceMeters) || !Double.isFinite(rangeMeters) || rangeMeters <= 1e-6) {
-            publishCompensationTargetInvalid();
-            clearCompensationDiagnosticsOutputs();
+            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+                publishCompensationTargetInvalid();
+                clearCompensationDiagnosticsOutputs();
+            }
             return publishMotionCompensation(
                     rawDistanceMeters,
                     rawDistanceMeters,
@@ -296,18 +316,22 @@ public class Shooter extends SubsystemBase {
                 robotFieldVelocity.getX() * perpendicularUnit.getX()
                         + robotFieldVelocity.getY() * perpendicularUnit.getY();
         double timeLookupDistanceMeters = clampDistanceToShotMap(rawDistanceMeters);
-        boolean timeLookupDistanceClamped =
-                Double.isFinite(rawDistanceMeters)
-                        && Double.isFinite(timeLookupDistanceMeters)
-                        && Math.abs(timeLookupDistanceMeters - rawDistanceMeters) > 1e-6;
-        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, timeLookupDistanceMeters);
-        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, timeLookupDistanceClamped);
+        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+            boolean timeLookupDistanceClamped =
+                    Double.isFinite(rawDistanceMeters)
+                            && Double.isFinite(timeLookupDistanceMeters)
+                            && Math.abs(timeLookupDistanceMeters - rawDistanceMeters) > 1e-6;
+            Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, timeLookupDistanceMeters);
+            Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, timeLookupDistanceClamped);
+        }
 
         double timeInAirSec = timeInAirSecondsByDistance.get(timeLookupDistanceMeters);
         if (!Double.isFinite(timeInAirSec) || timeInAirSec < 0.0) {
-            reportCompensationFailure(String.format(
-                    "Time-in-air lookup invalid for distance %.3f m",
-                    timeLookupDistanceMeters));
+            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+                reportCompensationFailure(String.format(
+                        "Time-in-air lookup invalid for distance %.3f m",
+                        timeLookupDistanceMeters));
+            }
             timeInAirSec = 0.0;
         }
 
@@ -338,30 +362,31 @@ public class Shooter extends SubsystemBase {
         Rotation2d rawHeading = toHubVector.getAngle();
         Rotation2d compensatedHeading =
                 headingCompensatedVector.getNorm() > 1e-6 ? headingCompensatedVector.getAngle() : rawHeading;
-        double unclampedLeadRad = MathUtil.angleModulus(compensatedHeading.minus(rawHeading).getRadians());
-        double clampedLeadRad = unclampedLeadRad;
-        Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, rawHeading.getDegrees());
-        Logger.recordOutput(
-                LOG_COMP_UNCLAMPED_HEADING_DEG_KEY,
-                compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
-        Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
-        Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Units.radiansToDegrees(clampedLeadRad));
-        Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, appliedTimeInAirSec);
-        Logger.recordOutput(LOG_COMP_CLAMPED_KEY, timeLookupDistanceClamped);
-        Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, towardDisplacementMeters);
-        Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, towardDisplacementMeters);
-        Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, perpendicularDisplacementMeters);
-        Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, perpendicularDisplacementMeters);
-        Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, forwardComponentMeters);
-        publishCompensationVisualization(
-                rawRobotTranslation,
-                rawRobotHeading,
-                headingPredictedRobotTranslation,
-                headingPredictedRobotHeading,
-                distancePredictedRobotTranslation,
-                distancePredictedRobotHeading,
-                hubTarget,
-                compensatedHeading != null);
+        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+            double unclampedLeadRad = MathUtil.angleModulus(compensatedHeading.minus(rawHeading).getRadians());
+            Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, rawHeading.getDegrees());
+            Logger.recordOutput(
+                    LOG_COMP_UNCLAMPED_HEADING_DEG_KEY,
+                    compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
+            Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
+            Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
+            Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, appliedTimeInAirSec);
+            Logger.recordOutput(LOG_COMP_CLAMPED_KEY, false);
+            Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, towardDisplacementMeters);
+            Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, towardDisplacementMeters);
+            Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, perpendicularDisplacementMeters);
+            Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, perpendicularDisplacementMeters);
+            Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, forwardComponentMeters);
+            publishCompensationVisualization(
+                    rawRobotTranslation,
+                    rawRobotHeading,
+                    headingPredictedRobotTranslation,
+                    headingPredictedRobotHeading,
+                    distancePredictedRobotTranslation,
+                    distancePredictedRobotHeading,
+                    hubTarget,
+                    compensatedHeading != null);
+        }
 
         return publishMotionCompensation(
                 rawDistanceMeters,
@@ -678,11 +703,11 @@ public class Shooter extends SubsystemBase {
     }
 
     public boolean isDashboardTuningEnabled() {
-        return SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
+        return cachedDashboardTuningEnabled;
     }
 
     public boolean isDashboardFeedKickerEnabled() {
-        return SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
+        return cachedDashboardFeedKickerEnabled;
     }
 
     private ShotSetpoint getDashboardShotSetpoint() {
