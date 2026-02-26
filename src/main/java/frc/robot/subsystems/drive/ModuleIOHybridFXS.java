@@ -9,6 +9,7 @@ package frc.robot.subsystems.drive;
 
 import static frc.robot.util.PhoenixUtil.*;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
@@ -54,6 +55,7 @@ public class ModuleIOHybridFXS implements ModuleIO {
     private final TalonFX driveTalon;
     private final TalonFXS turnTalon;
     private final CANcoder cancoder;
+    private final CANBus canBus;
 
     // Voltage/closed-loop requests
     private final VoltageOut voltageRequest = new VoltageOut(0);
@@ -84,9 +86,10 @@ public class ModuleIOHybridFXS implements ModuleIO {
     public ModuleIOHybridFXS(
             SwerveModuleConstants<TalonFXConfiguration, TalonFXConfiguration, CANcoderConfiguration> constants) {
         this.constants = constants;
+        canBus = new CANBus(TunerConstants.DrivetrainConstants.CANBusName);
 
         // Drive TalonFX (Kraken X60)
-        driveTalon = new TalonFX(constants.DriveMotorId, TunerConstants.DrivetrainConstants.CANBusName);
+        driveTalon = new TalonFX(constants.DriveMotorId, canBus);
         var driveConfig = constants.DriveMotorInitialConfigs;
         driveConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
         driveConfig.Slot0 = constants.DriveMotorGains;
@@ -101,7 +104,7 @@ public class ModuleIOHybridFXS implements ModuleIO {
         tryUntilOk(5, () -> driveTalon.setPosition(0.0, 0.25));
 
         // Turn TalonFXS (controls NEO via JST), using CANCoder external feedback
-        turnTalon = new TalonFXS(constants.SteerMotorId, TunerConstants.DrivetrainConstants.CANBusName);
+        turnTalon = new TalonFXS(constants.SteerMotorId, canBus);
         var turnConfig = new TalonFXSConfiguration();
         // Commutation for NEO via JST with advanced hall
         turnConfig.Commutation.MotorArrangement = MotorArrangementValue.NEO_JST;
@@ -125,7 +128,7 @@ public class ModuleIOHybridFXS implements ModuleIO {
         tryUntilOk(5, () -> turnTalon.getConfigurator().apply(turnConfig, 0.25));
 
         // Absolute encoder (CANCoder)
-        cancoder = new CANcoder(constants.EncoderId, TunerConstants.DrivetrainConstants.CANBusName);
+        cancoder = new CANcoder(constants.EncoderId, canBus);
         CANcoderConfiguration cancoderConfig = constants.EncoderInitialConfigs;
         cancoderConfig.MagnetSensor.MagnetOffset = constants.EncoderOffset;
         cancoderConfig.MagnetSensor.SensorDirection = constants.EncoderInverted

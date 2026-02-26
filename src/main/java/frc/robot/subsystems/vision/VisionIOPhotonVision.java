@@ -33,7 +33,10 @@ public class VisionIOPhotonVision implements VisionIO {
         Set<Integer> tagIds = new HashSet<>();
         List<PoseObservation> poseObservations = new ArrayList<>();
         List<TargetTransform> targetTransforms = new ArrayList<>();
-        PhotonPipelineResult result = camera.getLatestResult();
+        List<PhotonPipelineResult> unreadResults = camera.getAllUnreadResults();
+        PhotonPipelineResult result = unreadResults.isEmpty()
+                ? null
+                : unreadResults.get(unreadResults.size() - 1);
         if (result == null || !result.hasTargets()) {
             inputs.poseObservations = poseObservations.toArray(new PoseObservation[0]);
             inputs.tagIds = tagIds.stream().mapToInt(Integer::intValue).toArray();

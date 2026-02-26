@@ -80,7 +80,10 @@ public class Drive extends SubsystemBase {
                             .withReduction(TunerConstants.FrontLeft.DriveMotorGearRatio),
                     TunerConstants.FrontLeft.SlipCurrent,
                     1),
-            getModuleTranslations());
+            new Translation2d(TunerConstants.FrontLeft.LocationX, TunerConstants.FrontLeft.LocationY),
+            new Translation2d(TunerConstants.FrontRight.LocationX, TunerConstants.FrontRight.LocationY),
+            new Translation2d(TunerConstants.BackLeft.LocationX, TunerConstants.BackLeft.LocationY),
+            new Translation2d(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY));
 
     static final Lock odometryLock = new ReentrantLock();
     private final GyroIO gyroIO;
