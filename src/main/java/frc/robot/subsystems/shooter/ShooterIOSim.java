@@ -41,8 +41,8 @@ public class ShooterIOSim implements ShooterIO {
                     ShooterConstants.KICKER_SENSOR_TO_MECHANISM_RATIO),
             KICKER_GEARBOX);
 
-    private final PIDController leftVelocityController = new PIDController(0.01, 0.0, 0.0);
-    private final PIDController rightVelocityController = new PIDController(0.01, 0.0, 0.0);
+    private final PIDController leftVelocityController = new PIDController(0.01, 0.01, 0.0);
+    private final PIDController rightVelocityController = new PIDController(0.01, 0.01, 0.0);
     private final PIDController hoodPositionController = new PIDController(16.0, 0.0, 0.15);
 
     private enum KickerControlMode {

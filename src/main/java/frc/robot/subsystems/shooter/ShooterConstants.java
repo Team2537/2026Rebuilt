@@ -35,7 +35,16 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final double MOTION_COMP_TIME_SCALE = 0.25;
+    public static final double MOTION_COMP_TIME_SCALE = 1.0;
+
+    /**
+     * Forward offset from robot center to the muzzle along the firing axis (meters).
+     * Negative because the muzzle is behind the robot center (shooter fires backward),
+     * which means the muzzle is CLOSER to the hub by this amount.
+     * Used to correct motion compensation distance — the ball launches from the muzzle,
+     * not the robot center.
+     */
+    public static final double MUZZLE_OFFSET_FIRING_AXIS_METERS = -0.32;
 
     /**
      * Seed shot map for interpolation.
@@ -43,10 +52,13 @@ public final class ShooterConstants {
      */
 
     private static final double[] SHOT_MAP_DISTANCE_METERS_SIM = {0.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
-    private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0};
-    private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1950.0, 2200.0 };
-    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 80.0, 72.0, 64.0, 65.0, 53.0, 52.0};
-    private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.55, 1.55, 1.66, 1.78, 1.93, 2.21, 2.55};
+    private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0};
+    private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0 };
+    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 78.5, 72.2, 62.2, 64.1, 55.7, 53.9};
+    // Physically computed from sim ballistic physics:
+    // t_descent = (vz + sqrt(vz^2 - 2*g*(1.83 - 0.68))) / g
+    // where vz = muzzle_speed * sin(hood_angle), muzzle_speed = RPM * 2pi/60 * 0.0508m * 0.85
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.24, 1.204, 1.211, 1.09, 1.315, 1.328, 1.481};
 
     private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.4, 2.04, 3.0, 4.0, 5.0, 6.0, 7.0 };
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3400.0, 3650.0, 3950.0, 4200.0, 4550.0 };

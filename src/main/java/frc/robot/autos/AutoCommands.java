@@ -18,8 +18,8 @@ import org.littletonrobotics.junction.Logger;
 
 /** Reusable autonomous command primitives intended for composition in PathPlanner. */
 public final class AutoCommands {
-    private static final double AUTO_AIM_TOLERANCE_RAD = Math.toRadians(2.0);
-    private static final double AUTO_AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(2.5);
+    private static final double AUTO_AIM_TOLERANCE_RAD = Math.toRadians(3.0);
+    private static final double AUTO_AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(4.0);
 
     private AutoCommands() {}
 

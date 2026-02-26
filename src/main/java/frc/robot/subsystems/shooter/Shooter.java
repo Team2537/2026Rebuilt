@@ -268,6 +268,14 @@ public class Shooter extends SubsystemBase {
         return getMotionCompensationToHub(robotPose, robotRelativeSpeeds).compensatedHeading();
     }
 
+    /**
+     * Maximum number of iterations for the time↔distance convergence loop.
+     * The predicted distance determines the flight time, which determines the predicted distance.
+     * 3 iterations is sufficient — typically converges in 2.
+     */
+    private static final int MOTION_COMP_ITERATIONS = 3;
+    private static final double MOTION_COMP_TIME_CONVERGENCE_SEC = 0.001;
+
     public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
@@ -308,6 +316,8 @@ public class Shooter extends SubsystemBase {
                 ChassisSpeeds.fromRobotRelativeSpeeds(robotRelativeSpeeds, robotPose.getRotation());
         Translation2d robotFieldVelocity =
                 new Translation2d(fieldRelativeSpeeds.vxMetersPerSecond, fieldRelativeSpeeds.vyMetersPerSecond);
+
+        // Velocity decomposition for diagnostics
         Translation2d towardUnit = new Translation2d(toHubVector.getX() / rangeMeters, toHubVector.getY() / rangeMeters);
         Translation2d perpendicularUnit = new Translation2d(-towardUnit.getY(), towardUnit.getX());
         double velocityTowardHubMetersPerSec =
@@ -315,77 +325,87 @@ public class Shooter extends SubsystemBase {
         double velocityPerpendicularHubMetersPerSec =
                 robotFieldVelocity.getX() * perpendicularUnit.getX()
                         + robotFieldVelocity.getY() * perpendicularUnit.getY();
-        double timeLookupDistanceMeters = clampDistanceToShotMap(rawDistanceMeters);
-        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-            boolean timeLookupDistanceClamped =
-                    Double.isFinite(rawDistanceMeters)
-                            && Double.isFinite(timeLookupDistanceMeters)
-                            && Math.abs(timeLookupDistanceMeters - rawDistanceMeters) > 1e-6;
-            Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, timeLookupDistanceMeters);
-            Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, timeLookupDistanceClamped);
-        }
 
-        double timeInAirSec = timeInAirSecondsByDistance.get(timeLookupDistanceMeters);
-        if (!Double.isFinite(timeInAirSec) || timeInAirSec < 0.0) {
-            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-                reportCompensationFailure(String.format(
-                        "Time-in-air lookup invalid for distance %.3f m",
-                        timeLookupDistanceMeters));
-            }
-            timeInAirSec = 0.0;
-        }
-
-        double appliedTimeInAirSec = timeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
-        double towardDisplacementMeters = velocityTowardHubMetersPerSec * appliedTimeInAirSec;
-        double perpendicularDisplacementMeters = velocityPerpendicularHubMetersPerSec * appliedTimeInAirSec;
-        // "Aim from predicted pose" model: project robot translation forward, then compute a stationary shot
-        // solution from each predicted pose.
+        // Iterative "aim from predicted pose" model.
+        // The ball inherits the robot's velocity at launch, so we must aim as if shooting from
+        // the position the robot will occupy when the ball arrives at the target.
+        // Time-in-air depends on the compensated distance (which determines shot parameters),
+        // and compensated distance depends on the prediction time — iterate to converge.
         Translation2d rawRobotTranslation = robotPose.getTranslation();
         Rotation2d rawRobotHeading = robotPose.getRotation();
-        Translation2d headingPredictedRobotTranslation =
-                rawRobotTranslation.plus(robotFieldVelocity.times(appliedTimeInAirSec));
-        Translation2d distancePredictedRobotTranslation =
-                rawRobotTranslation.plus(robotFieldVelocity.times(timeInAirSec));
 
-        Rotation2d headingPredictedRobotHeading = new Rotation2d(
-                rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * appliedTimeInAirSec);
-        Rotation2d distancePredictedRobotHeading = new Rotation2d(
-                rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * timeInAirSec);
+        double timeInAirSec = lookupTimeInAir(rawDistanceMeters);
+        double effectiveTimeSec = timeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
+        Translation2d predictedRobotTranslation = rawRobotTranslation;
+        Translation2d compensatedVector = toHubVector;
+        double compensatedDistanceMeters = rawDistanceMeters;
 
-        Translation2d distanceCompensatedVector = hubTarget.minus(distancePredictedRobotTranslation);
-        double compensatedDistanceMeters = distanceCompensatedVector.getNorm();
-        if (!Double.isFinite(compensatedDistanceMeters)) {
-            compensatedDistanceMeters = rawDistanceMeters;
+        for (int i = 0; i < MOTION_COMP_ITERATIONS; i++) {
+            predictedRobotTranslation = rawRobotTranslation.plus(robotFieldVelocity.times(effectiveTimeSec));
+            compensatedVector = hubTarget.minus(predictedRobotTranslation);
+            compensatedDistanceMeters = compensatedVector.getNorm();
+            if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
+                compensatedDistanceMeters = rawDistanceMeters;
+                compensatedVector = toHubVector;
+                break;
+            }
+            double newTimeInAirSec = lookupTimeInAir(compensatedDistanceMeters);
+            if (!Double.isFinite(newTimeInAirSec) || newTimeInAirSec < 0.0) {
+                break;
+            }
+            double newEffectiveTimeSec = newTimeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
+            if (Math.abs(newEffectiveTimeSec - effectiveTimeSec) < MOTION_COMP_TIME_CONVERGENCE_SEC) {
+                timeInAirSec = newTimeInAirSec;
+                effectiveTimeSec = newEffectiveTimeSec;
+                break;
+            }
+            timeInAirSec = newTimeInAirSec;
+            effectiveTimeSec = newEffectiveTimeSec;
         }
-        Translation2d headingCompensatedVector = hubTarget.minus(headingPredictedRobotTranslation);
-        double forwardComponentMeters = rangeMeters - towardDisplacementMeters;
+
+        // Final prediction with converged time — single pose for both heading and distance
+        predictedRobotTranslation = rawRobotTranslation.plus(robotFieldVelocity.times(effectiveTimeSec));
+        compensatedVector = hubTarget.minus(predictedRobotTranslation);
+        compensatedDistanceMeters = compensatedVector.getNorm();
+        if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
+            compensatedDistanceMeters = rawDistanceMeters;
+            compensatedVector = toHubVector;
+        }
+
         Rotation2d rawHeading = toHubVector.getAngle();
         Rotation2d compensatedHeading =
-                headingCompensatedVector.getNorm() > 1e-6 ? headingCompensatedVector.getAngle() : rawHeading;
+                compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : rawHeading;
+
+        // NOTE: Muzzle offset from robot center (0.32m toward hub) is accounted for in the
+        // shot map calibration — the shot map RPM/hood values are tuned so that the ball,
+        // launched from the muzzle position, crosses z=1.83m at the correct horizontal distance.
+
         if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
+            Rotation2d predictedRobotHeading = new Rotation2d(
+                    rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * effectiveTimeSec);
             double unclampedLeadRad = MathUtil.angleModulus(compensatedHeading.minus(rawHeading).getRadians());
+            double towardDisplacementMeters = velocityTowardHubMetersPerSec * effectiveTimeSec;
+            double perpendicularDisplacementMeters = velocityPerpendicularHubMetersPerSec * effectiveTimeSec;
             Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, rawHeading.getDegrees());
-            Logger.recordOutput(
-                    LOG_COMP_UNCLAMPED_HEADING_DEG_KEY,
-                    compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
+            Logger.recordOutput(LOG_COMP_UNCLAMPED_HEADING_DEG_KEY, compensatedHeading.getDegrees());
             Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
             Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
-            Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, appliedTimeInAirSec);
+            Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, effectiveTimeSec);
             Logger.recordOutput(LOG_COMP_CLAMPED_KEY, false);
             Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, towardDisplacementMeters);
             Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, towardDisplacementMeters);
             Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, perpendicularDisplacementMeters);
             Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, perpendicularDisplacementMeters);
-            Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, forwardComponentMeters);
+            Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, rangeMeters - towardDisplacementMeters);
             publishCompensationVisualization(
                     rawRobotTranslation,
                     rawRobotHeading,
-                    headingPredictedRobotTranslation,
-                    headingPredictedRobotHeading,
-                    distancePredictedRobotTranslation,
-                    distancePredictedRobotHeading,
+                    predictedRobotTranslation,
+                    predictedRobotHeading,
+                    predictedRobotTranslation,
+                    predictedRobotHeading,
                     hubTarget,
-                    compensatedHeading != null);
+                    true);
         }
 
         return publishMotionCompensation(
@@ -395,6 +415,12 @@ public class Shooter extends SubsystemBase {
                 velocityTowardHubMetersPerSec,
                 velocityPerpendicularHubMetersPerSec,
                 compensatedHeading);
+    }
+
+    private double lookupTimeInAir(double distanceMeters) {
+        double clamped = clampDistanceToShotMap(distanceMeters);
+        double time = timeInAirSecondsByDistance.get(clamped);
+        return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
     }
 
     private MotionCompensation publishMotionCompensation(
