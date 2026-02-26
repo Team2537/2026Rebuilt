@@ -63,6 +63,7 @@ public final class Vision extends SubsystemBase {
     private final Supplier<Pose2d> robotPoseSupplier;
     private final List<VisionIO> ios;
     private final List<VisionIOInputsAutoLogged> inputs;
+    private final List<String> cameraLogKeys;
     private final int[] visionRejectEventCountByCamera = new int[CAMERA_NAMES.size()];
     private final int[] visionJumpEventCountByCamera = new int[CAMERA_NAMES.size()];
 
@@ -82,6 +83,10 @@ public final class Vision extends SubsystemBase {
         this.robotPoseSupplier = drive::getPose;
         this.ios = createIOs();
         this.inputs = ios.stream().map(io -> new VisionIOInputsAutoLogged()).toList();
+        this.cameraLogKeys = new ArrayList<>(ios.size());
+        for (int i = 0; i < ios.size(); i++) {
+            cameraLogKeys.add(getName() + "/Camera" + i);
+        }
 
         Logger.recordOutput("vision/events/sequence", visionEventSequence);
         Logger.recordOutput("vision/events/rejectCount", visionRejectEventCount);
@@ -144,7 +149,7 @@ public final class Vision extends SubsystemBase {
             VisionIOInputsAutoLogged input = inputs.get(index);
             input.clearFrameData();
             io.updateInputs(input);
-            Logger.processInputs(getName() + "/Camera" + index, input);
+            Logger.processInputs(cameraLogKeys.get(index), input);
 
             if (currentPose == null) {
                 continue;

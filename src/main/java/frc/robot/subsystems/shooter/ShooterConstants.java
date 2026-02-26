@@ -26,6 +26,8 @@ public final class ShooterConstants {
     public static final double SLOW_SHOOTER_RPM = isReal ? 2000.0 : 500.0;
     public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 70.0;
     public static final double MAX_OUTPUT_VOLTS = 12.0;
+    public static final double SHOOTER_SYSID_STEP_VOLTAGE_VOLTS = 6.0;
+    public static final double SHOOTER_SYSID_TIMEOUT_SEC = 10.0;
 
     public static final double HOOD_MIN_ANGLE_RAD = Units.degreesToRadians(0.0);
     public static final double HOOD_MAX_ANGLE_RAD = Units.degreesToRadians(90.0);
@@ -79,8 +81,8 @@ public final class ShooterConstants {
     public static final double SHOOTER_KP = 10.0;
     public static final double SHOOTER_KI = 0.0;
     public static final double SHOOTER_KD = 0.0;
-    public static final double SHOOTER_KS = 0.0;
-    public static final double SHOOTER_KV = 0.12;
+    public static final double SHOOTER_KS = 0.1876;
+    public static final double SHOOTER_KV = 0.002;
 
     public static final double HOOD_KP = 200.0;
     public static final double HOOD_KI = 0.0;

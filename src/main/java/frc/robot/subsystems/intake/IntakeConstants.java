@@ -37,11 +37,11 @@ public final class IntakeConstants {
     public static final double INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW = 15.0;
     public static final double INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW = 15.0;
 
-    public static final double INTAKE_VELOCITY = 50.0;
-    public static final double INTAKE_ACCELERATION = 50.0;
+    public static final double INTAKE_VELOCITY = 100.0;
+    public static final double INTAKE_ACCELERATION = 400.0;
 
-    public static final double SLOW_INTAKE_VELOCITY = 200.0;
-    public static final double SLOW_INTAKE_ACCELERATION = 300.0;
+    public static final double SLOW_INTAKE_VELOCITY = 50.0;
+    public static final double SLOW_INTAKE_ACCELERATION = 200.0;
 
     public static final double TRAVEL_IN_PER_MOTOR_REV = 0.5233;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;

@@ -36,6 +36,7 @@ import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.units.measure.Voltage;
 import frc.robot.generated.TunerConstants;
+import java.util.Arrays;
 import java.util.Queue;
 
 /**
@@ -180,43 +181,62 @@ public class ModuleIOTalonFX implements ModuleIO {
     @Override
     public void updateInputs(ModuleIOInputs inputs) {
         // Refresh all signals
-        var driveStatus = BaseStatusSignal.refreshAll(drivePosition, driveVelocity, driveAppliedVolts, driveCurrent);
-        var turnStatus = BaseStatusSignal.refreshAll(turnPosition, turnVelocity, turnAppliedVolts, turnCurrent);
-        var turnEncoderStatus = BaseStatusSignal.refreshAll(turnAbsolutePosition);
+        BaseStatusSignal.refreshAll(drivePosition, driveVelocity, driveAppliedVolts, driveCurrent);
+        BaseStatusSignal.refreshAll(turnAbsolutePosition, turnPosition, turnVelocity, turnAppliedVolts, turnCurrent);
+        boolean driveSignalsOk =
+                BaseStatusSignal.isAllGood(drivePosition, driveVelocity, driveAppliedVolts, driveCurrent);
+        boolean turnMotorSignalsOk =
+                BaseStatusSignal.isAllGood(turnPosition, turnVelocity, turnAppliedVolts, turnCurrent);
+        boolean turnEncoderSignalOk = turnAbsolutePosition.getStatus().isOK();
 
         // Update drive inputs
-        inputs.driveConnected = driveConnectedDebounce.calculate(driveStatus.isOK());
+        inputs.driveConnected = driveConnectedDebounce.calculate(driveSignalsOk);
         inputs.drivePositionRad = Units.rotationsToRadians(drivePosition.getValueAsDouble());
         inputs.driveVelocityRadPerSec = Units.rotationsToRadians(driveVelocity.getValueAsDouble());
         inputs.driveAppliedVolts = driveAppliedVolts.getValueAsDouble();
         inputs.driveCurrentAmps = driveCurrent.getValueAsDouble();
 
         // Update turn inputs
-        inputs.turnConnected = turnConnectedDebounce.calculate(turnStatus.isOK());
-        inputs.turnEncoderConnected = turnEncoderConnectedDebounce.calculate(turnEncoderStatus.isOK());
+        inputs.turnConnected = turnConnectedDebounce.calculate(turnMotorSignalsOk);
+        inputs.turnEncoderConnected = turnEncoderConnectedDebounce.calculate(turnEncoderSignalOk);
         inputs.turnAbsolutePosition = Rotation2d.fromRotations(turnAbsolutePosition.getValueAsDouble());
         inputs.turnPosition = Rotation2d.fromRotations(turnPosition.getValueAsDouble());
         inputs.turnVelocityRadPerSec = Units.rotationsToRadians(turnVelocity.getValueAsDouble());
         inputs.turnAppliedVolts = turnAppliedVolts.getValueAsDouble();
         inputs.turnCurrentAmps = turnCurrent.getValueAsDouble();
 
-        // Update odometry inputs (drain queues with for-loops to avoid stream allocation)
-        int odomSampleCount = timestampQueue.size();
-        inputs.odometryTimestamps = new double[odomSampleCount];
-        inputs.odometryDrivePositionsRad = new double[odomSampleCount];
-        inputs.odometryTurnPositions = new Rotation2d[odomSampleCount];
+        // Update odometry inputs with poll() to avoid iterator allocations.
+        int odomSampleCount = Math.min(
+                timestampQueue.size(),
+                Math.min(drivePositionQueue.size(), turnPositionQueue.size()));
+        double[] odometryTimestamps = new double[odomSampleCount];
+        double[] odometryDrivePositionsRad = new double[odomSampleCount];
+        Rotation2d[] odometryTurnPositions = new Rotation2d[odomSampleCount];
+
         int odomIdx = 0;
-        for (double ts : timestampQueue) {
-            inputs.odometryTimestamps[odomIdx++] = ts;
+        while (odomIdx < odomSampleCount) {
+            Double ts = timestampQueue.poll();
+            Double drivePos = drivePositionQueue.poll();
+            Double turnPos = turnPositionQueue.poll();
+            if (ts == null || drivePos == null || turnPos == null) {
+                break;
+            }
+            odometryTimestamps[odomIdx] = ts;
+            odometryDrivePositionsRad[odomIdx] = Units.rotationsToRadians(drivePos);
+            odometryTurnPositions[odomIdx] = Rotation2d.fromRotations(turnPos);
+            odomIdx++;
         }
-        odomIdx = 0;
-        for (double drivePos : drivePositionQueue) {
-            inputs.odometryDrivePositionsRad[odomIdx++] = Units.rotationsToRadians(drivePos);
+
+        if (odomIdx == odomSampleCount) {
+            inputs.odometryTimestamps = odometryTimestamps;
+            inputs.odometryDrivePositionsRad = odometryDrivePositionsRad;
+            inputs.odometryTurnPositions = odometryTurnPositions;
+        } else {
+            inputs.odometryTimestamps = Arrays.copyOf(odometryTimestamps, odomIdx);
+            inputs.odometryDrivePositionsRad = Arrays.copyOf(odometryDrivePositionsRad, odomIdx);
+            inputs.odometryTurnPositions = Arrays.copyOf(odometryTurnPositions, odomIdx);
         }
-        odomIdx = 0;
-        for (double turnPos : turnPositionQueue) {
-            inputs.odometryTurnPositions[odomIdx++] = Rotation2d.fromRotations(turnPos);
-        }
+
         timestampQueue.clear();
         drivePositionQueue.clear();
         turnPositionQueue.clear();

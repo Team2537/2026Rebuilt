@@ -19,6 +19,7 @@ import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.generated.TunerConstants;
+import java.util.Arrays;
 import java.util.Queue;
 
 /** IO implementation for Pigeon 2. */
@@ -54,10 +55,30 @@ public class GyroIOPigeon2 implements GyroIO {
         inputs.yawPosition = Rotation2d.fromDegrees(yaw.getValueAsDouble());
         inputs.yawVelocityRadPerSec = Units.degreesToRadians(yawVelocity.getValueAsDouble());
 
-        inputs.odometryYawTimestamps = yawTimestampQueue.stream().mapToDouble((Double value) -> value).toArray();
-        inputs.odometryYawPositions = yawPositionQueue.stream()
-                .map((Double value) -> Rotation2d.fromDegrees(value))
-                .toArray(Rotation2d[]::new);
+        int sampleCount = Math.min(yawTimestampQueue.size(), yawPositionQueue.size());
+        double[] odometryYawTimestamps = new double[sampleCount];
+        Rotation2d[] odometryYawPositions = new Rotation2d[sampleCount];
+
+        int idx = 0;
+        while (idx < sampleCount) {
+            Double ts = yawTimestampQueue.poll();
+            Double yawDegrees = yawPositionQueue.poll();
+            if (ts == null || yawDegrees == null) {
+                break;
+            }
+            odometryYawTimestamps[idx] = ts;
+            odometryYawPositions[idx] = Rotation2d.fromDegrees(yawDegrees);
+            idx++;
+        }
+
+        if (idx == sampleCount) {
+            inputs.odometryYawTimestamps = odometryYawTimestamps;
+            inputs.odometryYawPositions = odometryYawPositions;
+        } else {
+            inputs.odometryYawTimestamps = Arrays.copyOf(odometryYawTimestamps, idx);
+            inputs.odometryYawPositions = Arrays.copyOf(odometryYawPositions, idx);
+        }
+
         yawTimestampQueue.clear();
         yawPositionQueue.clear();
     }

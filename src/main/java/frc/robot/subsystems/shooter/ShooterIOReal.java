@@ -19,10 +19,12 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.Timer;
 import frc.robot.Constants;
 
 public class ShooterIOReal implements ShooterIO {
     private static final CANBus MECHANISM_CAN_BUS = new CANBus(Constants.MECHANISM_CAN_BUS);
+    private static final double TEMP_REFRESH_PERIOD_SECONDS = 0.25;
 
     private final TalonFX leftShooterMotor =
             new TalonFX(ShooterConstants.LEFT_SHOOTER_MOTOR_ID, MECHANISM_CAN_BUS);
@@ -33,6 +35,8 @@ public class ShooterIOReal implements ShooterIO {
 
     private final VelocityTorqueCurrentFOC leftVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
     private final VelocityTorqueCurrentFOC rightVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
+    private final VoltageOut leftVoltageRequest = new VoltageOut(0.0);
+    private final VoltageOut rightVoltageRequest = new VoltageOut(0.0);
     private final PositionVoltage hoodPositionRequest = new PositionVoltage(0.0);
     private final VoltageOut hoodVoltageRequest = new VoltageOut(0.0);
     private final MotionMagicVoltage hoodMotionMagicRequest = new MotionMagicVoltage(0.0);
@@ -64,6 +68,7 @@ public class ShooterIOReal implements ShooterIO {
     private final StatusSignal<?> kickerAppliedVolts;
     private final StatusSignal<?> kickerSupplyCurrent;
     private final StatusSignal<?> kickerTemp;
+    private double lastTempRefreshSeconds = Double.NEGATIVE_INFINITY;
 
     public ShooterIOReal() {
         configureShooterMotor(leftShooterMotor, ShooterConstants.LEFT_SHOOTER_INVERTED);
@@ -139,23 +144,25 @@ public class ShooterIOReal implements ShooterIO {
                 leftVelocity,
                 leftAppliedVolts,
                 leftSupplyCurrent,
-                leftTemp,
                 rightPosition,
                 rightVelocity,
                 rightAppliedVolts,
                 rightSupplyCurrent,
-                rightTemp,
                 hoodPosition,
                 hoodVelocity,
                 hoodAppliedVolts,
                 hoodSupplyCurrent,
                 hoodStatorCurrent,
-                hoodTemp,
                 kickerPosition,
                 kickerVelocity,
                 kickerAppliedVolts,
-                kickerSupplyCurrent,
-                kickerTemp);
+                kickerSupplyCurrent);
+
+        double nowSeconds = Timer.getFPGATimestamp();
+        if (nowSeconds - lastTempRefreshSeconds >= TEMP_REFRESH_PERIOD_SECONDS) {
+            BaseStatusSignal.refreshAll(leftTemp, rightTemp, hoodTemp, kickerTemp);
+            lastTempRefreshSeconds = nowSeconds;
+        }
 
         inputs.shooterLeftPositionRad = Units.rotationsToRadians(leftPosition.getValueAsDouble());
         inputs.shooterLeftVelocityRpm = leftVelocity.getValueAsDouble() * 60.0;
@@ -191,6 +198,16 @@ public class ShooterIOReal implements ShooterIO {
     @Override
     public void setRightVelocity(double rpm) {
         rightShooterMotor.setControl(rightVelocityRequest.withVelocity(rpm / 60.0));
+    }
+
+    @Override
+    public void setLeftVoltage(double volts) {
+        leftShooterMotor.setControl(leftVoltageRequest.withOutput(volts));
+    }
+
+    @Override
+    public void setRightVoltage(double volts) {
+        rightShooterMotor.setControl(rightVoltageRequest.withOutput(volts));
     }
 
     @Override

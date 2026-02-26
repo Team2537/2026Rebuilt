@@ -14,10 +14,12 @@ import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.Timer;
 import frc.robot.Constants;
 
 public class TransferIOReal implements TransferIO {
     private static final CANBus MECHANISM_CAN_BUS = new CANBus(Constants.MECHANISM_CAN_BUS);
+    private static final double TEMP_REFRESH_PERIOD_SECONDS = 0.25;
 
     private final TalonFX transferMotor = new TalonFX(TransferConstants.TRANSFER_MOTOR_ID, MECHANISM_CAN_BUS);
 
@@ -29,6 +31,7 @@ public class TransferIOReal implements TransferIO {
     private final StatusSignal<?> appliedVolts;
     private final StatusSignal<?> supplyCurrent;
     private final StatusSignal<?> temp;
+    private double lastTempRefreshSeconds = Double.NEGATIVE_INFINITY;
 
     public TransferIOReal() {
         configureMotor();
@@ -47,7 +50,12 @@ public class TransferIOReal implements TransferIO {
 
     @Override
     public void updateInputs(TransferIOInputs inputs) {
-        BaseStatusSignal.refreshAll(position, velocity, appliedVolts, supplyCurrent, temp);
+        BaseStatusSignal.refreshAll(position, velocity, appliedVolts, supplyCurrent);
+        double nowSeconds = Timer.getFPGATimestamp();
+        if (nowSeconds - lastTempRefreshSeconds >= TEMP_REFRESH_PERIOD_SECONDS) {
+            BaseStatusSignal.refreshAll(temp);
+            lastTempRefreshSeconds = nowSeconds;
+        }
 
         inputs.positionRad = Units.rotationsToRadians(position.getValueAsDouble());
         inputs.velocityRpm = velocity.getValueAsDouble() * 60.0;

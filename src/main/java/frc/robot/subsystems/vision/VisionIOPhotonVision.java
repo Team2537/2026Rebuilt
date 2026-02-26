@@ -14,6 +14,10 @@ import org.photonvision.targeting.PhotonTrackedTarget;
 
 /** Real/sim shared PhotonVision implementation. */
 public class VisionIOPhotonVision implements VisionIO {
+    private static final PoseObservation[] EMPTY_POSE_OBSERVATIONS = new PoseObservation[0];
+    private static final int[] EMPTY_TAG_IDS = new int[0];
+    private static final TargetTransform[] EMPTY_TARGET_TRANSFORMS = new TargetTransform[0];
+
     protected final PhotonCamera camera;
     protected final Transform3d robotToCamera;
     private final int cameraIndex;
@@ -30,19 +34,23 @@ public class VisionIOPhotonVision implements VisionIO {
         inputs.isConnected = camera.isConnected();
         inputs.latestTargetObservation = latestTargetObservation;
 
+        List<PhotonPipelineResult> unreadResults = camera.getAllUnreadResults();
+        if (unreadResults.isEmpty()) {
+            clearFrameOutputs(inputs);
+            return;
+        }
+
+        PhotonPipelineResult result = unreadResults.get(unreadResults.size() - 1);
+        if (result == null || !result.hasTargets()) {
+            clearFrameOutputs(inputs);
+            return;
+        }
+        double resultTimestampSeconds = result.getTimestampSeconds();
+
         Set<Integer> tagIds = new HashSet<>();
         List<PoseObservation> poseObservations = new ArrayList<>();
         List<TargetTransform> targetTransforms = new ArrayList<>();
-        List<PhotonPipelineResult> unreadResults = camera.getAllUnreadResults();
-        PhotonPipelineResult result = unreadResults.isEmpty()
-                ? null
-                : unreadResults.get(unreadResults.size() - 1);
-        if (result == null || !result.hasTargets()) {
-            inputs.poseObservations = poseObservations.toArray(new PoseObservation[0]);
-            inputs.tagIds = tagIds.stream().mapToInt(Integer::intValue).toArray();
-            inputs.targetTransforms = targetTransforms.toArray(new TargetTransform[0]);
-            return;
-        }
+        List<PhotonTrackedTarget> targets = result.getTargets();
 
         PhotonTrackedTarget bestTarget = result.getBestTarget();
         latestTargetObservation =
@@ -51,12 +59,12 @@ public class VisionIOPhotonVision implements VisionIO {
                         Rotation2d.fromDegrees(bestTarget.getPitch()));
         inputs.latestTargetObservation = latestTargetObservation;
 
-        for (PhotonTrackedTarget target : result.getTargets()) {
+        for (PhotonTrackedTarget target : targets) {
             Transform3d cameraToTarget = target.getBestCameraToTarget();
             double distance = cameraToTarget.getTranslation().getNorm();
             targetTransforms.add(
                     new TargetTransform(
-                            result.getTimestampSeconds(),
+                            resultTimestampSeconds,
                             target.getFiducialId(),
                             cameraIndex,
                             cameraToTarget,
@@ -73,7 +81,7 @@ public class VisionIOPhotonVision implements VisionIO {
                             Pose3d robotPose = new Pose3d(fieldToRobot.getTranslation(), fieldToRobot.getRotation());
 
                             double totalTagDistance = 0.0;
-                            for (PhotonTrackedTarget target : result.getTargets()) {
+                            for (PhotonTrackedTarget target : targets) {
                                 totalTagDistance += target.getBestCameraToTarget().getTranslation().getNorm();
                             }
 
@@ -83,16 +91,16 @@ public class VisionIOPhotonVision implements VisionIO {
 
                             poseObservations.add(
                                     new PoseObservation(
-                                            result.getTimestampSeconds(),
+                                            resultTimestampSeconds,
                                             robotPose,
                                             multitagResult.estimatedPose.ambiguity,
                                             multitagResult.fiducialIDsUsed.size(),
-                                            result.getTargets().isEmpty()
+                                            targets.isEmpty()
                                                     ? 0.0
-                                                    : totalTagDistance / result.getTargets().size()));
+                                                    : totalTagDistance / targets.size()));
                         },
                         () -> {
-                            PhotonTrackedTarget target = result.getTargets().get(0);
+                            PhotonTrackedTarget target = targets.get(0);
                             FieldConstants.TAG_LAYOUT
                                     .getTagPose(target.getFiducialId())
                                     .ifPresent(
@@ -109,7 +117,7 @@ public class VisionIOPhotonVision implements VisionIO {
                                                 tagIds.add(target.getFiducialId());
                                                 poseObservations.add(
                                                         new PoseObservation(
-                                                                result.getTimestampSeconds(),
+                                                                resultTimestampSeconds,
                                                                 robotPose,
                                                                 target.getPoseAmbiguity(),
                                                                 1,
@@ -118,7 +126,18 @@ public class VisionIOPhotonVision implements VisionIO {
                                             });
 
         inputs.poseObservations = poseObservations.toArray(new PoseObservation[0]);
-        inputs.tagIds = tagIds.stream().mapToInt(Integer::intValue).toArray();
+        int[] tagIdArray = new int[tagIds.size()];
+        int tagIdx = 0;
+        for (int tagId : tagIds) {
+            tagIdArray[tagIdx++] = tagId;
+        }
+        inputs.tagIds = tagIdArray;
         inputs.targetTransforms = targetTransforms.toArray(new TargetTransform[0]);
+    }
+
+    private static void clearFrameOutputs(VisionIOInputs inputs) {
+        inputs.poseObservations = EMPTY_POSE_OBSERVATIONS;
+        inputs.tagIds = EMPTY_TAG_IDS;
+        inputs.targetTransforms = EMPTY_TARGET_TRANSFORMS;
     }
 }

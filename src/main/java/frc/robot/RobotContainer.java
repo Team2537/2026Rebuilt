@@ -6,6 +6,7 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -57,7 +58,10 @@ import org.littletonrobotics.junction.Logger;
 public final class RobotContainer {
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final int COMMAND_EVENT_HISTORY_LIMIT = 40;
-    private static final int COMMAND_LOG_EVERY_CYCLES = 1;
+    // Must stay a power of two because robotPeriodic uses a bitmask check.
+    private static final int COMMAND_LOG_EVERY_CYCLES = Constants.ENABLE_PERF_LOG_DECIMATION
+            ? Constants.PERF_LOG_DECIMATION_CYCLES
+            : 1;
     private static final String UNKNOWN_COMMAND_SOURCE = "unknown";
 
     private final Drive drive;
@@ -98,6 +102,7 @@ public final class RobotContainer {
 
         configureCommandTelemetry();
         configureBindings();
+        publishDashboardSysIdCommands();
     }
 
     public Command getAutonomousCommand() {
@@ -547,6 +552,33 @@ public final class RobotContainer {
             bindWhileTrue(godController.y(), "god.y.whileTrue",
                     drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
         }
+    }
+
+    private void publishDashboardSysIdCommands() {
+        SmartDashboard.putData(
+                "Shooter/SysId/QuasistaticForward",
+                withCommandSource(
+                        "dashboard.shooterSysId.quasistaticForward",
+                        shooter.sysIdQuasistatic(SysIdRoutine.Direction.kForward)
+                                .withName("ShooterSysIdQuasistaticForward")));
+        SmartDashboard.putData(
+                "Shooter/SysId/QuasistaticReverse",
+                withCommandSource(
+                        "dashboard.shooterSysId.quasistaticReverse",
+                        shooter.sysIdQuasistatic(SysIdRoutine.Direction.kReverse)
+                                .withName("ShooterSysIdQuasistaticReverse")));
+        SmartDashboard.putData(
+                "Shooter/SysId/DynamicForward",
+                withCommandSource(
+                        "dashboard.shooterSysId.dynamicForward",
+                        shooter.sysIdDynamic(SysIdRoutine.Direction.kForward)
+                                .withName("ShooterSysIdDynamicForward")));
+        SmartDashboard.putData(
+                "Shooter/SysId/DynamicReverse",
+                withCommandSource(
+                        "dashboard.shooterSysId.dynamicReverse",
+                        shooter.sysIdDynamic(SysIdRoutine.Direction.kReverse)
+                                .withName("ShooterSysIdDynamicReverse")));
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {

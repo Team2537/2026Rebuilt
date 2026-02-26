@@ -1,5 +1,11 @@
 package frc.robot.subsystems.shooter;
 
+import static edu.wpi.first.units.Units.Radians;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
+import static edu.wpi.first.units.Units.Seconds;
+import static edu.wpi.first.units.Units.Volts;
+
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -8,13 +14,15 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.util.datalog.StringLogEntry;
+import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import frc.robot.util.FieldConstants;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.robot.util.FieldConstants;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
@@ -48,6 +56,7 @@ public class Shooter extends SubsystemBase {
     private static final String DASHBOARD_HOOD_DEG_KEY = "Shooter/Tuning/HoodDeg";
     private static final String DASHBOARD_FEED_KEY = "Shooter/Tuning/FeedKicker";
     private static final String DASHBOARD_KICKER_TORQUE_KEY = "Shooter/Tuning/KickerTorqueAmps";
+    private static final String DASHBOARD_SYSID_ENABLE_KEY = "Shooter/SysId/Enabled";
 
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
     public record ReadinessDiagnostics(
@@ -77,6 +86,8 @@ public class Shooter extends SubsystemBase {
 
     private final ShooterIO io;
     private final ShooterIOInputsAutoLogged inputs = new ShooterIOInputsAutoLogged();
+    private final SysIdRoutine sysId;
+    private StringLogEntry sysIdStateLogEntry;
 
     private final InterpolatingDoubleTreeMap leftRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap rightRpmByDistance = new InterpolatingDoubleTreeMap();
@@ -93,6 +104,7 @@ public class Shooter extends SubsystemBase {
     private ReadinessDiagnostics cachedReadiness = new ReadinessDiagnostics(0, 0, 0, false, false, false, false, false);
     private boolean cachedDashboardTuningEnabled = false;
     private boolean cachedDashboardFeedKickerEnabled = false;
+    private boolean cachedDashboardSysIdEnabled = false;
 
     public Shooter(ShooterIO io) {
         super("shooter");
@@ -100,6 +112,34 @@ public class Shooter extends SubsystemBase {
         loadShotMapFromConstants();
         loadTimeInAirMapFromConstants();
         initDashboardTuningEntries();
+        sysId = new SysIdRoutine(
+                new SysIdRoutine.Config(
+                        null,
+                        Volts.of(ShooterConstants.SHOOTER_SYSID_STEP_VOLTAGE_VOLTS),
+                        Seconds.of(ShooterConstants.SHOOTER_SYSID_TIMEOUT_SEC),
+                        (state) -> {
+                            String stateString = state.toString();
+                            if (sysIdStateLogEntry == null) {
+                                sysIdStateLogEntry =
+                                        new StringLogEntry(DataLogManager.getLog(), "sysid-test-state-" + getName());
+                            }
+                            sysIdStateLogEntry.append(stateString);
+                            Logger.recordOutput("Shooter/SysIdState", stateString);
+                            System.out.println("[Shooter SysId] " + stateString);
+                        }),
+                new SysIdRoutine.Mechanism(
+                        (voltage) -> runShooterCharacterization(voltage.in(Volts)),
+                        (log) -> {
+                            log.motor("shooter-left")
+                                    .voltage(Volts.of(inputs.shooterLeftAppliedVolts))
+                                    .angularPosition(Radians.of(inputs.shooterLeftPositionRad))
+                                    .angularVelocity(RotationsPerSecond.of(inputs.shooterLeftVelocityRpm / 60.0));
+                            log.motor("shooter-right")
+                                    .voltage(Volts.of(inputs.shooterRightAppliedVolts))
+                                    .angularPosition(Radians.of(inputs.shooterRightPositionRad))
+                                    .angularVelocity(RotationsPerSecond.of(inputs.shooterRightVelocityRpm / 60.0));
+                        },
+                        this));
     }
 
     @Override
@@ -125,7 +165,9 @@ public class Shooter extends SubsystemBase {
         // Cache SmartDashboard reads once per cycle to avoid repeated NT lookups
         cachedDashboardTuningEnabled = SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
         cachedDashboardFeedKickerEnabled = SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
+        cachedDashboardSysIdEnabled = SmartDashboard.getBoolean(DASHBOARD_SYSID_ENABLE_KEY, false);
         Logger.recordOutput("Shooter/TuningEnabled", cachedDashboardTuningEnabled);
+        Logger.recordOutput("Shooter/SysIdEnabled", cachedDashboardSysIdEnabled);
     }
 
     private static void logReadinessOutputs(ReadinessDiagnostics readiness) {
@@ -627,6 +669,50 @@ public class Shooter extends SubsystemBase {
         return Commands.runOnce(this::stopAll, this).withName("ShooterStop");
     }
 
+    private void runShooterCharacterization(double volts) {
+        double clampedVolts = MathUtil.clamp(volts, -ShooterConstants.MAX_OUTPUT_VOLTS, ShooterConstants.MAX_OUTPUT_VOLTS);
+        setIdleTargets();
+        stopKicker();
+        io.setHoodAngle(targetHoodAngleRad);
+        io.setLeftVoltage(clampedVolts);
+        io.setRightVoltage(clampedVolts);
+    }
+
+    private Command gateSysIdOnDashboardEnable(Command sysIdCommand, String commandName) {
+        return Commands.either(
+                        sysIdCommand,
+                        Commands.runOnce(
+                                () -> DriverStation.reportWarning(
+                                        "Shooter SysId blocked. Set " + DASHBOARD_SYSID_ENABLE_KEY + " = true to run.",
+                                        false)),
+                        this::isDashboardSysIdEnabled)
+                .withName(commandName);
+    }
+
+    /** Returns a command to run a shooter quasistatic SysId test in the specified direction. */
+    public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+        String directionLabel = direction == SysIdRoutine.Direction.kForward ? "Forward" : "Reverse";
+        return gateSysIdOnDashboardEnable(
+                Commands.run(() -> runShooterCharacterization(0.0), this)
+                        .withTimeout(0.5)
+                        .andThen(sysId.quasistatic(direction))
+                        .finallyDo((interrupted) -> stopAll())
+                        .withName("ShooterSysIdQuasistatic" + directionLabel),
+                "ShooterSysIdQuasistatic" + directionLabel + "Gated");
+    }
+
+    /** Returns a command to run a shooter dynamic SysId test in the specified direction. */
+    public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+        String directionLabel = direction == SysIdRoutine.Direction.kForward ? "Forward" : "Reverse";
+        return gateSysIdOnDashboardEnable(
+                Commands.run(() -> runShooterCharacterization(0.0), this)
+                        .withTimeout(0.5)
+                        .andThen(sysId.dynamic(direction))
+                        .finallyDo((interrupted) -> stopAll())
+                        .withName("ShooterSysIdDynamic" + directionLabel),
+                "ShooterSysIdDynamic" + directionLabel + "Gated");
+    }
+
     public void setShotMapPoint(double distanceMeters, double leftRpm, double rightRpm, double hoodAngleDeg) {
         if (!Double.isFinite(distanceMeters)) {
             throw new IllegalArgumentException("distanceMeters must be finite");
@@ -736,6 +822,10 @@ public class Shooter extends SubsystemBase {
         return cachedDashboardFeedKickerEnabled;
     }
 
+    public boolean isDashboardSysIdEnabled() {
+        return cachedDashboardSysIdEnabled;
+    }
+
     private ShotSetpoint getDashboardShotSetpoint() {
         return new ShotSetpoint(
                 SmartDashboard.getNumber(DASHBOARD_LEFT_RPM_KEY, ShooterConstants.SHOT_MAP_LEFT_RPM[0]),
@@ -750,6 +840,7 @@ public class Shooter extends SubsystemBase {
         SmartDashboard.setDefaultNumber(DASHBOARD_HOOD_DEG_KEY, ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0]);
         SmartDashboard.setDefaultBoolean(DASHBOARD_FEED_KEY, false);
         SmartDashboard.setDefaultNumber(DASHBOARD_KICKER_TORQUE_KEY, ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_SYSID_ENABLE_KEY, false);
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {

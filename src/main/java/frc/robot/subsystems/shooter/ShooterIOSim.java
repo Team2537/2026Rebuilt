@@ -61,6 +61,8 @@ public class ShooterIOSim implements ShooterIO {
     private boolean rightClosedLoop = false;
     private boolean hoodClosedLoop = false;
 
+    private double leftOpenLoopVolts = 0.0;
+    private double rightOpenLoopVolts = 0.0;
     private double leftAppliedVolts = 0.0;
     private double rightAppliedVolts = 0.0;
     private double hoodAppliedVolts = 0.0;
@@ -71,13 +73,13 @@ public class ShooterIOSim implements ShooterIO {
         leftAppliedVolts = leftClosedLoop
                 ? SHOOTER_KV_VOLTS_PER_RPM * targetLeftRpm
                         + leftVelocityController.calculate(leftShooterSim.getAngularVelocityRPM(), targetLeftRpm)
-                : 0.0;
+                : leftOpenLoopVolts;
         leftAppliedVolts = clampOutputVolts(leftAppliedVolts);
 
         rightAppliedVolts = rightClosedLoop
                 ? SHOOTER_KV_VOLTS_PER_RPM * targetRightRpm
                         + rightVelocityController.calculate(rightShooterSim.getAngularVelocityRPM(), targetRightRpm)
-                : 0.0;
+                : rightOpenLoopVolts;
         rightAppliedVolts = clampOutputVolts(rightAppliedVolts);
 
         hoodAppliedVolts = hoodClosedLoop
@@ -131,12 +133,26 @@ public class ShooterIOSim implements ShooterIO {
     public void setLeftVelocity(double rpm) {
         targetLeftRpm = rpm;
         leftClosedLoop = true;
+        leftOpenLoopVolts = 0.0;
     }
 
     @Override
     public void setRightVelocity(double rpm) {
         targetRightRpm = rpm;
         rightClosedLoop = true;
+        rightOpenLoopVolts = 0.0;
+    }
+
+    @Override
+    public void setLeftVoltage(double volts) {
+        leftClosedLoop = false;
+        leftOpenLoopVolts = volts;
+    }
+
+    @Override
+    public void setRightVoltage(double volts) {
+        rightClosedLoop = false;
+        rightOpenLoopVolts = volts;
     }
 
     @Override
@@ -166,6 +182,8 @@ public class ShooterIOSim implements ShooterIO {
 
         targetLeftRpm = 0.0;
         targetRightRpm = 0.0;
+        leftOpenLoopVolts = 0.0;
+        rightOpenLoopVolts = 0.0;
         kickerOutput = 0.0;
 
         leftVelocityController.reset();

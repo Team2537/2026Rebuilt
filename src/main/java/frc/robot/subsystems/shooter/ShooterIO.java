@@ -40,6 +40,12 @@ public interface ShooterIO {
     /** Sets right shooter velocity in RPM. */
     default void setRightVelocity(double rpm) {}
 
+    /** Sets left shooter open-loop voltage in volts. */
+    default void setLeftVoltage(double volts) {}
+
+    /** Sets right shooter open-loop voltage in volts. */
+    default void setRightVoltage(double volts) {}
+
     /** Sets hood angle in radians. */
     default void setHoodAngle(double angle) {}
 
