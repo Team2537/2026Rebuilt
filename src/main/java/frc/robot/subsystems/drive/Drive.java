@@ -305,7 +305,7 @@ public class Drive extends SubsystemBase {
                 selectedFeedforwards.linearForcesNewtons());
 
         for (int i = 0; i < 4; i++) {
-            modules[i].runSetpoint(appliedSetpointStates[i], true);
+            modules[i].runSetpoint(appliedSetpointStates[i], false);
         }
 
         ChassisSpeeds appliedSpeeds = kinematics.toChassisSpeeds(appliedSetpointStates);

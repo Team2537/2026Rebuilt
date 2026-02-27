@@ -121,8 +121,11 @@ public final class RobotContainer {
     }
 
     public void autonomousInit() {
-        schedule("mode.autonomousInit.selectedAuto", getAutonomousCommand());
-        scheduleHomingAndBackground("mode.autonomousInit");
+        Command selectedAuto = getAutonomousCommand();
+        schedule("mode.autonomousInit.selectedAuto", selectedAuto);
+        if (!commandUsesIntakeOrShooter(selectedAuto)) {
+            scheduleHomingAndBackground("mode.autonomousInit");
+        }
     }
 
     public void teleopInit() {
@@ -155,6 +158,13 @@ public final class RobotContainer {
                 intake.homeCommand().andThen(intake.backgroundCommand()).withName("IntakeHomeThenBackground"));
         schedule(source + ".shooterHomeThenBackground",
                 shooter.homeCommand().andThen(shooter.backgroundCommand()).withName("ShooterHomeThenBackground"));
+    }
+
+    private boolean commandUsesIntakeOrShooter(Command command) {
+        if (command == null) {
+            return false;
+        }
+        return command.getRequirements().contains(intake) || command.getRequirements().contains(shooter);
     }
 
     private void configureCommandTelemetry() {

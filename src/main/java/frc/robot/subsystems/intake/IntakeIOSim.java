@@ -13,7 +13,7 @@ public class IntakeIOSim implements IntakeIO {
     private static final double MAX_VOLTS = 12.0;
     private static final double MAX_ROLLER_RPM = 6500.0;
     private static final double SLOW_RETRACT_VOLTS_LIMIT = 4.0;
-    private static final double HOMING_VOLTS = -1.0;
+    private static final double HOMING_VOLTS = -12.0;
     private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
 
     private static final DCMotor INTAKE_GEARBOX = DCMotor.getKrakenX60Foc(1);

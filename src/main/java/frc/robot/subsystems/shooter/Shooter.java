@@ -17,6 +17,7 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.util.datalog.StringLogEntry;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -855,13 +856,13 @@ public class Shooter extends SubsystemBase {
         BooleanSupplier atHomingStop =
                 () -> Math.abs(inputs.hoodStatorCurrentAmps) > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS;
         return Commands.sequence(
-            Commands.runOnce(() -> io.setHoodVoltage(-2.0), this),
+            Commands.runOnce(() -> io.setHoodVoltage(homingVoltage()), this),
             Commands.waitUntil(atHomingStop)
-                    .withTimeout(ShooterConstants.HOMING_WAIT_TIMEOUT_SEC)
+                    .withTimeout(homingWaitTimeoutSec())
                     .withName("HoodHomeWaitUntil"),
             Commands.runOnce(() -> io.stop(), this),
             Commands.either(
-                Commands.sequence(
+                    Commands.sequence(
                     Commands.runOnce(() -> io.resetHoodEncoder(), this)),
                 Commands.runOnce(
                         () -> {
@@ -874,6 +875,14 @@ public class Shooter extends SubsystemBase {
                 .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
                 .finallyDo(interrupted -> io.stop())
                 .withName("HoodHome");
+    }
+
+    private static double homingVoltage() {
+        return RobotBase.isSimulation() ? -12.0 : -2.0;
+    }
+
+    private static double homingWaitTimeoutSec() {
+        return RobotBase.isReal() ? ShooterConstants.HOMING_WAIT_TIMEOUT_SEC : 1.0;
     }
 
 }

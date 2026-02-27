@@ -1,6 +1,7 @@
 package frc.robot.subsystems.intake;
 
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -116,7 +117,7 @@ public class Intake extends SubsystemBase {
         return Commands.sequence(
                         Commands.runOnce(homeAction),
                         Commands.waitUntil(atHomingStop)
-                                .withTimeout(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC)
+                                .withTimeout(homingWaitTimeoutSec())
                                 .withName(waitCommandName),
                         Commands.runOnce(stopAction),
                         Commands.either(
@@ -124,6 +125,10 @@ public class Intake extends SubsystemBase {
                                 Commands.runOnce(() -> DriverStation.reportWarning(timeoutWarning, false)),
                                 atHomingStop))
                 .withName(commandName);
+    }
+
+    private static double homingWaitTimeoutSec() {
+        return RobotBase.isReal() ? IntakeConstants.HOMING_WAIT_TIMEOUT_SEC : 1.0;
     }
 
     public Command spinRoller() {

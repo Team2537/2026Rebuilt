@@ -262,17 +262,33 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     private void setIntakePosition(double leftTargetRot, double velocity, double acceleration) {
-        leftPositionRequest.Velocity = velocity;
-        leftPositionRequest.Acceleration = acceleration;
-        rightPositionRequest.Velocity = velocity;
-        rightPositionRequest.Acceleration = acceleration;
+        setIntakeMotionProfile(velocity, acceleration);
+        leftPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
+        rightPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(leftTargetRot));
         rightIntakeMotor.setControl(rightPositionRequest.withPosition(applyRightAlignment(leftTargetRot)));
+    }
+
+    private void setIntakeMotionProfile(double velocity, double acceleration) {
+        if (lastIntakeVelocity == velocity && lastIntakeAcceleration == acceleration) {
+            return;
+        }
+
+        var motionMagicConfig = new MotionMagicConfigs()
+                .withMotionMagicCruiseVelocity(velocity)
+                .withMotionMagicAcceleration(acceleration);
+        tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(motionMagicConfig, 0.25));
+        tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(motionMagicConfig, 0.25));
+        lastIntakeVelocity = velocity;
+        lastIntakeAcceleration = acceleration;
     }
 
     private double applyRightAlignment(double leftReference) {
         return IntakeConstants.RIGHT_OPPOSES_LEFT ? leftReference : -leftReference;
     }
+
+    private double lastIntakeVelocity = Double.NaN;
+    private double lastIntakeAcceleration = Double.NaN;
 
     private void configureRightMotor() {
         TalonFXConfiguration config = new TalonFXConfiguration();

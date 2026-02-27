@@ -15,6 +15,9 @@ public class ShooterIOSim implements ShooterIO {
     private static final double SHOOTER_KV_VOLTS_PER_RPM =
             ShooterConstants.MAX_OUTPUT_VOLTS / ShooterConstants.SHOOTER_MAX_RPM;
     private static final double AMBIENT_TEMP_C = 25.0;
+    private static final double HOOD_HOMING_STATOR_CURRENT_AMPS =
+            ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
+    private static final double HOOD_HOMING_STOP_ANGLE_RAD = ShooterConstants.HOOD_MIN_ANGLE_RAD + 0.001;
 
     private final DCMotorSim leftShooterSim = new DCMotorSim(
             LinearSystemId.createDCMotorSystem(
@@ -60,11 +63,14 @@ public class ShooterIOSim implements ShooterIO {
     private boolean leftClosedLoop = false;
     private boolean rightClosedLoop = false;
     private boolean hoodClosedLoop = false;
+    private boolean hoodHomingActive = false;
+    private boolean hoodHomingAtStop = false;
 
     private double leftOpenLoopVolts = 0.0;
     private double rightOpenLoopVolts = 0.0;
     private double leftAppliedVolts = 0.0;
     private double rightAppliedVolts = 0.0;
+    private double hoodOpenLoopVolts = 0.0;
     private double hoodAppliedVolts = 0.0;
     private double kickerAppliedVolts = 0.0;
 
@@ -82,9 +88,16 @@ public class ShooterIOSim implements ShooterIO {
                 : rightOpenLoopVolts;
         rightAppliedVolts = clampOutputVolts(rightAppliedVolts);
 
-        hoodAppliedVolts = hoodClosedLoop
+        double requestedHoodVolts = hoodClosedLoop
                 ? hoodPositionController.calculate(hoodSim.getAngularPositionRad(), targetHoodAngleRad)
-                : 0.0;
+                : hoodOpenLoopVolts;
+        if (hoodHomingActive) {
+            if (hoodSim.getAngularPositionRad() <= HOOD_HOMING_STOP_ANGLE_RAD) {
+                hoodHomingAtStop = true;
+            }
+            requestedHoodVolts = hoodHomingAtStop ? 0.0 : requestedHoodVolts;
+        }
+        hoodAppliedVolts = requestedHoodVolts;
         hoodAppliedVolts = clampOutputVolts(hoodAppliedVolts);
 
         kickerAppliedVolts = switch (kickerMode) {
@@ -119,7 +132,11 @@ public class ShooterIOSim implements ShooterIO {
         inputs.hoodPositionRad = hoodSim.getAngularPositionRad();
         inputs.hoodVelocityRpm = hoodSim.getAngularVelocityRPM();
         inputs.hoodAppliedVolts = hoodAppliedVolts;
-        inputs.hoodSupplyCurrentAmps = Math.abs(hoodSim.getCurrentDrawAmps());
+        double hoodSupplyCurrentAmps = Math.abs(hoodSim.getCurrentDrawAmps());
+        inputs.hoodSupplyCurrentAmps = hoodSupplyCurrentAmps;
+        inputs.hoodStatorCurrentAmps = hoodHomingActive && hoodHomingAtStop
+                ? HOOD_HOMING_STATOR_CURRENT_AMPS
+                : hoodSupplyCurrentAmps;
         inputs.hoodTempCelsius = AMBIENT_TEMP_C;
 
         inputs.kickerPositionRad = kickerSim.getAngularPositionRad();
@@ -159,6 +176,9 @@ public class ShooterIOSim implements ShooterIO {
     public void setHoodAngle(double angle) {
         targetHoodAngleRad = angle;
         hoodClosedLoop = true;
+        hoodOpenLoopVolts = 0.0;
+        hoodHomingActive = false;
+        hoodHomingAtStop = false;
     }
 
     @Override
@@ -178,6 +198,9 @@ public class ShooterIOSim implements ShooterIO {
         leftClosedLoop = false;
         rightClosedLoop = false;
         hoodClosedLoop = false;
+        hoodOpenLoopVolts = 0.0;
+        hoodHomingActive = false;
+        hoodHomingAtStop = false;
         kickerMode = KickerControlMode.OFF;
 
         targetLeftRpm = 0.0;
@@ -189,6 +212,16 @@ public class ShooterIOSim implements ShooterIO {
         leftVelocityController.reset();
         rightVelocityController.reset();
         hoodPositionController.reset();
+    }
+
+    @Override
+    public void setHoodVoltage(double volts) {
+        hoodClosedLoop = false;
+        hoodOpenLoopVolts = volts;
+        hoodHomingActive = volts < 0.0;
+        if (!hoodHomingActive) {
+            hoodHomingAtStop = false;
+        }
     }
 
     private static double clampOutputVolts(double volts) {
