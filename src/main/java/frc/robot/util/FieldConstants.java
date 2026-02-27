@@ -4,7 +4,6 @@ import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import java.io.IOException;
@@ -19,9 +18,8 @@ import java.util.stream.Stream;
 public final class FieldConstants {
   private FieldConstants() {}
 
-  // Hub / scoring target constants (game-specific, centralised here)
-  public static final int HUB_TAG_ID = 26;
-  public static final double HUB_TARGET_X_OFFSET_METERS = 1.0;
+  public static final int BLUE_HUB_TAG_ID = 26;
+  public static final int RED_HUB_TAG_ID = 10;
 
   private static final String REBUILT_LAYOUT_TOKEN = "rebuilt";
   private static final List<Path> LAYOUT_SEARCH_DIRECTORIES =
@@ -33,14 +31,21 @@ public final class FieldConstants {
   public static final AprilTagFieldLayout TAG_LAYOUT = loadRebuiltLayout();
   public static final double FIELD_LENGTH_METERS = TAG_LAYOUT.getFieldLength();
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
+  private static final Translation2d BLUE_HUB_TARGET_TRANSLATION =
+      new Translation2d(4.607866, 4.0213534);
+  private static final Translation2d RED_HUB_TARGET_TRANSLATION =
+      new Translation2d(
+          FIELD_LENGTH_METERS - BLUE_HUB_TARGET_TRANSLATION.getX(),
+          BLUE_HUB_TARGET_TRANSLATION.getY());
 
-  /** Returns the hub scoring target position on the field, or null if the tag layout lacks the hub tag. */
+  /** Returns the alliance-specific hub scoring target position on the field. */
   public static Translation2d getHubTargetTranslation() {
-    return TAG_LAYOUT.getTagPose(HUB_TAG_ID)
-        .map(tagPose -> new Translation2d(
-            tagPose.getX() + HUB_TARGET_X_OFFSET_METERS,
-            tagPose.getY()))
-        .orElse(null);
+    return isRedAlliance() ? RED_HUB_TARGET_TRANSLATION : BLUE_HUB_TARGET_TRANSLATION;
+  }
+
+  /** Returns the alliance-specific hub reference tag ID. */
+  public static int getAllianceHubTagId() {
+    return isRedAlliance() ? RED_HUB_TAG_ID : BLUE_HUB_TAG_ID;
   }
 
   /** Returns the field heading from the robot pose toward the hub target, or null if unavailable. */
@@ -49,9 +54,6 @@ public final class FieldConstants {
       return null;
     }
     Translation2d hubTarget = getHubTargetTranslation();
-    if (hubTarget == null) {
-      return null;
-    }
     Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
     if (toHub.getNorm() <= 1e-6) {
       return null;
@@ -95,5 +97,9 @@ public final class FieldConstants {
     }
     String lower = path.getFileName().toString().toLowerCase(Locale.ROOT);
     return lower.endsWith(".json") && lower.contains(REBUILT_LAYOUT_TOKEN);
+  }
+
+  private static boolean isRedAlliance() {
+    return DriverStation.getAlliance().map(alliance -> alliance == DriverStation.Alliance.Red).orElse(false);
   }
 }

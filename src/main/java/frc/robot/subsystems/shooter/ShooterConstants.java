@@ -1,5 +1,6 @@
 package frc.robot.subsystems.shooter;
 
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.RobotBase;
 
@@ -40,13 +41,22 @@ public final class ShooterConstants {
     public static final double MOTION_COMP_TIME_SCALE = 1.0;
 
     /**
-     * Forward offset from robot center to the muzzle along the firing axis (meters).
-     * Negative because the muzzle is behind the robot center (shooter fires backward),
-     * which means the muzzle is CLOSER to the hub by this amount.
-     * Used to correct motion compensation distance — the ball launches from the muzzle,
-     * not the robot center.
+     * Shooter position relative to robot center, in robot coordinates (x=forward, y=left).
+     * Negative X because the shooter fires backward (muzzle is behind robot center).
+     * Used for velocity transform (accounting for angular velocity at the shooter)
+     * and for 3D pose visualization in AdvantageKit.
      */
-    public static final double MUZZLE_OFFSET_FIRING_AXIS_METERS = -0.32;
+    public static final Translation2d ROBOT_TO_SHOOTER_OFFSET = new Translation2d(-0.32, 0.0);
+
+    /** Height of the shooter above the ground (meters), for 3D pose visualization. */
+    public static final double SHOOTER_HEIGHT_METERS = 0.6;
+
+    /**
+     * Phase delay in seconds to compensate for system latency (sensor processing,
+     * network transmission, actuator response). Applied before the iterative
+     * time-distance convergence loop to project the robot pose forward.
+     */
+    public static final double PHASE_DELAY_SEC = 0.03;
 
     /**
      * Seed shot map for interpolation.

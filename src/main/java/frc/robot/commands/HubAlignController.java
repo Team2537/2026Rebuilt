@@ -2,6 +2,7 @@ package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.ProfiledPIDController;
+import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
@@ -23,12 +24,17 @@ public class HubAlignController {
     private static final double MAX_OMEGA_RAD_PER_SEC = 8.0;
     private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 45.0;
     private static final double TARGET_HOLD_SEC = 0.12;
+    private static final double HEADING_FEEDFORWARD_GAIN = 1.0;
+    private static final int TARGET_VELOCITY_FILTER_TAPS = 5;
 
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
+    private final LinearFilter targetVelocityFilter = LinearFilter.movingAverage(TARGET_VELOCITY_FILTER_TAPS);
 
     private Rotation2d lastTargetHeading = null;
     private double lastTargetTimestampSec = Double.NaN;
+    private Rotation2d prevEffectiveTarget = null;
+    private double prevEffectiveTargetTimeSec = Double.NaN;
 
     public HubAlignController() {
         pidController = new ProfiledPIDController(
@@ -54,6 +60,9 @@ public class HubAlignController {
         }
         omegaLimiter.reset(0.0);
         pidController.reset(currentHeadingRad, 0.0);
+        targetVelocityFilter.reset();
+        prevEffectiveTarget = null;
+        prevEffectiveTargetTimeSec = Double.NaN;
     }
 
     /**
@@ -94,11 +103,33 @@ public class HubAlignController {
                 "Drive/AutoAlign/TargetAgeSec",
                 Double.isFinite(lastTargetTimestampSec) ? nowSec - lastTargetTimestampSec : Double.NaN);
 
+        // Compute target heading velocity for feedforward — helps track a moving aim point
+        double targetVelocityRadPerSec = 0.0;
+        if (effectiveTarget != null && prevEffectiveTarget != null
+                && Double.isFinite(prevEffectiveTargetTimeSec)) {
+            double dt = nowSec - prevEffectiveTargetTimeSec;
+            if (dt > 1e-6 && dt < 0.1) {
+                double rawVelocity = MathUtil.angleModulus(
+                        effectiveTarget.minus(prevEffectiveTarget).getRadians()) / dt;
+                targetVelocityRadPerSec = targetVelocityFilter.calculate(rawVelocity);
+            }
+        }
+        if (effectiveTarget != null) {
+            prevEffectiveTarget = effectiveTarget;
+            prevEffectiveTargetTimeSec = nowSec;
+        } else {
+            prevEffectiveTarget = null;
+            prevEffectiveTargetTimeSec = Double.NaN;
+            targetVelocityFilter.reset();
+        }
+        double feedforwardOmega = targetVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN;
+
         if (effectiveTarget == null) {
             clearTargetTracking();
             pidController.reset(currentHeadingRad, 0.0);
             double fallbackLimited = omegaLimiter.calculate(fallbackOmega);
             Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", 0.0);
             Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", fallbackLimited);
             return fallbackLimited;
         }
@@ -106,15 +137,23 @@ public class HubAlignController {
         double targetHeadingRad = effectiveTarget.getRadians();
         double headingErrorRad = MathUtil.angleModulus(targetHeadingRad - currentHeadingRad);
         double feedbackOmega = pidController.calculate(currentHeadingRad, targetHeadingRad);
-        double commandedOmega = Math.abs(headingErrorRad) <= TOLERANCE_RAD
-                ? 0.0
-                : MathUtil.clamp(feedbackOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
+        double commandedOmega;
+        if (Math.abs(headingErrorRad) <= TOLERANCE_RAD) {
+            // Within tolerance: use only feedforward to maintain smooth tracking of a
+            // moving target. Without this, the robot would stop, drift out of tolerance,
+            // correct, and stop again — causing chatter.
+            commandedOmega = feedforwardOmega;
+        } else {
+            commandedOmega = MathUtil.clamp(
+                    feedbackOmega + feedforwardOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
+        }
         if (Math.abs(commandedOmega) > 0.0 && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
             commandedOmega = Math.copySign(MIN_OMEGA_RAD_PER_SEC, commandedOmega);
         }
         double limitedOmega = omegaLimiter.calculate(commandedOmega);
 
         Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Units.radiansToDegrees(headingErrorRad));
+        Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", feedforwardOmega);
         Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", limitedOmega);
         return limitedOmega;
     }

@@ -27,8 +27,8 @@ public final class DriveConstants {
     private static final double SLOW_MODE_MAX_ANGULAR_ACCELERATION_RAD_PER_SEC_SQ =
             DegreesPerSecondPerSecond.of(450.0).in(RadiansPerSecondPerSecond);
 
-    private static final double SHOOTING_MAX_LINEAR_VELOCITY_MPS = 0.5;
-    private static final double SHOOTING_MAX_LINEAR_ACCELERATION_MPSSQ = 1.0;
+    private static final double SHOOTING_MAX_LINEAR_VELOCITY_MPS = 2.0;
+    private static final double SHOOTING_MAX_LINEAR_ACCELERATION_MPSSQ = 5.0;
     private static final double SHOOTING_MAX_ANGULAR_VELOCITY_RAD_PER_SEC =
             DegreesPerSecond.of(300.0).in(RadiansPerSecond);
     private static final double SHOOTING_MAX_ANGULAR_ACCELERATION_RAD_PER_SEC_SQ =

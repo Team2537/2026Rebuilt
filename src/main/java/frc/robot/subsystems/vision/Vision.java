@@ -45,8 +45,6 @@ public final class Vision extends SubsystemBase {
     private static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
     private static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
     private static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
-    private static final int HUB_TAG_ID = FieldConstants.HUB_TAG_ID;
-    private static final Set<Integer> HUB_TAG_IDS = determineHubTagIds();
     private static final double MAX_VISION_TRANSLATION_DELTA_METERS = 1.0;
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
@@ -546,9 +544,10 @@ public final class Vision extends SubsystemBase {
 
     private TargetTransform findBestHubTarget(double nowSeconds) {
         TargetTransform bestHubTarget = null;
+        Set<Integer> hubTagIds = determineHubTagIds(FieldConstants.getAllianceHubTagId());
         for (VisionIOInputsAutoLogged input : inputs) {
             for (TargetTransform target : input.targetTransforms) {
-                if (!HUB_TAG_IDS.contains(target.fiducialId())) {
+                if (!hubTagIds.contains(target.fiducialId())) {
                     continue;
                 }
                 if (!isHubTargetReliable(target, nowSeconds)) {
@@ -574,14 +573,14 @@ public final class Vision extends SubsystemBase {
         return Double.isFinite(ageSeconds) && ageSeconds >= 0.0 && ageSeconds <= HUB_YAW_MAX_AGE_SECONDS;
     }
 
-    private static Set<Integer> determineHubTagIds() {
-        return FieldConstants.TAG_LAYOUT.getTagPose(HUB_TAG_ID)
+    private static Set<Integer> determineHubTagIds(int referenceTagId) {
+        return FieldConstants.TAG_LAYOUT.getTagPose(referenceTagId)
                 .map(referenceTagPose -> FieldConstants.TAG_LAYOUT.getTags().stream()
                         .filter(tag -> tag.pose.getTranslation()
                                 .getDistance(referenceTagPose.getTranslation()) <= HUB_TAG_CLUSTER_RADIUS_METERS)
                         .map(tag -> tag.ID)
                         .collect(Collectors.toUnmodifiableSet()))
-                .orElse(Set.of(HUB_TAG_ID));
+                .orElse(Set.of(referenceTagId));
     }
 
     private static final class NullVisionIO implements VisionIO {

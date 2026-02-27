@@ -355,36 +355,51 @@ public class Shooter extends SubsystemBase {
                     null);
         }
 
-        ChassisSpeeds fieldRelativeSpeeds =
-                ChassisSpeeds.fromRobotRelativeSpeeds(robotRelativeSpeeds, robotPose.getRotation());
-        Translation2d robotFieldVelocity =
-                new Translation2d(fieldRelativeSpeeds.vxMetersPerSecond, fieldRelativeSpeeds.vyMetersPerSecond);
+        // Transform robot velocity to shooter velocity to account for angular velocity effects.
+        // The ball inherits the shooter's velocity at launch, not the robot center's velocity.
+        // v_shooter = v_center + omega x r (2D cross product: omega_z x (x,y) = (-omega*y, omega*x))
+        Translation2d shooterOffset = ShooterConstants.ROBOT_TO_SHOOTER_OFFSET;
+        double shooterVxRobot = robotRelativeSpeeds.vxMetersPerSecond
+                - robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getY();
+        double shooterVyRobot = robotRelativeSpeeds.vyMetersPerSecond
+                + robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getX();
+        ChassisSpeeds shooterFieldSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+                new ChassisSpeeds(shooterVxRobot, shooterVyRobot, robotRelativeSpeeds.omegaRadiansPerSecond),
+                robotPose.getRotation());
+        Translation2d shooterFieldVelocity = new Translation2d(
+                shooterFieldSpeeds.vxMetersPerSecond, shooterFieldSpeeds.vyMetersPerSecond);
 
         // Velocity decomposition for diagnostics
         Translation2d towardUnit = new Translation2d(toHubVector.getX() / rangeMeters, toHubVector.getY() / rangeMeters);
         Translation2d perpendicularUnit = new Translation2d(-towardUnit.getY(), towardUnit.getX());
         double velocityTowardHubMetersPerSec =
-                robotFieldVelocity.getX() * towardUnit.getX() + robotFieldVelocity.getY() * towardUnit.getY();
+                shooterFieldVelocity.getX() * towardUnit.getX() + shooterFieldVelocity.getY() * towardUnit.getY();
         double velocityPerpendicularHubMetersPerSec =
-                robotFieldVelocity.getX() * perpendicularUnit.getX()
-                        + robotFieldVelocity.getY() * perpendicularUnit.getY();
+                shooterFieldVelocity.getX() * perpendicularUnit.getX()
+                        + shooterFieldVelocity.getY() * perpendicularUnit.getY();
 
         // Iterative "aim from predicted pose" model.
-        // The ball inherits the robot's velocity at launch, so we must aim as if shooting from
+        // The ball inherits the shooter's velocity at launch, so we must aim as if shooting from
         // the position the robot will occupy when the ball arrives at the target.
         // Time-in-air depends on the compensated distance (which determines shot parameters),
         // and compensated distance depends on the prediction time — iterate to converge.
         Translation2d rawRobotTranslation = robotPose.getTranslation();
         Rotation2d rawRobotHeading = robotPose.getRotation();
 
+        // Apply phase delay to compensate for system latency (sensors, network, actuators).
+        // Project the starting position forward so the iterative loop starts from where
+        // the robot will be when the command actually takes effect.
+        Translation2d phaseDelayedTranslation = rawRobotTranslation.plus(
+                shooterFieldVelocity.times(ShooterConstants.PHASE_DELAY_SEC));
+
         double timeInAirSec = lookupTimeInAir(rawDistanceMeters);
         double effectiveTimeSec = timeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
-        Translation2d predictedRobotTranslation = rawRobotTranslation;
+        Translation2d predictedRobotTranslation = phaseDelayedTranslation;
         Translation2d compensatedVector = toHubVector;
         double compensatedDistanceMeters = rawDistanceMeters;
 
         for (int i = 0; i < MOTION_COMP_ITERATIONS; i++) {
-            predictedRobotTranslation = rawRobotTranslation.plus(robotFieldVelocity.times(effectiveTimeSec));
+            predictedRobotTranslation = phaseDelayedTranslation.plus(shooterFieldVelocity.times(effectiveTimeSec));
             compensatedVector = hubTarget.minus(predictedRobotTranslation);
             compensatedDistanceMeters = compensatedVector.getNorm();
             if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
@@ -407,7 +422,7 @@ public class Shooter extends SubsystemBase {
         }
 
         // Final prediction with converged time — single pose for both heading and distance
-        predictedRobotTranslation = rawRobotTranslation.plus(robotFieldVelocity.times(effectiveTimeSec));
+        predictedRobotTranslation = phaseDelayedTranslation.plus(shooterFieldVelocity.times(effectiveTimeSec));
         compensatedVector = hubTarget.minus(predictedRobotTranslation);
         compensatedDistanceMeters = compensatedVector.getNorm();
         if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
@@ -419,9 +434,9 @@ public class Shooter extends SubsystemBase {
         Rotation2d compensatedHeading =
                 compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : rawHeading;
 
-        // NOTE: Muzzle offset from robot center (0.32m toward hub) is accounted for in the
-        // shot map calibration — the shot map RPM/hood values are tuned so that the ball,
-        // launched from the muzzle position, crosses z=1.83m at the correct horizontal distance.
+        // NOTE: Shooter offset from robot center is accounted for in the shot map calibration —
+        // the shot map RPM/hood values are tuned so that the ball, launched from the shooter,
+        // crosses z=1.83m at the correct horizontal distance.
 
         if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
             Rotation2d predictedRobotHeading = new Rotation2d(
@@ -450,6 +465,15 @@ public class Shooter extends SubsystemBase {
                     hubTarget,
                     true);
         }
+
+        // Publish shooter pose for AdvantageKit visualization (verify offset is correct)
+        Translation2d shooterFieldPos = rawRobotTranslation.plus(
+                shooterOffset.rotateBy(robotPose.getRotation()));
+        Logger.recordOutput("Shooter/ShooterPose3d", new Pose3d(
+                shooterFieldPos.getX(),
+                shooterFieldPos.getY(),
+                ShooterConstants.SHOOTER_HEIGHT_METERS,
+                new Rotation3d(0.0, 0.0, robotPose.getRotation().getRadians())));
 
         return publishMotionCompensation(
                 rawDistanceMeters,
