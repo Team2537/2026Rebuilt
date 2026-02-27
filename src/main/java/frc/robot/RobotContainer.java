@@ -63,6 +63,13 @@ public final class RobotContainer {
             ? Constants.PERF_LOG_DECIMATION_CYCLES
             : 1;
     private static final String UNKNOWN_COMMAND_SOURCE = "unknown";
+    private static final String DASHBOARD_OVERRIDE_AUTO_AIM_KEY = "Overrides/OverrideAutoAim";
+    private static final String DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY = "Overrides/AimDistanceMeters";
+    private static final String DASHBOARD_OVERRIDE_CLEAR_ALL_KEY = "Overrides/ClearAll";
+    private static final String DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY = "Overrides/Status/OverrideAutoAimActive";
+    private static final String DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY = "Overrides/Status/AimDistanceMeters";
+    private static final double DEFAULT_OVERRIDE_AIM_DISTANCE_METERS = 1.5;
+    private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
 
     private final Drive drive;
     private final Vision vision;
@@ -102,7 +109,10 @@ public final class RobotContainer {
 
         configureCommandTelemetry();
         configureBindings();
+        initDashboardOverrideEntries();
         publishDashboardSysIdCommands();
+        publishDashboardActionCommands();
+        publishDashboardOverrideCommands();
     }
 
     public Command getAutonomousCommand() {
@@ -114,6 +124,7 @@ public final class RobotContainer {
         if ((commandTelemetryCycle & (COMMAND_LOG_EVERY_CYCLES - 1)) == 0) {
             updateCommandLoggingOutputs(Timer.getFPGATimestamp());
         }
+        updateDashboardOverrideStatus();
     }
 
     public void disabledInit() {
@@ -481,29 +492,10 @@ public final class RobotContainer {
                                         shooter.backgroundCommand()))
                         .withName("ScheduleShooterBackground"));
         bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
-        bindOnTrue(driverController.povLeft(), "driver.povLeft.onTrue", Commands.runOnce(() -> {
-            if (vision == null) {
-                DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: vision is disabled.",
-                        false);
-                return;
-            }
-            Pose2d unifiedVisionPose = vision.getUnifiedRobotPoseRaw();
-            if (unifiedVisionPose != null) {
-                Logger.recordOutput("vision/odometryOverrideSource", "rawUnifiedVisionPose");
-            } else {
-                unifiedVisionPose = vision.getUnifiedRobotPose();
-                Logger.recordOutput("vision/odometryOverrideSource", "filteredUnifiedVisionPose");
-            }
-
-            if (unifiedVisionPose == null) {
-                DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: no recent vision pose is available.",
-                        false);
-                return;
-            }
-            drive.setPose(unifiedVisionPose);
-        }, drive).withName("DriveSetOdometryFromUnifiedVision"));
+        bindOnTrue(
+                driverController.povLeft(),
+                "driver.povLeft.onTrue",
+                createSetOdometryFromUnifiedVisionCommand());
 
         Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
         Supplier<Shooter.MotionCompensation> motionCompensationSupplier =
@@ -523,7 +515,7 @@ public final class RobotContainer {
         Trigger aimTrigger = driverController.rightBumper();
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
         bindWhileTrue(shootTrigger, "driver.shoot.whileTrue", withConstraintProfile(
-                createTeleopShootCommand(
+                createTeleopSelectedShootCommand(
                         () -> -driverController.getLeftY(),
                         () -> -driverController.getLeftX(),
                         () -> -driverController.getRightX(),
@@ -531,14 +523,12 @@ public final class RobotContainer {
                         teleopAutoAlignHeadingSupplier,
                         teleopAimReadySupplier),
                 DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE));
-        bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", Commands.parallel(
-                createTeleopAutoAlignCommand(
-                        () -> -driverController.getLeftY(),
-                        () -> -driverController.getLeftX(),
-                        () -> -driverController.getRightX(),
-                        teleopAutoAlignHeadingSupplier),
-                shootCoordinator.aimForDistance(hubDistanceSupplier))
-                .withName("ShooterAimOnly"));
+        bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", createTeleopSelectedAimOnlyCommand(
+                () -> -driverController.getLeftY(),
+                () -> -driverController.getLeftX(),
+                () -> -driverController.getRightX(),
+                hubDistanceSupplier,
+                teleopAutoAlignHeadingSupplier));
         bindWhileTrue(
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",
@@ -591,6 +581,88 @@ public final class RobotContainer {
                         "dashboard.shooterSysId.dynamicReverse",
                         shooter.sysIdDynamic(SysIdRoutine.Direction.kReverse)
                                 .withName("ShooterSysIdDynamicReverse")));
+    }
+
+    private void publishDashboardActionCommands() {
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "IntakeHome",
+                "dashboard.actions.intakeHome",
+                intake.homeCommand().withName("DashboardIntakeHome"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "ShooterHome",
+                "dashboard.actions.shooterHome",
+                shooter.homeCommand().withName("DashboardShooterHome"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "StopManipulators",
+                "dashboard.actions.stopManipulators",
+                stopManipulatorsCommand().withName("DashboardStopManipulators"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "TransferRun",
+                "dashboard.actions.transferRun",
+                transfer.runCommand().withName("DashboardTransferRun"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "ShooterStop",
+                "dashboard.actions.shooterStop",
+                shooter.stopCommand().withName("DashboardShooterStop"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "DriveStopWithX",
+                "dashboard.actions.driveStopWithX",
+                Commands.runOnce(drive::stopWithX, drive).withName("DashboardDriveStopWithX"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "DriveResetOdometryAndHeading",
+                "dashboard.actions.driveResetOdometryAndHeading",
+                DriveCommands.resetOdometryAndHeading(drive).withName("DashboardDriveResetOdometryAndHeading"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "DriveSetOdometryFromUnifiedVision",
+                "dashboard.actions.driveSetOdometryFromUnifiedVision",
+                createSetOdometryFromUnifiedVisionCommand().withName("DashboardDriveSetOdometryFromUnifiedVision"));
+    }
+
+    private void publishDashboardOverrideCommands() {
+        putDashboardCommand(
+                DASHBOARD_OVERRIDE_CLEAR_ALL_KEY,
+                "dashboard.overrides.clearAll",
+                clearAllOverridesCommand());
+    }
+
+    private void putDashboardCommand(String dashboardKey, String source, Command command) {
+        SmartDashboard.putData(dashboardKey, withCommandSource(source, command));
+    }
+
+    private void initDashboardOverrideEntries() {
+        SmartDashboard.setDefaultBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
+        SmartDashboard.setDefaultNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
+        SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY, false);
+        SmartDashboard.putNumber(DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
+    }
+
+    private void updateDashboardOverrideStatus() {
+        boolean overrideAutoAimEnabled = isDashboardOverrideAutoAimEnabled();
+        double overrideAimDistanceMeters = getDashboardOverrideAimDistanceMeters();
+        SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY, overrideAutoAimEnabled);
+        SmartDashboard.putNumber(DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY, overrideAimDistanceMeters);
+        Logger.recordOutput("dashboard/overrides/autoAimEnabled", overrideAutoAimEnabled);
+        Logger.recordOutput("dashboard/overrides/aimDistanceMeters", overrideAimDistanceMeters);
+    }
+
+    private boolean isDashboardOverrideAutoAimEnabled() {
+        return SmartDashboard.getBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
+    }
+
+    private double getDashboardOverrideAimDistanceMeters() {
+        double distanceMeters =
+                SmartDashboard.getNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
+        if (Double.isFinite(distanceMeters) && distanceMeters > 0.0) {
+            return distanceMeters;
+        }
+        return DEFAULT_OVERRIDE_AIM_DISTANCE_METERS;
+    }
+
+    private Command clearAllOverridesCommand() {
+        return Commands.runOnce(() -> {
+            SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
+            SmartDashboard.putNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
+        }).withName("DashboardClearAllOverrides");
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
@@ -700,6 +772,62 @@ public final class RobotContainer {
                 .withName("ShooterTriggerAimAndShoot");
     }
 
+    private Command createTeleopSelectedShootCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier aimReadySupplier) {
+        return Commands.either(
+                createTeleopOverrideAutoAimShootCommand(xSupplier, ySupplier, omegaFallbackSupplier),
+                createTeleopShootCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        distanceMetersSupplier,
+                        targetHeadingSupplier,
+                        aimReadySupplier),
+                this::isDashboardOverrideAutoAimEnabled)
+                .withName("ShooterTriggerSelectedMode");
+    }
+
+    private Command createTeleopOverrideAutoAimShootCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier) {
+        return Commands.parallel(
+                DriveCommands.joystickDrive(
+                        drive,
+                        xSupplier,
+                        ySupplier,
+                        omegaSupplier)
+                        .withName("DriveJoystickOverrideAutoAim"),
+                shootCoordinator.shootForDistance(this::getDashboardOverrideAimDistanceMeters, () -> true)
+                        .withName("ShooterShootOverrideDistance"))
+                .withName("ShooterTriggerOverrideAutoAimShoot");
+    }
+
+    private Command createTeleopSelectedAimOnlyCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier) {
+        Command normalAimOnly = Commands.parallel(
+                createTeleopAutoAlignCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        targetHeadingSupplier),
+                shootCoordinator.aimForDistance(distanceMetersSupplier))
+                .withName("ShooterAimOnly");
+        Command overrideAimOnly = shootCoordinator.aimForDistance(this::getDashboardOverrideAimDistanceMeters)
+                .withName("ShooterAimOnlyOverrideDistance");
+        return Commands.either(overrideAimOnly, normalAimOnly, this::isDashboardOverrideAutoAimEnabled)
+                .withName("ShooterAimOnlySelectedMode");
+    }
+
     private Command withConstraintProfile(Command command, DriveConstants.ConstraintProfile profile) {
         return command
                 .beforeStarting(() -> drive.setConstraintProfileActive(profile, true))
@@ -709,6 +837,32 @@ public final class RobotContainer {
     private Command stopManipulatorsCommand() {
         return Commands.parallel(shooter.stopCommand(), transfer.stopCommand(), intake.stopAndRetractCommand())
                 .withName("StopManipulators");
+    }
+
+    private Command createSetOdometryFromUnifiedVisionCommand() {
+        return Commands.runOnce(() -> {
+            if (vision == null) {
+                DriverStation.reportWarning(
+                        "Cannot set odometry from unified vision pose: vision is disabled.",
+                        false);
+                return;
+            }
+            Pose2d unifiedVisionPose = vision.getUnifiedRobotPoseRaw();
+            if (unifiedVisionPose != null) {
+                Logger.recordOutput("vision/odometryOverrideSource", "rawUnifiedVisionPose");
+            } else {
+                unifiedVisionPose = vision.getUnifiedRobotPose();
+                Logger.recordOutput("vision/odometryOverrideSource", "filteredUnifiedVisionPose");
+            }
+
+            if (unifiedVisionPose == null) {
+                DriverStation.reportWarning(
+                        "Cannot set odometry from unified vision pose: no recent vision pose is available.",
+                        false);
+                return;
+            }
+            drive.setPose(unifiedVisionPose);
+        }, drive).withName("DriveSetOdometryFromUnifiedVision");
     }
 
 }
