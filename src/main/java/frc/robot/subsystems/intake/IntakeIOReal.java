@@ -5,7 +5,6 @@ import static frc.robot.util.PhoenixUtil.tryUntilOk;
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
-import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
@@ -151,27 +150,12 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     @Override
-    public void retract() {
-        setIntakePosition(
-                IntakeConstants.RETRACTED_POSITION_ROT,
-                IntakeConstants.INTAKE_VELOCITY,
-                IntakeConstants.INTAKE_ACCELERATION);
-    }
-
-    @Override
-    public void extend() {
-        setIntakePosition(
-                IntakeConstants.EXTENDED_POSITION_ROT,
-                IntakeConstants.INTAKE_VELOCITY,
-                IntakeConstants.INTAKE_ACCELERATION);
-    }
-
-    @Override
-    public void slowRetract() {
-        setIntakePosition(
-                IntakeConstants.RETRACTED_POSITION_ROT,
-                IntakeConstants.SLOW_INTAKE_VELOCITY,
-                IntakeConstants.SLOW_INTAKE_ACCELERATION);
+    public void setIntakePosition(
+            double leftTargetRot,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts) {
+        setIntakePosition(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq);
     }
 
     @Override
@@ -181,30 +165,34 @@ public class IntakeIOReal implements IntakeIO {
     }
 
     @Override
-    public void homeLeft() {
-        setLeftCurrentLimits(true);
-        leftIntakeMotor.setControl(leftVoltageRequest.withOutput(-2.0));
+    public void setLeftIntakeVoltage(double volts) {
+        leftIntakeMotor.setControl(leftVoltageRequest.withOutput(MathUtil.clamp(volts, -12.0, 12.0)));
     }
 
     @Override
-    public void homeRight() {
-        setRightCurrentLimits(true);
-        rightIntakeMotor.setControl(rightVoltageRequest.withOutput(-2.0));
+    public void setRightIntakeVoltage(double volts) {
+        rightIntakeMotor.setControl(rightVoltageRequest.withOutput(MathUtil.clamp(volts, -12.0, 12.0)));
     }
 
     @Override
     public void stop() {
-        stopLeft();
-        stopRight();
+        stopIntake();
+        stopRoller();
     }
 
     @Override
-    public void stopLeft(){
+    public void stopIntake() {
+        stopLeftIntake();
+        stopRightIntake();
+    }
+
+    @Override
+    public void stopLeftIntake() {
         leftIntakeMotor.setControl(neutralRequest);
     }
 
     @Override
-    public void stopRight() {
+    public void stopRightIntake() {
         rightIntakeMotor.setControl(neutralRequest);
     }
 
@@ -233,32 +221,6 @@ public class IntakeIOReal implements IntakeIO {
         config.CurrentLimits.SupplyCurrentLimit = IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(config, 0.25));
-    }
-
-    private void setLeftCurrentLimits(boolean high) {
-        var limits = new CurrentLimitsConfigs();
-        limits.StatorCurrentLimit = high
-                ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS
-                : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
-        limits.StatorCurrentLimitEnable = true;
-        limits.SupplyCurrentLimit = high
-                ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS
-                : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
-        limits.SupplyCurrentLimitEnable = true;
-        tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(limits, 0.25));
-    }
-
-    private void setRightCurrentLimits(boolean high) {
-        var limits = new CurrentLimitsConfigs();
-        limits.StatorCurrentLimit = high
-                ? IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS
-                : IntakeConstants.INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW;
-        limits.StatorCurrentLimitEnable = true;
-        limits.SupplyCurrentLimit = high
-                ? IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS
-                : IntakeConstants.INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW;
-        limits.SupplyCurrentLimitEnable = true;
-        tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(limits, 0.25));
     }
 
     private void setIntakePosition(double leftTargetRot, double velocity, double acceleration) {

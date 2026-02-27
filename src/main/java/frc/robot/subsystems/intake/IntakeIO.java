@@ -29,39 +29,39 @@ public interface IntakeIO {
 
     public default void setRollerRpm(double rpm) {
     }
-    
-    public default void retract(){
+
+    public default void setIntakePosition(
+            double leftTargetRot,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts) {
     }
 
-    public default void extend(){
+    public default void setLeftIntakeVoltage(double volts) {
     }
 
-    public default void homeLeft(){
+    public default void setRightIntakeVoltage(double volts) {
     }
 
-    public default void homeRight(){
+    public default void resetEncoders() {
     }
 
-    public default void home() {
-        homeLeft();
-        homeRight();
+    public default void stop() {
+        stopIntake();
+        stopRoller();
     }
 
-    public default void slowRetract(){
+    public default void stopIntake() {
+        stopLeftIntake();
+        stopRightIntake();
     }
 
-    public default void resetEncoders(){
+    public default void stopLeftIntake() {
     }
 
-    public default void stop(){
+    public default void stopRightIntake() {
     }
 
-    public default void stopLeft(){
-    }
-
-    public default void stopRight(){
-    }
-
-    public default void stopRoller(){
+    public default void stopRoller() {
     }
 }

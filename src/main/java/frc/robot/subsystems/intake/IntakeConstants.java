@@ -50,7 +50,10 @@ public final class IntakeConstants {
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
     public static final double POSITION_TOLERANCE_ROT = 0.25;
     public static final double MOVE_TIMEOUT_SEC = 1.5;
+    public static final double INTAKE_MAX_VOLTS = 12.0;
+    public static final double SLOW_RETRACT_MAX_VOLTS = 4.0;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
+    public static final double HOMING_VOLTAGE = -2.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;
 }

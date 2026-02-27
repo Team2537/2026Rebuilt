@@ -10,10 +10,8 @@ import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 /** Simulation implementation of intake IO. */
 public class IntakeIOSim implements IntakeIO {
     private static final double LOOP_PERIOD_SEC = 0.02;
-    private static final double MAX_VOLTS = 12.0;
-    private static final double MAX_ROLLER_RPM = 6500.0;
-    private static final double SLOW_RETRACT_VOLTS_LIMIT = 4.0;
-    private static final double HOMING_VOLTS = -12.0;
+    private static final double MAX_VOLTS = IntakeConstants.INTAKE_MAX_VOLTS;
+    private static final double MAX_ROLLER_RPM = IntakeConstants.ROLLER_MAX_RPM;
     private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
 
     private static final DCMotor INTAKE_GEARBOX = DCMotor.getKrakenX60Foc(1);
@@ -43,11 +41,14 @@ public class IntakeIOSim implements IntakeIO {
 
     private boolean leftIntakePositionClosedLoop = false;
     private boolean rightIntakePositionClosedLoop = false;
+    private boolean leftIntakeOpenLoop = false;
+    private boolean rightIntakeOpenLoop = false;
     private boolean rollerVelocityClosedLoop = false;
-    private boolean leftHomingActive = false;
-    private boolean rightHomingActive = false;
-    private boolean leftHomingAtStop = false;
-    private boolean rightHomingAtStop = false;
+
+    private double leftRequestedVolts = 0.0;
+    private double rightRequestedVolts = 0.0;
+    private boolean leftAtRetractStop = false;
+    private boolean rightAtRetractStop = false;
 
     private double leftAppliedVolts = 0.0;
     private double rightAppliedVolts = 0.0;
@@ -60,31 +61,32 @@ public class IntakeIOSim implements IntakeIO {
         double leftPositionRot = Units.radiansToRotations(leftIntakeSim.getAngularPositionRad() - leftPositionOffsetRad);
         double rightPositionRot = Units.radiansToRotations(rightIntakeSim.getAngularPositionRad() - rightPositionOffsetRad);
 
-        if (leftHomingActive) {
-            if (leftPositionRot <= IntakeConstants.RETRACTED_POSITION_ROT) {
-                leftHomingAtStop = true;
-            }
-            leftAppliedVolts = leftHomingAtStop ? 0.0 : HOMING_VOLTS;
+        if (leftIntakeOpenLoop) {
+            leftAtRetractStop = leftRequestedVolts < 0.0 && leftPositionRot <= IntakeConstants.RETRACTED_POSITION_ROT;
+            leftAppliedVolts = leftAtRetractStop ? 0.0 : MathUtil.clamp(leftRequestedVolts, -MAX_VOLTS, MAX_VOLTS);
         } else if (leftIntakePositionClosedLoop) {
+            leftAtRetractStop = false;
             leftAppliedVolts = MathUtil.clamp(
                     leftIntakePositionController.calculate(leftPositionRot, leftTargetIntakePositionRot),
                     -leftIntakeVoltageLimit,
                     leftIntakeVoltageLimit);
         } else {
+            leftAtRetractStop = false;
             leftAppliedVolts = 0.0;
         }
 
-        if (rightHomingActive) {
-            if ((applyRightAlignment(rightPositionRot) <= IntakeConstants.RETRACTED_POSITION_ROT)) {
-                rightHomingAtStop = true;
-            }
-            rightAppliedVolts = rightHomingAtStop ? 0.0 : applyRightAlignment(HOMING_VOLTS);
+        if (rightIntakeOpenLoop) {
+            rightAtRetractStop = rightRequestedVolts < 0.0
+                    && applyRightAlignment(rightPositionRot) <= IntakeConstants.RETRACTED_POSITION_ROT;
+            rightAppliedVolts = rightAtRetractStop ? 0.0 : MathUtil.clamp(rightRequestedVolts, -MAX_VOLTS, MAX_VOLTS);
         } else if (rightIntakePositionClosedLoop) {
+            rightAtRetractStop = false;
             rightAppliedVolts = MathUtil.clamp(
                     rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
                     -rightIntakeVoltageLimit,
                     rightIntakeVoltageLimit);
         } else {
+            rightAtRetractStop = false;
             rightAppliedVolts = 0.0;
         }
 
@@ -106,8 +108,8 @@ public class IntakeIOSim implements IntakeIO {
 
         double leftSupplyCurrentAmps = Math.abs(leftIntakeSim.getCurrentDrawAmps());
         double rightSupplyCurrentAmps = Math.abs(rightIntakeSim.getCurrentDrawAmps());
-        double leftStatorCurrentAmps = leftHomingAtStop ? HOMING_STATOR_CURRENT_AMPS : leftSupplyCurrentAmps;
-        double rightStatorCurrentAmps = rightHomingAtStop ? HOMING_STATOR_CURRENT_AMPS : rightSupplyCurrentAmps;
+        double leftStatorCurrentAmps = leftAtRetractStop ? HOMING_STATOR_CURRENT_AMPS : leftSupplyCurrentAmps;
+        double rightStatorCurrentAmps = rightAtRetractStop ? HOMING_STATOR_CURRENT_AMPS : rightSupplyCurrentAmps;
 
         inputs.leftAppliedVolts = leftAppliedVolts;
         inputs.leftPositionRad = leftIntakeSim.getAngularPositionRad() - leftPositionOffsetRad;
@@ -135,57 +137,42 @@ public class IntakeIOSim implements IntakeIO {
     }
 
     @Override
-    public void retract() {
-        leftHomingActive = false;
-        rightHomingActive = false;
-        leftHomingAtStop = false;
-        rightHomingAtStop = false;
-        leftTargetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
-        rightTargetIntakePositionRot = applyRightAlignment(IntakeConstants.RETRACTED_POSITION_ROT);
-        leftIntakeVoltageLimit = MAX_VOLTS;
-        rightIntakeVoltageLimit = MAX_VOLTS;
+    public void setIntakePosition(
+            double leftTargetRot,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts) {
+        leftIntakeOpenLoop = false;
+        rightIntakeOpenLoop = false;
+        leftRequestedVolts = 0.0;
+        rightRequestedVolts = 0.0;
+        leftAtRetractStop = false;
+        rightAtRetractStop = false;
+
+        leftTargetIntakePositionRot = leftTargetRot;
+        rightTargetIntakePositionRot = applyRightAlignment(leftTargetRot);
+        leftIntakeVoltageLimit = MathUtil.clamp(Math.abs(maxVolts), 0.0, MAX_VOLTS);
+        rightIntakeVoltageLimit = leftIntakeVoltageLimit;
         leftIntakePositionClosedLoop = true;
         rightIntakePositionClosedLoop = true;
     }
 
     @Override
-    public void slowRetract() {
-        leftHomingActive = false;
-        rightHomingActive = false;
-        leftHomingAtStop = false;
-        rightHomingAtStop = false;
-        leftTargetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
-        rightTargetIntakePositionRot = applyRightAlignment(IntakeConstants.RETRACTED_POSITION_ROT);
-        leftIntakeVoltageLimit = SLOW_RETRACT_VOLTS_LIMIT;
-        rightIntakeVoltageLimit = SLOW_RETRACT_VOLTS_LIMIT;
-        leftIntakePositionClosedLoop = true;
-        rightIntakePositionClosedLoop = true;
-    }
-
-    @Override
-    public void extend() {
-        leftHomingActive = false;
-        rightHomingActive = false;
-        leftHomingAtStop = false;
-        rightHomingAtStop = false;
-        leftTargetIntakePositionRot = IntakeConstants.EXTENDED_POSITION_ROT;
-        rightTargetIntakePositionRot = applyRightAlignment(IntakeConstants.EXTENDED_POSITION_ROT);
-        leftIntakeVoltageLimit = MAX_VOLTS;
-        rightIntakeVoltageLimit = MAX_VOLTS;
-        leftIntakePositionClosedLoop = true;
-        rightIntakePositionClosedLoop = true;
-    }
-
-    @Override
-    public void home() {
+    public void setLeftIntakeVoltage(double volts) {
         leftIntakePositionClosedLoop = false;
-        rightIntakePositionClosedLoop = false;
+        leftIntakeOpenLoop = true;
+        leftRequestedVolts = MathUtil.clamp(volts, -MAX_VOLTS, MAX_VOLTS);
+        leftAtRetractStop = false;
         leftIntakeVoltageLimit = MAX_VOLTS;
+    }
+
+    @Override
+    public void setRightIntakeVoltage(double volts) {
+        rightIntakePositionClosedLoop = false;
+        rightIntakeOpenLoop = true;
+        rightRequestedVolts = MathUtil.clamp(volts, -MAX_VOLTS, MAX_VOLTS);
+        rightAtRetractStop = false;
         rightIntakeVoltageLimit = MAX_VOLTS;
-        leftHomingActive = true;
-        rightHomingActive = true;
-        leftHomingAtStop = false;
-        rightHomingAtStop = false;
     }
 
     @Override
@@ -196,32 +183,32 @@ public class IntakeIOSim implements IntakeIO {
 
     @Override
     public void stop() {
-        leftIntakePositionClosedLoop = false;
-        rightIntakePositionClosedLoop = false;
-        leftHomingActive = false;
-        rightHomingActive = false;
-        leftHomingAtStop = false;
-        rightHomingAtStop = false;
-        leftIntakeVoltageLimit = MAX_VOLTS;
-        rightIntakeVoltageLimit = MAX_VOLTS;
-        leftIntakePositionController.reset();
-        rightIntakePositionController.reset();
+        stopIntake();
+        stopRoller();
     }
 
     @Override
-    public void stopLeft() {
+    public void stopIntake() {
+        stopLeftIntake();
+        stopRightIntake();
+    }
+
+    @Override
+    public void stopLeftIntake() {
         leftIntakePositionClosedLoop = false;
-        leftHomingActive = false;
-        leftHomingAtStop = false;
+        leftIntakeOpenLoop = false;
+        leftRequestedVolts = 0.0;
+        leftAtRetractStop = false;
         leftIntakeVoltageLimit = MAX_VOLTS;
         leftIntakePositionController.reset();
     }
 
     @Override
-    public void stopRight() {
+    public void stopRightIntake() {
         rightIntakePositionClosedLoop = false;
-        rightHomingActive = false;
-        rightHomingAtStop = false;
+        rightIntakeOpenLoop = false;
+        rightRequestedVolts = 0.0;
+        rightAtRetractStop = false;
         rightIntakeVoltageLimit = MAX_VOLTS;
         rightIntakePositionController.reset();
     }

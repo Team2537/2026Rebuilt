@@ -34,11 +34,11 @@ public class Intake extends SubsystemBase {
 
     public void setExtended(boolean isExtended) {
         this.extended = isExtended;
-        if (isExtended) {
-            io.extend();
-        } else {
-            io.retract();
-        }
+        requestIntakePosition(
+                isExtended ? IntakeConstants.EXTENDED_POSITION_ROT : IntakeConstants.RETRACTED_POSITION_ROT,
+                IntakeConstants.INTAKE_VELOCITY,
+                IntakeConstants.INTAKE_ACCELERATION,
+                IntakeConstants.INTAKE_MAX_VOLTS);
     }
 
     public boolean isExtended() {
@@ -51,7 +51,13 @@ public class Intake extends SubsystemBase {
 
     public Command slowRetractCommand() {
         return Commands.sequence(
-                        Commands.runOnce(io::slowRetract, this),
+                        Commands.runOnce(
+                                () -> requestIntakePosition(
+                                        IntakeConstants.RETRACTED_POSITION_ROT,
+                                        IntakeConstants.SLOW_INTAKE_VELOCITY,
+                                        IntakeConstants.SLOW_INTAKE_ACCELERATION,
+                                        IntakeConstants.SLOW_RETRACT_MAX_VOLTS),
+                                this),
                         Commands.waitUntil(() -> isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT))
                                 .withTimeout(IntakeConstants.MOVE_TIMEOUT_SEC)
                                 .withName("IntakeWaitForSlowRetract"),
@@ -89,8 +95,8 @@ public class Intake extends SubsystemBase {
 
     private Command homeLeftCommand() {
         return homeSideCommand(
-                io::homeLeft,
-                io::stopLeft,
+                () -> io.setLeftIntakeVoltage(IntakeConstants.HOMING_VOLTAGE),
+                io::stopLeftIntake,
                 () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
                 "IntakeHomeLeftWaitUntil",
                 "Left intake homing timed out before current threshold; continuing.",
@@ -99,8 +105,8 @@ public class Intake extends SubsystemBase {
 
     private Command homeRightCommand() {
         return homeSideCommand(
-                io::homeRight,
-                io::stopRight,
+                () -> io.setRightIntakeVoltage(IntakeConstants.HOMING_VOLTAGE),
+                io::stopRightIntake,
                 () -> Math.abs(inputs.rightStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
                 "IntakeHomeRightWaitUntil",
                 "Right intake homing timed out before current threshold; continuing.",
@@ -173,6 +179,14 @@ public class Intake extends SubsystemBase {
                 Commands.waitUntil(() -> isAtTargetPosition(targetRot))
                         .withTimeout(IntakeConstants.MOVE_TIMEOUT_SEC)
                         .withName("IntakeWaitForPosition"));
+    }
+
+    private void requestIntakePosition(
+            double leftTargetRot,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts) {
+        io.setIntakePosition(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq, maxVolts);
     }
 
     private boolean isAtTargetPosition(double leftTargetRot) {
