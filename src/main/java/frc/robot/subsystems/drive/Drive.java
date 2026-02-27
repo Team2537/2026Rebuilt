@@ -49,6 +49,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotType;
 import frc.robot.generated.TunerConstants;
+import frc.robot.util.ElasticNotifications;
 import frc.robot.util.LocalADStarAK;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -104,6 +105,7 @@ public class Drive extends SubsystemBase {
     private final Alert gyroDisconnectedAlert = new Alert("Disconnected gyro, using kinematics as fallback.",
             AlertType.kError);
     private StringLogEntry sysIdStateLogEntry;
+    private boolean lastGyroConnected = true;
     private double characterizationVolts = 0.0;
     private SwerveSetpoint previousSetpoint;
     private SwerveDriveKinematics kinematics = new SwerveDriveKinematics(getModuleTranslations());
@@ -253,8 +255,14 @@ public class Drive extends SubsystemBase {
             poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, odomModulePositions);
         }
 
-        // Update gyro alert
-        gyroDisconnectedAlert.set(!gyroInputs.connected && RobotType.MODE != RobotType.Mode.SIMULATION);
+        // Update gyro alert and notification
+        boolean gyroConnected = gyroInputs.connected;
+        gyroDisconnectedAlert.set(!gyroConnected && RobotType.MODE != RobotType.Mode.SIMULATION);
+        Logger.recordOutput("RobotState/GyroConnected", gyroConnected);
+        if (!gyroConnected && lastGyroConnected && RobotType.MODE != RobotType.Mode.SIMULATION) {
+            ElasticNotifications.sendError("Gyro Disconnected", "Using kinematics fallback");
+        }
+        lastGyroConnected = gyroConnected;
     }
 
     /**
@@ -507,9 +515,9 @@ public class Drive extends SubsystemBase {
         Logger.recordOutput(
                 "Drive/ConstraintMaxAngularAccelerationRadPerSecSq",
                 resolved.maxAngularAccelerationRadPerSecSq());
-        Logger.recordOutput(
-                "Drive/SlowMode",
-                isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE));
+        boolean slowMode = isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE);
+        Logger.recordOutput("Drive/SlowMode", slowMode);
+        Logger.recordOutput("RobotState/SlowMode", slowMode);
     }
 
     public void setConstraintProfileActive(DriveConstants.ConstraintProfile profile, boolean enabled) {
@@ -551,6 +559,7 @@ public class Drive extends SubsystemBase {
     public void setFieldOriented(boolean fieldOriented) {
         this.fieldOriented = fieldOriented;
         Logger.recordOutput("Drive/FieldOriented", fieldOriented);
+        Logger.recordOutput("RobotState/FieldOriented", fieldOriented);
     }
 
     /** Toggles field oriented mode. */

@@ -4,12 +4,15 @@ import edu.wpi.first.hal.FRCNetComm.tInstances;
 import edu.wpi.first.hal.FRCNetComm.tResourceType;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.hal.HALUtil;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import frc.robot.util.ElasticNotifications;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
@@ -19,8 +22,10 @@ import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 public final class Robot extends LoggedRobot {
     private static final int POWER_DISTRIBUTION_CAN_ID = 1;
+    private static final double LOW_BATTERY_VOLTAGE = 11.5;
     private final RobotContainer robotContainer;
     private PowerDistribution powerDistribution = null;
+    private boolean lowBatteryNotified = false;
 
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
@@ -77,6 +82,7 @@ public final class Robot extends LoggedRobot {
 
     @Override
     public void robotPeriodic() {
+        logRobotState();
         logPowerDistribution();
         CommandScheduler.getInstance().run();
         robotContainer.robotPeriodic();
@@ -87,11 +93,41 @@ public final class Robot extends LoggedRobot {
             return;
         }
 
-        Logger.recordOutput("PowerDistribution/totalVoltageVolts", powerDistribution.getVoltage());
+        double voltage = powerDistribution.getVoltage();
+        Logger.recordOutput("PowerDistribution/totalVoltageVolts", voltage);
         Logger.recordOutput("PowerDistribution/totalCurrentAmps", powerDistribution.getTotalCurrent());
         Logger.recordOutput("PowerDistribution/totalPowerWatts", powerDistribution.getTotalPower());
         Logger.recordOutput("PowerDistribution/temperatureCelsius", powerDistribution.getTemperature());
-        Logger.recordOutput("PowerDistribution/busVoltage", powerDistribution.getVoltage());
+        boolean batteryLow = voltage < LOW_BATTERY_VOLTAGE;
+        Logger.recordOutput("RobotState/BatteryVoltage", voltage);
+        Logger.recordOutput("RobotState/BatteryLow", batteryLow);
+        if (batteryLow && !lowBatteryNotified) {
+            lowBatteryNotified = true;
+            ElasticNotifications.sendWarning(
+                    "Low Battery",
+                    String.format(Locale.US, "Battery at %.1fV", voltage));
+        } else if (!batteryLow) {
+            lowBatteryNotified = false;
+        }
+    }
+
+    private void logRobotState() {
+        String mode;
+        if (!DriverStation.isEnabled()) {
+            mode = DriverStation.isEStopped() ? "ESTOPPED" : "DISABLED";
+        } else if (DriverStation.isAutonomous()) {
+            mode = "AUTO";
+        } else if (DriverStation.isTeleop()) {
+            mode = "TELEOP";
+        } else {
+            mode = "TEST";
+        }
+        Logger.recordOutput("RobotState/Mode", mode);
+        Logger.recordOutput("RobotState/Enabled", DriverStation.isEnabled());
+        Logger.recordOutput("RobotState/MatchTime", DriverStation.getMatchTime());
+        Logger.recordOutput("RobotState/Alliance",
+                DriverStation.getAlliance().map(Enum::name).orElse("Unknown"));
+        Logger.recordOutput("RobotState/FMSAttached", DriverStation.isFMSAttached());
     }
 
     @Override

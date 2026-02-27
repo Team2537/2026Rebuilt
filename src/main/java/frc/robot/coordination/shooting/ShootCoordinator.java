@@ -90,6 +90,20 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/AimReady", aimReady);
         Logger.recordOutput("Shooting/GateOpen", gateDecision.gateOpen());
         Logger.recordOutput("Shooting/BlockReason", gateDecision.blockReason());
+
+        String state;
+        if (!distanceValid) {
+            state = "NO_TARGET";
+        } else if (gateDecision.gateOpen()) {
+            state = "SHOOTING";
+        } else if (shooterAtSetpoint && aimReady) {
+            state = "READY";
+        } else if (shooterAtSetpoint) {
+            state = "AIMING";
+        } else {
+            state = "SPINNING_UP";
+        }
+        Logger.recordOutput("Shooting/State", state);
     }
 
     private void stopAllOutputs() {

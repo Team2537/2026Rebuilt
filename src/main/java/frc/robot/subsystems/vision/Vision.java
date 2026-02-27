@@ -16,6 +16,7 @@ import frc.robot.RobotType;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
+import frc.robot.util.ElasticNotifications;
 import frc.robot.util.FieldConstants;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,6 +75,8 @@ public final class Vision extends SubsystemBase {
     private int visionEventSequence = 0;
     private int visionRejectEventCount = 0;
     private int visionJumpEventCount = 0;
+    private boolean lastAllCamerasConnected = true;
+    private boolean dashboardDisabled = false;
 
     public Vision(Drive drive) {
         super("vision");
@@ -128,8 +131,15 @@ public final class Vision extends SubsystemBase {
         return unifiedRobotPoseRaw;
     }
 
+    /** Allows the dashboard to disable vision pose updates at runtime. */
+    public void setDashboardDisabled(boolean disabled) {
+        this.dashboardDisabled = disabled;
+    }
+
     @Override
     public void periodic() {
+        Logger.recordOutput("RobotState/VisionDisabledOverride", dashboardDisabled);
+
         Pose2d currentPose = robotPoseSupplier.get();
         PoseObservation bestRawObservation = null;
         PoseObservation bestConsistentObservation = null;
@@ -198,11 +208,13 @@ public final class Vision extends SubsystemBase {
             }
 
             // Let vision correct field translation while keeping heading anchored to gyro.
-            Pose2d estimatorMeasurementPose = new Pose2d(measuredPose.getTranslation(), currentPose.getRotation());
-            drive.addVisionMeasurement(
-                    estimatorMeasurementPose,
-                    bestObservation.timestampSeconds(),
-                    VecBuilder.fill(linearStdDev, linearStdDev, ESTIMATOR_ANGULAR_STD_DEV_RAD));
+            if (!dashboardDisabled) {
+                Pose2d estimatorMeasurementPose = new Pose2d(measuredPose.getTranslation(), currentPose.getRotation());
+                drive.addVisionMeasurement(
+                        estimatorMeasurementPose,
+                        bestObservation.timestampSeconds(),
+                        VecBuilder.fill(linearStdDev, linearStdDev, ESTIMATOR_ANGULAR_STD_DEV_RAD));
+            }
 
             if (isBetterObservation(bestObservation, bestConsistentObservation)) {
                 bestConsistentObservation = bestObservation;
@@ -237,6 +249,18 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput("vision/unifiedRobotPoseRawValid", unifiedRobotPoseRaw != null);
         Logger.recordOutput("vision/unifiedRobotPose", unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
         Logger.recordOutput("vision/unifiedRobotPoseValid", unifiedRobotPose != null);
+
+        boolean allCamerasConnected = true;
+        for (int i = 0; i < inputs.size(); i++) {
+            boolean connected = inputs.get(i).isConnected;
+            Logger.recordOutput("RobotState/Vision/Camera" + i + "Connected", connected);
+            allCamerasConnected = allCamerasConnected && connected;
+        }
+        Logger.recordOutput("RobotState/VisionConnected", allCamerasConnected);
+        if (!allCamerasConnected && lastAllCamerasConnected) {
+            ElasticNotifications.sendWarning("Vision", "Camera disconnected");
+        }
+        lastAllCamerasConnected = allCamerasConnected;
 
         if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
             Logger.recordOutput(
