@@ -29,12 +29,6 @@
           }
         },
         {
-          "type": "path",
-          "data": {
-            "pathName": null
-          }
-        },
-        {
           "type": "named",
           "data": {
             "name": "IntakeStopAndRetract"

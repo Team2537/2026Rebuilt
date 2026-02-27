@@ -79,7 +79,7 @@ public class Intake extends SubsystemBase {
         return Commands.sequence(
                 Commands.parallel(homeLeftCommand(), homeRightCommand()).withName("IntakeHomeBoth"),
                 Commands.sequence(
-                        Commands.waitSeconds(2),
+                        Commands.waitSeconds(0.1),
                         Commands.runOnce(() -> io.resetEncoders(), this),
                         Commands.runOnce(() -> setExtended(false), this)))
                 .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)

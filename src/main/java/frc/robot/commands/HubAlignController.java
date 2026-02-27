@@ -20,12 +20,12 @@ public class HubAlignController {
     private static final double MAX_VELOCITY = 9.0;
     private static final double MAX_ACCELERATION = 36.0;
     private static final double TOLERANCE_RAD = Units.degreesToRadians(1.2);
-    private static final double MIN_OMEGA_RAD_PER_SEC = 0.2;
+    private static final double MIN_OMEGA_RAD_PER_SEC = 0.05;
     private static final double MAX_OMEGA_RAD_PER_SEC = 8.0;
     private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 45.0;
     private static final double TARGET_HOLD_SEC = 0.12;
-    private static final double HEADING_FEEDFORWARD_GAIN = 1.0;
-    private static final int TARGET_VELOCITY_FILTER_TAPS = 5;
+    private static final double HEADING_FEEDFORWARD_GAIN = 0.80;
+    private static final int TARGET_VELOCITY_FILTER_TAPS = 7;
 
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
