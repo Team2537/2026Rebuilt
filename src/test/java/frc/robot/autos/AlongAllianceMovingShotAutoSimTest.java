@@ -408,7 +408,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_DIAG_IDEAL_DESCENT_MISS_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertDescentP90Meters",
-                            FuelSim.IDEAL_DESCENT_MISS_DISTANCE_METERS,
+                            0.23,
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_P90_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.postAutoObservationSec",

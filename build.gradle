@@ -88,6 +88,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // AdvantageKit logger uses global static lifecycle and is not safely restartable
+    // across all test classes within one JVM.
+    forkEvery = 1
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
     if (System.getProperty('shooter.sim.motionCompTimeScale') != null) {
         systemProperty 'shooter.sim.motionCompTimeScale', System.getProperty('shooter.sim.motionCompTimeScale')

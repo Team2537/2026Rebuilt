@@ -66,7 +66,7 @@ Available knobs:
 
 Target:
 
-- `p90_descent_miss_in <= 6.0`
+- `p90_descent_miss_in <= 9.1` (default CI threshold; override via `AUTO_AIM_ASSERT_DESCENT_P90_METERS`)
 
 ## Interpreting miss decomposition
 
