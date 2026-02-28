@@ -261,6 +261,14 @@ public class Shooter extends SubsystemBase {
         return cachedReadiness;
     }
 
+    /**
+     * Returns readiness diagnostics computed immediately from current inputs/targets.
+     * Use this when command logic changes targets and needs same-cycle gate decisions.
+     */
+    public ReadinessDiagnostics getReadinessDiagnosticsNow() {
+        return computeReadinessDiagnostics();
+    }
+
     private ReadinessDiagnostics computeReadinessDiagnostics() {
         double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
         double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
@@ -887,7 +895,8 @@ public class Shooter extends SubsystemBase {
             Commands.runOnce(() -> io.stop(), this),
             Commands.either(
                     Commands.sequence(
-                    Commands.runOnce(() -> io.resetHoodEncoder(), this)),
+                    Commands.runOnce(() -> io.resetHoodEncoder(), this),
+                    Commands.runOnce(() -> io.setHoodAngle(initialHoodPreAimAngleRad()), this)),
                 Commands.runOnce(
                         () -> {
                             DriverStation.reportWarning(
@@ -907,6 +916,14 @@ public class Shooter extends SubsystemBase {
 
     private static double homingWaitTimeoutSec() {
         return RobotBase.isReal() ? ShooterConstants.HOMING_WAIT_TIMEOUT_SEC : 1.0;
+    }
+
+    private static double initialHoodPreAimAngleRad() {
+        if (ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG.length == 0) {
+            return ShooterConstants.HOOD_MIN_ANGLE_RAD;
+        }
+        double preAimRad = Units.degreesToRadians(ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0]);
+        return MathUtil.clamp(preAimRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD);
     }
 
 }

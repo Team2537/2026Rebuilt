@@ -34,9 +34,10 @@ public final class Constants {
     public static final double SHOOTING_AIM_TOLERANCE_RAD = Math.toRadians(3.0);
     public static final double SHOOTING_AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(4.0);
     public static final double SHOOTING_AIM_TARGET_HOLD_SEC = 0.12;
+    public static final int SHOOTING_GATE_READY_DEBOUNCE_CYCLES = 2;
 
     /** Enables decimation for expensive per-loop telemetry/logging paths. */
-    public static final boolean ENABLE_PERF_LOG_DECIMATION = true;
+    public static final boolean ENABLE_PERF_LOG_DECIMATION = false;
     /** Must stay a power of two when used with bitmask-based cycle checks. */
     public static final int PERF_LOG_DECIMATION_CYCLES = 8;
 

@@ -11,40 +11,28 @@
           }
         },
         {
+          "type": "path",
+          "data": {
+            "pathName": "back up from mid start"
+          }
+        },
+        {
           "type": "deadline",
           "data": {
             "commands": [
               {
-                "type": "path",
+                "type": "wait",
                 "data": {
-                  "pathName": "around hub (testing)"
+                  "waitTime": 10.0
                 }
               },
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHubOnMove"
+                  "name": "ShooterShootHub"
                 }
               }
             ]
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "ShooterStop"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "TransferStop"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "DriveStopWithX"
           }
         }
       ]

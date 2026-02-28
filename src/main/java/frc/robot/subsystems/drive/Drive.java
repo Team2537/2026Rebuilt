@@ -53,6 +53,7 @@ import frc.robot.util.ElasticNotifications;
 import frc.robot.util.LocalADStarAK;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -447,6 +448,18 @@ public class Drive extends SubsystemBase {
     @AutoLogOutput(key = "Odometry/Robot")
     public Pose2d getPose() {
         return poseEstimator.getEstimatedPosition();
+    }
+
+    /**
+     * Returns the estimator pose sampled at a historical timestamp.
+     * Falls back to current pose if the estimator buffer does not have that sample.
+     */
+    public Pose2d getPoseAtTimestamp(double timestampSeconds) {
+        if (!Double.isFinite(timestampSeconds)) {
+            return getPose();
+        }
+        Optional<Pose2d> sampledPose = poseEstimator.sampleAt(timestampSeconds);
+        return sampledPose.orElseGet(this::getPose);
     }
 
     /** Returns the current robot rotation for field orientation. */

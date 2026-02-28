@@ -459,8 +459,8 @@ public final class RobotContainer {
         drive.setDefaultCommand(
                 withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
                         drive,
-                        () -> -driverController.getLeftY(),
-                        () -> -driverController.getLeftX(),
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
                         () -> -driverController.getRightX())
                         .withName("DriveJoystickDefault")));
         shooter.setDefaultCommand(withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
@@ -517,16 +517,16 @@ public final class RobotContainer {
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
         bindWhileTrue(shootTrigger, "driver.shoot.whileTrue", withConstraintProfile(
                 createTeleopSelectedShootCommand(
-                        () -> -driverController.getLeftY(),
-                        () -> -driverController.getLeftX(),
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
                         teleopAimReadySupplier),
                 DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE));
         bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", createTeleopSelectedAimOnlyCommand(
-                () -> -driverController.getLeftY(),
-                () -> -driverController.getLeftX(),
+                () -> driverController.getLeftY(),
+                () -> driverController.getLeftX(),
                 () -> -driverController.getRightX(),
                 hubDistanceSupplier,
                 teleopAutoAlignHeadingSupplier));

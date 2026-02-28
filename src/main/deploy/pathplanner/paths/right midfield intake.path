@@ -4,12 +4,12 @@
     {
       "anchor": {
         "x": 7.712160020964292,
-        "y": 0.9097195024861833
+        "y": 1.064828301553672
       },
       "prevControl": null,
       "nextControl": {
         "x": 7.711531427135212,
-        "y": 1.2382234310474904
+        "y": 1.393332230114979
       },
       "isLocked": false,
       "linkedName": "right before intake"
@@ -48,7 +48,7 @@
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 89.1828686408214
+    "rotation": 89.43289299913748
   },
   "useDefaultConstraints": false
 }

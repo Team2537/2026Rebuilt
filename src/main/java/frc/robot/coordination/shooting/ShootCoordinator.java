@@ -17,6 +17,7 @@ public class ShootCoordinator {
     private final Shooter shooter;
     private final Transfer transfer;
     private final Constants.FeedGateMode feedGateMode;
+    private int readyStableCycles = 0;
 
     public ShootCoordinator(Shooter shooter, Transfer transfer) {
         this(shooter, transfer, Constants.SHOOTING_FEED_GATE_MODE);
@@ -56,7 +57,9 @@ public class ShootCoordinator {
             shooter.setTargetsForDistance(distanceMeters);
         }
 
-        ReadinessDiagnostics readiness = shooter.getReadinessDiagnostics();
+        // Use same-cycle readiness after targets are updated to avoid one-loop stale gate
+        // decisions at mode transitions / target changes.
+        ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow();
         boolean aimReady = aimReadySupplier.getAsBoolean();
         GateDecision gateDecision = evaluateFeedGate(distanceValid, readiness.atSetpoint(), aimReady);
 
@@ -107,23 +110,39 @@ public class ShootCoordinator {
     }
 
     private void stopAllOutputs() {
+        readyStableCycles = 0;
         shooter.stopAll();
         transfer.stopAll();
     }
 
     private GateDecision evaluateFeedGate(boolean distanceValid, boolean shooterAtSetpoint, boolean aimReady) {
         if (!distanceValid) {
+            readyStableCycles = 0;
             return new GateDecision(false, "DistanceInvalid");
         }
         return switch (feedGateMode) {
-            case IMMEDIATE -> new GateDecision(true, "");
-            case SHOOTER_AT_SETPOINT -> shooterAtSetpoint
-                    ? new GateDecision(true, "")
-                    : new GateDecision(false, "ShooterNotAtSetpoint");
+            case IMMEDIATE -> {
+                readyStableCycles = 0;
+                yield new GateDecision(true, "");
+            }
+            case SHOOTER_AT_SETPOINT -> {
+                if (!shooterAtSetpoint) {
+                    readyStableCycles = 0;
+                    yield new GateDecision(false, "ShooterNotAtSetpoint");
+                }
+                readyStableCycles++;
+                yield readyStableCycles >= Constants.SHOOTING_GATE_READY_DEBOUNCE_CYCLES
+                        ? new GateDecision(true, "")
+                        : new GateDecision(false, "ReadinessDebounce");
+            }
             case SHOOTER_AND_AIM -> {
                 if (shooterAtSetpoint && aimReady) {
-                    yield new GateDecision(true, "");
+                    readyStableCycles++;
+                    yield readyStableCycles >= Constants.SHOOTING_GATE_READY_DEBOUNCE_CYCLES
+                            ? new GateDecision(true, "")
+                            : new GateDecision(false, "ReadinessDebounce");
                 }
+                readyStableCycles = 0;
                 if (!shooterAtSetpoint && !aimReady) {
                     yield new GateDecision(false, "ShooterNotAtSetpoint+AimNotReady");
                 }

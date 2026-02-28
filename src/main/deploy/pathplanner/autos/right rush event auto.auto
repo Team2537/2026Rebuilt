@@ -5,9 +5,9 @@
     "data": {
       "commands": [
         {
-          "type": "named",
+          "type": "path",
           "data": {
-            "name": "ShooterHome"
+            "pathName": "right rush event"
           }
         },
         {
@@ -15,36 +15,18 @@
           "data": {
             "commands": [
               {
-                "type": "path",
+                "type": "wait",
                 "data": {
-                  "pathName": "around hub (testing)"
+                  "waitTime": 10.0
                 }
               },
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHubOnMove"
+                  "name": "ShooterShootHub"
                 }
               }
             ]
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "ShooterStop"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "TransferStop"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "DriveStopWithX"
           }
         }
       ]

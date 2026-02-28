@@ -46,8 +46,10 @@ public final class Vision extends SubsystemBase {
     private static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
     private static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
     private static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
-    private static final double MAX_VISION_TRANSLATION_DELTA_METERS = 1.0;
-    private static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
+    // Keep acceptance threshold aligned with jump diagnostics so detected jumps are
+    // treated as outliers and rejected before fusion.
+    private static final double MAX_VISION_TRANSLATION_DELTA_METERS = 0.5;
+    private static final double MAX_VISION_HEADING_DELTA_DEGREES = 20.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
     private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
     private static final double UNIFIED_RAW_POSE_MAX_AGE_SECONDS = 0.25;
@@ -169,6 +171,7 @@ public final class Vision extends SubsystemBase {
             }
 
             Pose2d measuredPose = bestObservation.pose().toPose2d();
+            Pose2d referencePose = drive.getPoseAtTimestamp(bestObservation.timestampSeconds());
             if (isBetterObservation(bestObservation, bestRawObservation)) {
                 bestRawObservation = bestObservation;
             }
@@ -177,7 +180,7 @@ public final class Vision extends SubsystemBase {
             double clampedFactor = Math.max(1.0, stdDevFactor);
             double linearStdDev = LINEAR_STD_DEV_BASELINE * clampedFactor;
             double angularStdDev = ANGULAR_STD_DEV_BASELINE * clampedFactor;
-            PoseDelta innovation = calculatePoseDelta(measuredPose, currentPose);
+            PoseDelta innovation = calculatePoseDelta(measuredPose, referencePose);
             boolean consistent = isVisionMeasurementConsistent(innovation);
 
             if (candidateDiagnostics != null) {
@@ -195,7 +198,7 @@ public final class Vision extends SubsystemBase {
                 logVisionRejection(
                         bestObservation.timestampSeconds(),
                         measuredPose,
-                        currentPose,
+                        referencePose,
                         innovation,
                         bestObservation.tagCount(),
                         input.tagIds,
@@ -209,7 +212,7 @@ public final class Vision extends SubsystemBase {
 
             // Let vision correct field translation while keeping heading anchored to gyro.
             if (!dashboardDisabled) {
-                Pose2d estimatorMeasurementPose = new Pose2d(measuredPose.getTranslation(), currentPose.getRotation());
+                Pose2d estimatorMeasurementPose = new Pose2d(measuredPose.getTranslation(), referencePose.getRotation());
                 drive.addVisionMeasurement(
                         estimatorMeasurementPose,
                         bestObservation.timestampSeconds(),
@@ -224,7 +227,7 @@ public final class Vision extends SubsystemBase {
             logVisionJumpIfLarge(
                     bestObservation.timestampSeconds(),
                     measuredPose,
-                    currentPose,
+                    referencePose,
                     innovation,
                     bestObservation.tagCount(),
                     input.tagIds,

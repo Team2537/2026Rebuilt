@@ -7,37 +7,7 @@
         {
           "type": "named",
           "data": {
-            "name": "IntakeHome"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
             "name": "ShooterHome"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "IntakeExtend"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "Start to balls"
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "IntakeStopAndRetract"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "score"
           }
         },
         {
@@ -45,15 +15,15 @@
           "data": {
             "commands": [
               {
-                "type": "wait",
+                "type": "path",
                 "data": {
-                  "waitTime": 2.5
+                  "pathName": "along alliance"
                 }
               },
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHub"
+                  "name": "ShooterShootHubOnMove"
                 }
               }
             ]

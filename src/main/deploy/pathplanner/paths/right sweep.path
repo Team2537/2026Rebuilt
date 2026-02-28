@@ -3,66 +3,66 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 8.974788339120371,
-        "y": 5.9298321759259265
+        "x": 3.6409856660487296,
+        "y": 0.6502023194738695
       },
       "prevControl": null,
       "nextControl": {
-        "x": 9.974788339120371,
-        "y": 5.9298321759259265
-      },
-      "isLocked": false,
-      "linkedName": "after collect balls"
-    },
-    {
-      "anchor": {
-        "x": 4.630386935763889,
-        "y": 7.347347728587963
-      },
-      "prevControl": {
-        "x": 7.728450665509259,
-        "y": 7.504091290509258
-      },
-      "nextControl": {
-        "x": 3.597916920802559,
-        "y": 7.295110898800322
+        "x": 3.888577203251887,
+        "y": 0.6848206773982053
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 2.2292382812500007,
-        "y": 7.347347728587963
+        "x": 5.586568127648305,
+        "y": 0.6502023194738695
       },
       "prevControl": {
-        "x": 4.031980674082089,
-        "y": 7.35003320183351
+        "x": 5.237439166422984,
+        "y": 0.6257197933887834
       },
       "nextControl": {
-        "x": 1.4804908854166672,
-        "y": 7.346232349537036
+        "x": 6.654113698164705,
+        "y": 0.7250635174262161
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 2.531965277777778,
-        "y": 5.732934968171296
+        "x": 8.07795302568856,
+        "y": 1.2809718727930794
       },
       "prevControl": {
-        "x": 1.4311517650462984,
-        "y": 6.66644162326389
+        "x": 7.667918981372917,
+        "y": 0.7074632147086396
+      },
+      "nextControl": {
+        "x": 8.635906440780149,
+        "y": 2.0613732048260847
+      },
+      "isLocked": false,
+      "linkedName": null
+    },
+    {
+      "anchor": {
+        "x": 8.07795302568856,
+        "y": 6.056404484463277
+      },
+      "prevControl": {
+        "x": 8.228580949858758,
+        "y": 5.181620597192797
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "scoring"
+      "linkedName": null
     }
   ],
   "rotationTargets": [
     {
-      "waypointRelativePos": 2.0061574835526326,
+      "waypointRelativePos": 1,
       "rotationDegrees": 0.0
     }
   ],
@@ -79,13 +79,13 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -46.388217964168874
+    "rotation": 33.50092562016456
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 0.0
+    "rotation": -0.4717417371597622
   },
   "useDefaultConstraints": true
 }
