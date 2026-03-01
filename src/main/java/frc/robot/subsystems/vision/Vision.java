@@ -51,6 +51,7 @@ public final class Vision extends SubsystemBase {
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 20.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
     private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
+    private static final double UNIFIED_RAW_POSE_MAX_AGE_SECONDS = 0.25;
     private static final double UNIFIED_POSE_MAX_AGE_SECONDS = 0.5;
     private static final boolean ENABLE_VISION_EVENT_LOGS = false;
     private static final boolean ENABLE_VERBOSE_VISION_DIAGNOSTICS = false;
@@ -65,6 +66,8 @@ public final class Vision extends SubsystemBase {
 
     private double hubYawRad = Double.NaN;
     private Pose2d hubTagRobotPose = null;
+    private Pose2d unifiedRobotPoseRaw = null;
+    private double unifiedRobotPoseRawTimestampSeconds = Double.NaN;
     private Pose2d unifiedRobotPose = null;
     private double unifiedRobotPoseTimestampSeconds = Double.NaN;
     private int visionEventSequence = 0;
@@ -118,6 +121,14 @@ public final class Vision extends SubsystemBase {
         return unifiedRobotPose;
     }
 
+    /**
+     * Returns the most recent raw unified vision pose before consistency checks.
+     * Returns null when unavailable or stale.
+     */
+    public Pose2d getUnifiedRobotPoseRaw() {
+        return unifiedRobotPoseRaw;
+    }
+
     /** Allows the dashboard to disable vision pose updates at runtime. */
     public void setDashboardDisabled(boolean disabled) {
         this.dashboardDisabled = disabled;
@@ -128,6 +139,7 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput("RobotState/VisionDisabledOverride", dashboardDisabled);
 
         Pose2d currentPose = robotPoseSupplier.get();
+        PoseObservation bestRawObservation = null;
         PoseObservation bestConsistentObservation = null;
         Pose2d bestConsistentMeasuredPose = null;
         List<CandidateObservationDiagnostics> candidateDiagnostics =
@@ -152,6 +164,9 @@ public final class Vision extends SubsystemBase {
             PoseObservation bestObservation = selectBestObservation(input.poseObservations);
             if (bestObservation == null) {
                 continue;
+            }
+            if (isBetterObservation(bestObservation, bestRawObservation)) {
+                bestRawObservation = bestObservation;
             }
 
             Pose2d measuredPose = bestObservation.pose().toPose2d();
@@ -219,6 +234,7 @@ public final class Vision extends SubsystemBase {
                     index);
         }
 
+        updateUnifiedRawPose(bestRawObservation);
         updateUnifiedPose(
                 bestConsistentMeasuredPose,
                 bestConsistentObservation != null ? bestConsistentObservation.timestampSeconds() : Double.NaN);
@@ -228,6 +244,8 @@ public final class Vision extends SubsystemBase {
             logUnifiedPoseDiagnostics(currentPose);
         }
 
+        Logger.recordOutput("vision/unifiedRobotPoseRaw", unifiedRobotPoseRaw != null ? unifiedRobotPoseRaw : new Pose2d());
+        Logger.recordOutput("vision/unifiedRobotPoseRawValid", unifiedRobotPoseRaw != null);
         Logger.recordOutput("vision/unifiedRobotPose", unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
         Logger.recordOutput("vision/unifiedRobotPoseValid", unifiedRobotPose != null);
 
@@ -306,6 +324,24 @@ public final class Vision extends SubsystemBase {
             return candidate.ambiguity() < currentBest.ambiguity();
         }
         return candidate.averageTagDistance() < currentBest.averageTagDistance();
+    }
+
+    private void updateUnifiedRawPose(PoseObservation bestRawObservation) {
+        if (bestRawObservation != null) {
+            unifiedRobotPoseRaw = bestRawObservation.pose().toPose2d();
+            unifiedRobotPoseRawTimestampSeconds = bestRawObservation.timestampSeconds();
+            return;
+        }
+
+        if (unifiedRobotPoseRaw == null) {
+            return;
+        }
+
+        double ageSeconds = Timer.getFPGATimestamp() - unifiedRobotPoseRawTimestampSeconds;
+        if (!Double.isFinite(ageSeconds) || ageSeconds > UNIFIED_RAW_POSE_MAX_AGE_SECONDS) {
+            unifiedRobotPoseRaw = null;
+            unifiedRobotPoseRawTimestampSeconds = Double.NaN;
+        }
     }
 
     private void updateUnifiedPose(Pose2d bestConsistentPose, double bestConsistentTimestampSeconds) {

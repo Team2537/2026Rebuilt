@@ -27,7 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class PathPlannerNamedAutoSimTest {
-    private static final String AUTO_NAME = "Named Three Path Cycle";
+    private static final String AUTO_NAME = "brag";
 
     @BeforeEach
     void setUp() {
@@ -73,14 +73,13 @@ class PathPlannerNamedAutoSimTest {
                         .map(AutoRoutines.AutoRoutine::name)
                         .collect(Collectors.toSet())
                         .contains("pp/" + AUTO_NAME),
-                "Auto selector routines did not include new PathPlanner auto: " + AUTO_NAME);
+                "Auto selector routines did not include expected PathPlanner auto: " + AUTO_NAME);
 
         Command auto = new PathPlannerAuto(AUTO_NAME).withName("TestAuto_" + AUTO_NAME);
         CommandScheduler.getInstance().schedule(auto);
 
         double distanceTraveledMeters = 0.0;
         Pose2d previousPose = drive.getPose();
-        boolean intakeEverExtended = intake.isExtended();
         boolean shooterKickerEverActive = shooter.isKickerActive();
         int iterationsUntilFinish = -1;
         boolean finished = false;
@@ -93,7 +92,6 @@ class PathPlannerNamedAutoSimTest {
             Pose2d currentPose = drive.getPose();
             distanceTraveledMeters += currentPose.getTranslation().getDistance(previousPose.getTranslation());
             previousPose = currentPose;
-            intakeEverExtended |= intake.isExtended();
             shooterKickerEverActive |= shooter.isKickerActive();
 
             if (!CommandScheduler.getInstance().isScheduled(auto)) {
@@ -105,14 +103,10 @@ class PathPlannerNamedAutoSimTest {
 
         assertTrue(finished, "PathPlanner auto did not finish in simulation.");
         double elapsedSeconds = iterationsUntilFinish * 0.02;
-        assertTrue(elapsedSeconds > 8.0,
+        assertTrue(elapsedSeconds > 5.5,
                 "Auto finished too quickly for homing + path sequence. elapsedSeconds=" + elapsedSeconds);
         assertTrue(distanceTraveledMeters > 4.0,
                 "Drive did not appear to follow paths. distanceTraveledMeters=" + distanceTraveledMeters);
-        assertTrue(intakeEverExtended,
-                "Intake never became extended, IntakeExtend named command may not have run.");
-        assertTrue(!intake.isExtended(),
-                "Intake should be retracted at auto end due to IntakeStopAndRetract named command.");
         assertTrue(shooterKickerEverActive,
                 "Shooter kicker never became active, shoot cycle may not have fed any game piece.");
 

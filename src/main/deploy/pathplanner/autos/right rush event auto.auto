@@ -5,6 +5,12 @@
     "data": {
       "commands": [
         {
+          "type": "named",
+          "data": {
+            "name": "ShooterHome"
+          }
+        },
+        {
           "type": "path",
           "data": {
             "pathName": "right rush event"

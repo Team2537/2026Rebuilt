@@ -1,6 +1,7 @@
 package frc.robot.autos;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import edu.wpi.first.util.datalog.DataLogReader;
 import edu.wpi.first.util.datalog.DataLogRecord;
@@ -21,7 +22,8 @@ class ShooterGateLogAnalyzerTest {
         if (wpilogPath == null || wpilogPath.isBlank()) {
             wpilogPath = System.getenv("GATE_DIAG_WPILOG");
         }
-        assertTrue(wpilogPath != null && !wpilogPath.isBlank(),
+        assumeTrue(
+                wpilogPath != null && !wpilogPath.isBlank(),
                 "Missing gate path. Set -DgateDiag.wpilog=<path> or GATE_DIAG_WPILOG=<path>.");
 
         Path wpilog = Path.of(wpilogPath).toAbsolutePath();
