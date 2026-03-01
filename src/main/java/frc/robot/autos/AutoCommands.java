@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.Constants;
 import frc.robot.RobotState;
+import frc.robot.commands.DriveCommands;
 import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.shooter.LaunchCalculator;
@@ -71,7 +72,12 @@ public final class AutoCommands {
 
         return Commands.parallel(
                         shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
-                        Commands.run(drive::stopWithX, drive))
+                        DriveCommands.autoAlignToHubPose(
+                                drive,
+                                () -> 0.0,
+                                () -> 0.0,
+                                () -> 0.0,
+                                targetHeadingSupplier))
                 .withName("AutoShootHub");
     }
 

@@ -55,12 +55,6 @@
           }
         },
         {
-          "type": "named",
-          "data": {
-            "name": "IntakeStopAndRetract"
-          }
-        },
-        {
           "type": "path",
           "data": {
             "pathName": "right after intake to trench"
@@ -71,21 +65,34 @@
           "data": {
             "commands": [
               {
-                "type": "named",
-                "data": {
-                  "name": "IntakeSlowRetract"
-                }
-              },
-              {
                 "type": "wait",
                 "data": {
-                  "waitTime": 4.0
+                  "waitTime": 10.0
                 }
               },
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHubOnMove"
+                  "name": "ShooterShootHub"
+                }
+              },
+              {
+                "type": "sequential",
+                "data": {
+                  "commands": [
+                    {
+                      "type": "wait",
+                      "data": {
+                        "waitTime": 4.0
+                      }
+                    },
+                    {
+                      "type": "named",
+                      "data": {
+                        "name": "IntakeSlowRetract"
+                      }
+                    }
+                  ]
                 }
               }
             ]

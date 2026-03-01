@@ -22,6 +22,8 @@ import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
+import com.pathplanner.lib.commands.FollowPathCommand;
+
 public final class Robot extends LoggedRobot {
     private static final int POWER_DISTRIBUTION_CAN_ID = 1;
     private static final double LOW_BATTERY_VOLTAGE = 11.5;
@@ -61,6 +63,8 @@ public final class Robot extends LoggedRobot {
 
         Logger.start();
         WebServer.start(5800, Filesystem.getDeployDirectory().getPath());
+
+        FollowPathCommand.warmupCommand().schedule();
 
         robotContainer = new RobotContainer();
     }

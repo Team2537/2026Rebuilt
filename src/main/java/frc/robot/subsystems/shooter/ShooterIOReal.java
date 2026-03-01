@@ -270,12 +270,8 @@ public class ShooterIOReal implements ShooterIO {
                 ? InvertedValue.Clockwise_Positive
                 : InvertedValue.CounterClockwise_Positive;
         config.Feedback.SensorToMechanismRatio = ShooterConstants.HOOD_SENSOR_TO_MECHANISM_RATIO;
-        config.SoftwareLimitSwitch.ReverseSoftLimitEnable = true;
-        config.SoftwareLimitSwitch.ForwardSoftLimitEnable = true;
-        config.SoftwareLimitSwitch.ReverseSoftLimitThreshold =
-                Units.radiansToRotations(ShooterConstants.HOOD_MIN_ANGLE_RAD);
-        config.SoftwareLimitSwitch.ForwardSoftLimitThreshold =
-                Units.radiansToRotations(ShooterConstants.HOOD_MAX_ANGLE_RAD);
+        config.SoftwareLimitSwitch.ReverseSoftLimitEnable = false;
+        config.SoftwareLimitSwitch.ForwardSoftLimitEnable = false;
         config.Slot0 = new Slot0Configs()
                 .withKP(ShooterConstants.HOOD_KP)
                 .withKI(ShooterConstants.HOOD_KI)
@@ -291,7 +287,6 @@ public class ShooterIOReal implements ShooterIO {
         config.CurrentLimits.SupplyCurrentLimit = ShooterConstants.HOOD_SUPPLY_CURRENT_LIMIT_AMPS;
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> hoodMotor.getConfigurator().apply(config, 0.25));
-        hoodMotor.setPosition(0.0);
     }
 
     private void configureKickerMotor() {
