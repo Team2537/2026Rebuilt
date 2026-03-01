@@ -56,8 +56,21 @@ public final class AutoCommands {
      */
     public static Command shootHub(
             Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
+        Supplier<LaunchCalculator.MotionCompensation> compensationSupplier =
+                createHubMotionCompensationSupplier(shooter);
+        DoubleSupplier distanceSupplier =
+                () -> compensationSupplier.get().compensatedDistanceMeters();
+        Supplier<Rotation2d> targetHeadingSupplier =
+                () -> compensationSupplier.get().compensatedHeading();
+        Supplier<Rotation2d> rawDesiredRobotHeadingSupplier =
+                createCycleCachedRotationSupplier(() -> {
+                    Rotation2d targetHeading = targetHeadingSupplier.get();
+                    return targetHeading == null ? null : targetHeading.plus(Rotation2d.kPi);
+                });
+        BooleanSupplier aimReadySupplier = createAimReadySupplier(rawDesiredRobotHeadingSupplier);
+
         return Commands.parallel(
-                        shootCoordinator.shootForDistance(createHubDistanceSupplier(shooter)),
+                        shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
                         Commands.run(drive::stopWithX, drive))
                 .withName("AutoShootHub");
     }

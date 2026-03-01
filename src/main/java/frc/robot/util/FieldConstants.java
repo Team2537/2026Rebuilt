@@ -32,7 +32,7 @@ public final class FieldConstants {
   public static final double FIELD_LENGTH_METERS = TAG_LAYOUT.getFieldLength();
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
   private static final Translation2d BLUE_HUB_TARGET_TRANSLATION =
-      new Translation2d(4.607866, 4.0213534);
+      new Translation2d(4.907866, 4.0213534);
   private static final Translation2d RED_HUB_TARGET_TRANSLATION =
       new Translation2d(
           FIELD_LENGTH_METERS - BLUE_HUB_TARGET_TRANSLATION.getX(),

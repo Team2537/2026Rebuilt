@@ -55,5 +55,5 @@ public final class IntakeConstants {
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
     public static final double HOMING_VOLTAGE = -2.0;
-    public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;
+    public static final double HOMING_WAIT_TIMEOUT_SEC = 2.0;
 }

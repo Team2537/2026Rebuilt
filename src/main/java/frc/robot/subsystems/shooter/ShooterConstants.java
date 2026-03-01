@@ -46,7 +46,7 @@ public final class ShooterConstants {
      * Used for velocity transform (accounting for angular velocity at the shooter)
      * and for 3D pose visualization in AdvantageKit.
      */
-    public static final Translation2d ROBOT_TO_SHOOTER_OFFSET = new Translation2d(-0.32, 0.0);
+    public static final Translation2d ROBOT_TO_SHOOTER_OFFSET = new Translation2d(0.16, 0.0);
 
     /** Height of the shooter above the ground (meters), for 3D pose visualization. */
     public static final double SHOOTER_HEIGHT_METERS = 0.6;
@@ -108,8 +108,8 @@ public final class ShooterConstants {
     public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 70.0;
     public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 45.0;
 
-    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
-    public static final double HOMING_WAIT_TIMEOUT_SEC = 3.0;
+    public static final double HOMING_CURRENT_THRESHOLD_AMPS = 13.0;
+    public static final double HOMING_WAIT_TIMEOUT_SEC = 2.0;
 
 
     private ShooterConstants() {}
