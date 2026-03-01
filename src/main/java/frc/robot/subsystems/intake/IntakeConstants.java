@@ -46,7 +46,7 @@ public final class IntakeConstants {
     public static final double TRAVEL_IN_PER_MOTOR_REV = 0.5233;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;
     public static final double FULL_TRAVEL_IN = 12.7;
-    public static final double RETRACTED_POSITION_ROT = 4.0;
+    public static final double RETRACTED_POSITION_ROT = 6.0;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
     public static final double POSITION_TOLERANCE_ROT = 0.25;
     public static final double MOVE_TIMEOUT_SEC = 1.5;

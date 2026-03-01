@@ -26,6 +26,7 @@ public final class AutoNamedCommands {
         register("IntakeExtend", intake.extendCommand().withName("AutoNamed_IntakeExtend"));
         register("IntakeRetract", intake.retractCommand().withName("AutoNamed_IntakeRetract"));
         register("IntakeHome", intake.homeCommand().withName("AutoNamed_IntakeHome"));
+        register("IntakeSlowRetract", intake.slowRetractCommand().withName("AutoNamed_IntakeSlowRetract"));
         register("IntakeRoller", intake.spinRoller().withName("AutoNamed_IntakeRoller"));
         register("IntakeStop", intake.stopCommand().withName("AutoNamed_IntakeStop"));
         register(

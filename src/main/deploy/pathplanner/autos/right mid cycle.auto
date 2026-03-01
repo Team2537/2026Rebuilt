@@ -36,7 +36,7 @@
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHub"
+                  "name": "ShooterShootHubOnMove"
                 }
               }
             ]
@@ -98,7 +98,7 @@
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterShootHub"
+                  "name": "ShooterShootHubOnMove"
                 }
               }
             ]
