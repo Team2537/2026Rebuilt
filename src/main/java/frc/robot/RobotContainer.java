@@ -224,8 +224,8 @@ public final class RobotContainer {
         drive.setDefaultCommand(
                 commandTelemetry.withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
                         drive,
-                        () -> driverController.getLeftY(),
-                        () -> driverController.getLeftX(),
+                        () -> -driverController.getLeftY(),
+                        () -> -driverController.getLeftX(),
                         () -> -driverController.getRightX())
                         .withName("DriveJoystickDefault")));
         shooter.setDefaultCommand(commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
