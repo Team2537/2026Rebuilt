@@ -58,12 +58,18 @@ public final class LaunchCalculator {
      */
     public MotionCompensation calculate(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
-        if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
+        if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null || shooterOffset == null) {
             return invalid();
         }
 
-        double rawDistanceMeters = getHubDistanceMeters(robotPose);
-        Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
+        Translation2d shooterFieldPosition = getShooterFieldPosition(robotPose);
+        double rawDistanceMeters = shooterFieldPosition != null
+                ? shooterFieldPosition.getDistance(hubTarget)
+                : Double.NaN;
+        Translation2d toHubVector = shooterFieldPosition != null ? hubTarget.minus(shooterFieldPosition) : null;
+        if (toHubVector == null) {
+            return invalid();
+        }
         double rangeMeters = toHubVector.getNorm();
         if (!Double.isFinite(rawDistanceMeters) || !Double.isFinite(rangeMeters) || rangeMeters <= 1e-6) {
             return new MotionCompensation(rawDistanceMeters, rawDistanceMeters, 0.0, 0.0, 0.0, null);
@@ -91,7 +97,7 @@ public final class LaunchCalculator {
                         + shooterFieldVelocity.getY() * perpendicularUnit.getY();
 
         // Apply phase delay to compensate for system latency.
-        Translation2d phaseDelayedTranslation = robotPose.getTranslation().plus(
+        Translation2d phaseDelayedTranslation = shooterFieldPosition.plus(
                 shooterFieldVelocity.times(phaseDelaySec));
 
         // Iterative convergence: time-in-air depends on distance, distance depends on
@@ -147,18 +153,28 @@ public final class LaunchCalculator {
                 compensatedHeading);
     }
 
+    private Translation2d getShooterFieldPosition(Pose2d robotPose) {
+        if (robotPose == null || shooterOffset == null) {
+            return null;
+        }
+        return robotPose.getTranslation().plus(shooterOffset.rotateBy(robotPose.getRotation()));
+    }
+
     private double lookupTimeInAir(double distanceMeters) {
         double time = timeInAirSecondsByDistance.get(distanceMeters);
         return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
     }
 
-    /** Returns the raw distance from the robot to the hub target. */
+    /** Returns the raw distance from the shooter position to the hub target. */
     public static double getHubDistanceMeters(Pose2d robotPose) {
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         if (hubTarget == null || robotPose == null) {
             return Double.NaN;
         }
-        return robotPose.getTranslation().getDistance(hubTarget);
+        Translation2d shooterFieldPosition = robotPose
+                .getTranslation()
+                .plus(ShooterConstants.ROBOT_TO_SHOOTER_OFFSET.rotateBy(robotPose.getRotation()));
+        return shooterFieldPosition.getDistance(hubTarget);
     }
 
     private static MotionCompensation invalid() {

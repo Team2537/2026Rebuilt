@@ -23,7 +23,7 @@ public final class FuelSim {
     private static final double SHOOTER_SPEED_EFFICIENCY = 0.85;
     private static final double MIN_MUZZLE_SPEED_METERS_PER_SEC = 7.0;
     private static final double MAX_MUZZLE_SPEED_METERS_PER_SEC = 25.0;
-    private static final double MUZZLE_OFFSET_X_METERS = -0.32;
+    private static final double MUZZLE_OFFSET_X_METERS = -0.1524;
     private static final double MUZZLE_OFFSET_Y_METERS = 0.0;
     private static final double MUZZLE_HEIGHT_METERS = 0.68;
     private static final double MAX_HOOD_ANGLE_RAD = Units.degreesToRadians(90.0);

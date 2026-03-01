@@ -46,7 +46,7 @@ public final class ShooterConstants {
      * Used for velocity transform (accounting for angular velocity at the shooter)
      * and for 3D pose visualization in AdvantageKit.
      */
-    public static final Translation2d ROBOT_TO_SHOOTER_OFFSET = new Translation2d(0.16, 0.0);
+    public static final Translation2d ROBOT_TO_SHOOTER_OFFSET = new Translation2d(-0.1524, 0.0);
 
     /** Height of the shooter above the ground (meters), for 3D pose visualization. */
     public static final double SHOOTER_HEIGHT_METERS = 0.6;
@@ -72,7 +72,7 @@ public final class ShooterConstants {
     // where vz = muzzle_speed * sin(hood_angle), muzzle_speed = RPM * 2pi/60 * 0.0508m * 0.85
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.24, 1.204, 1.211, 1.09, 1.315, 1.328, 1.481};
 
-    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.4, 2.04, 3.0, 4.0, 5.0, 6.0, 7.0 };
+    private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.2, 1.84, 2.8, 3.8, 4.8, 5.8, 6.8 };
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3250.0, 3400.0, 3650.0, 3950.0, 4200.0, 4550.0 };
     private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3250.0, 3400.0, 3650.0, 3950.0, 4200.0, 4550.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {6.0, 12.0, 15.5, 19.0, 22.0, 25.0, 28.0};
