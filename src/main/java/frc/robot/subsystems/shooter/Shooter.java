@@ -23,34 +23,11 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import frc.robot.util.FieldConstants;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Shooter extends SubsystemBase {
-    private static final String LOG_COMP_ROBOT_POSE_KEY = "Shooter/Comp/RobotPose";
-    private static final String LOG_COMP_TARGET_POSE_KEY = "Shooter/Comp/TargetPose";
-    private static final String LOG_COMP_FAILURE_KEY = "Shooter/Comp/LastFailure";
-    private static final String LOG_COMP_TIME_LOOKUP_DISTANCE_KEY = "Shooter/Comp/TimeLookupDistanceMeters";
-    private static final String LOG_COMP_TIME_LOOKUP_CLAMPED_KEY = "Shooter/Comp/TimeLookupDistanceClamped";
-    private static final String LOG_COMP_RAW_ROBOT_POSE_KEY = "Shooter/Comp/RawRobotPose";
-    private static final String LOG_COMP_HEADING_PREDICTED_POSE_KEY = "Shooter/Comp/HeadingPredictedRobotPose";
-    private static final String LOG_COMP_DISTANCE_PREDICTED_POSE_KEY = "Shooter/Comp/DistancePredictedRobotPose";
-    private static final String LOG_COMP_RAW_AIM_LINE_KEY = "Shooter/Comp/RawAimLine";
-    private static final String LOG_COMP_HEADING_AIM_LINE_KEY = "Shooter/Comp/HeadingAimLine";
-    private static final String LOG_COMP_DISTANCE_AIM_LINE_KEY = "Shooter/Comp/DistanceAimLine";
-    private static final String LOG_COMP_RAW_HEADING_DEG_KEY = "Shooter/Comp/RawHubHeadingDeg";
-    private static final String LOG_COMP_UNCLAMPED_HEADING_DEG_KEY = "Shooter/Comp/UnclampedCompensatedHubHeadingDeg";
-    private static final String LOG_COMP_LEAD_DEG_UNCLAMPED_KEY = "Shooter/Comp/LeadAngleDegUnclamped";
-    private static final String LOG_COMP_LEAD_DEG_CLAMPED_KEY = "Shooter/Comp/LeadAngleDegClamped";
-    private static final String LOG_COMP_APPLIED_TIME_SEC_KEY = "Shooter/Comp/AppliedTimeInAirSec";
-    private static final String LOG_COMP_CLAMPED_KEY = "Shooter/Comp/CompensationClamped";
-    private static final String LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY = "Shooter/Comp/TowardDisplacementMetersUnclamped";
-    private static final String LOG_COMP_TOWARD_DISP_CLAMPED_KEY = "Shooter/Comp/TowardDisplacementMetersClamped";
-    private static final String LOG_COMP_PERP_DISP_UNCLAMPED_KEY = "Shooter/Comp/PerpendicularDisplacementMetersUnclamped";
-    private static final String LOG_COMP_PERP_DISP_CLAMPED_KEY = "Shooter/Comp/PerpendicularDisplacementMetersClamped";
-    private static final String LOG_COMP_FORWARD_COMPONENT_METERS_KEY = "Shooter/Comp/ForwardComponentMeters";
     private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
     private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
     private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
@@ -69,15 +46,6 @@ public class Shooter extends SubsystemBase {
             boolean hoodAngleAtSetpoint,
             boolean atSetpoint,
             boolean readyToFire) {}
-    public record MotionCompensation(
-            double rawDistanceMeters,
-            double compensatedDistanceMeters,
-            double timeInAirSec,
-            double velocityTowardHubMps,
-            double velocityPerpendicularHubMps,
-            Rotation2d compensatedHeading) {}
-
-    private static final boolean ENABLE_VERBOSE_COMPENSATION_LOGS = false;
 
     private enum KickerControlMode {
         OFF,
@@ -94,6 +62,7 @@ public class Shooter extends SubsystemBase {
     private final InterpolatingDoubleTreeMap rightRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap hoodAngleRadByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap timeInAirSecondsByDistance = new InterpolatingDoubleTreeMap();
+    private LaunchCalculator launchCalculator;
     private double shotMapMinDistanceMeters = Double.NaN;
     private double shotMapMaxDistanceMeters = Double.NaN;
 
@@ -112,6 +81,7 @@ public class Shooter extends SubsystemBase {
         this.io = io;
         loadShotMapFromConstants();
         loadTimeInAirMapFromConstants();
+        rebuildLaunchCalculator();
         initDashboardTuningEntries();
         sysId = new SysIdRoutine(
                 new SysIdRoutine.Config(
@@ -319,295 +289,41 @@ public class Shooter extends SubsystemBase {
         return getMotionCompensationToHub(robotPose, robotRelativeSpeeds).compensatedHeading();
     }
 
-    /**
-     * Maximum number of iterations for the time↔distance convergence loop.
-     * The predicted distance determines the flight time, which determines the predicted distance.
-     * 3 iterations is sufficient — typically converges in 2.
-     */
-    private static final int MOTION_COMP_ITERATIONS = 3;
-    private static final double MOTION_COMP_TIME_CONVERGENCE_SEC = 0.001;
-
-    public MotionCompensation getMotionCompensationToHub(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
-        Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
-        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-            Logger.recordOutput(LOG_COMP_FAILURE_KEY, "");
-        }
-        if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null) {
-            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-                publishCompensationTargetInvalid();
-                clearCompensationDiagnosticsOutputs();
-            }
-            return publishMotionCompensation(
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    Double.NaN,
-                    null);
-        }
-
-        double rawDistanceMeters = getHubDistanceMeters(robotPose);
-        Translation2d toHubVector = hubTarget.minus(robotPose.getTranslation());
-        double rangeMeters = toHubVector.getNorm();
-        if (!Double.isFinite(rawDistanceMeters) || !Double.isFinite(rangeMeters) || rangeMeters <= 1e-6) {
-            if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-                publishCompensationTargetInvalid();
-                clearCompensationDiagnosticsOutputs();
-            }
-            return publishMotionCompensation(
-                    rawDistanceMeters,
-                    rawDistanceMeters,
-                    0.0,
-                    0.0,
-                    0.0,
-                    null);
-        }
-
-        // Transform robot velocity to shooter velocity to account for angular velocity effects.
-        // The ball inherits the shooter's velocity at launch, not the robot center's velocity.
-        // v_shooter = v_center + omega x r (2D cross product: omega_z x (x,y) = (-omega*y, omega*x))
-        Translation2d shooterOffset = ShooterConstants.ROBOT_TO_SHOOTER_OFFSET;
-        double shooterVxRobot = robotRelativeSpeeds.vxMetersPerSecond
-                - robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getY();
-        double shooterVyRobot = robotRelativeSpeeds.vyMetersPerSecond
-                + robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getX();
-        ChassisSpeeds shooterFieldSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
-                new ChassisSpeeds(shooterVxRobot, shooterVyRobot, robotRelativeSpeeds.omegaRadiansPerSecond),
-                robotPose.getRotation());
-        Translation2d shooterFieldVelocity = new Translation2d(
-                shooterFieldSpeeds.vxMetersPerSecond, shooterFieldSpeeds.vyMetersPerSecond);
-
-        // Velocity decomposition for diagnostics
-        Translation2d towardUnit = new Translation2d(toHubVector.getX() / rangeMeters, toHubVector.getY() / rangeMeters);
-        Translation2d perpendicularUnit = new Translation2d(-towardUnit.getY(), towardUnit.getX());
-        double velocityTowardHubMetersPerSec =
-                shooterFieldVelocity.getX() * towardUnit.getX() + shooterFieldVelocity.getY() * towardUnit.getY();
-        double velocityPerpendicularHubMetersPerSec =
-                shooterFieldVelocity.getX() * perpendicularUnit.getX()
-                        + shooterFieldVelocity.getY() * perpendicularUnit.getY();
-
-        // Iterative "aim from predicted pose" model.
-        // The ball inherits the shooter's velocity at launch, so we must aim as if shooting from
-        // the position the robot will occupy when the ball arrives at the target.
-        // Time-in-air depends on the compensated distance (which determines shot parameters),
-        // and compensated distance depends on the prediction time — iterate to converge.
-        Translation2d rawRobotTranslation = robotPose.getTranslation();
-        Rotation2d rawRobotHeading = robotPose.getRotation();
-
-        // Apply phase delay to compensate for system latency (sensors, network, actuators).
-        // Project the starting position forward so the iterative loop starts from where
-        // the robot will be when the command actually takes effect.
-        Translation2d phaseDelayedTranslation = rawRobotTranslation.plus(
-                shooterFieldVelocity.times(ShooterConstants.PHASE_DELAY_SEC));
-
-        double timeInAirSec = lookupTimeInAir(rawDistanceMeters);
-        double effectiveTimeSec = timeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
-        Translation2d predictedRobotTranslation = phaseDelayedTranslation;
-        Translation2d compensatedVector = toHubVector;
-        double compensatedDistanceMeters = rawDistanceMeters;
-
-        for (int i = 0; i < MOTION_COMP_ITERATIONS; i++) {
-            predictedRobotTranslation = phaseDelayedTranslation.plus(shooterFieldVelocity.times(effectiveTimeSec));
-            compensatedVector = hubTarget.minus(predictedRobotTranslation);
-            compensatedDistanceMeters = compensatedVector.getNorm();
-            if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
-                compensatedDistanceMeters = rawDistanceMeters;
-                compensatedVector = toHubVector;
-                break;
-            }
-            double newTimeInAirSec = lookupTimeInAir(compensatedDistanceMeters);
-            if (!Double.isFinite(newTimeInAirSec) || newTimeInAirSec < 0.0) {
-                break;
-            }
-            double newEffectiveTimeSec = newTimeInAirSec * ShooterConstants.MOTION_COMP_TIME_SCALE;
-            if (Math.abs(newEffectiveTimeSec - effectiveTimeSec) < MOTION_COMP_TIME_CONVERGENCE_SEC) {
-                timeInAirSec = newTimeInAirSec;
-                effectiveTimeSec = newEffectiveTimeSec;
-                break;
-            }
-            timeInAirSec = newTimeInAirSec;
-            effectiveTimeSec = newEffectiveTimeSec;
-        }
-
-        // Final prediction with converged time — single pose for both heading and distance
-        predictedRobotTranslation = phaseDelayedTranslation.plus(shooterFieldVelocity.times(effectiveTimeSec));
-        compensatedVector = hubTarget.minus(predictedRobotTranslation);
-        compensatedDistanceMeters = compensatedVector.getNorm();
-        if (!Double.isFinite(compensatedDistanceMeters) || compensatedDistanceMeters < 1e-6) {
-            compensatedDistanceMeters = rawDistanceMeters;
-            compensatedVector = toHubVector;
-        }
-
-        Rotation2d rawHeading = toHubVector.getAngle();
-        Rotation2d compensatedHeading =
-                compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : rawHeading;
-
-        // NOTE: Shooter offset from robot center is accounted for in the shot map calibration —
-        // the shot map RPM/hood values are tuned so that the ball, launched from the shooter,
-        // crosses z=1.83m at the correct horizontal distance.
-
-        if (ENABLE_VERBOSE_COMPENSATION_LOGS) {
-            Rotation2d predictedRobotHeading = new Rotation2d(
-                    rawRobotHeading.getRadians() + robotRelativeSpeeds.omegaRadiansPerSecond * effectiveTimeSec);
-            double unclampedLeadRad = MathUtil.angleModulus(compensatedHeading.minus(rawHeading).getRadians());
-            double towardDisplacementMeters = velocityTowardHubMetersPerSec * effectiveTimeSec;
-            double perpendicularDisplacementMeters = velocityPerpendicularHubMetersPerSec * effectiveTimeSec;
-            Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, rawHeading.getDegrees());
-            Logger.recordOutput(LOG_COMP_UNCLAMPED_HEADING_DEG_KEY, compensatedHeading.getDegrees());
-            Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
-            Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Units.radiansToDegrees(unclampedLeadRad));
-            Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, effectiveTimeSec);
-            Logger.recordOutput(LOG_COMP_CLAMPED_KEY, false);
-            Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, towardDisplacementMeters);
-            Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, towardDisplacementMeters);
-            Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, perpendicularDisplacementMeters);
-            Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, perpendicularDisplacementMeters);
-            Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, rangeMeters - towardDisplacementMeters);
-            publishCompensationVisualization(
-                    rawRobotTranslation,
-                    rawRobotHeading,
-                    predictedRobotTranslation,
-                    predictedRobotHeading,
-                    predictedRobotTranslation,
-                    predictedRobotHeading,
-                    hubTarget,
-                    true);
-        }
-
-        // Publish shooter pose for AdvantageKit visualization (verify offset is correct)
-        Translation2d shooterFieldPos = rawRobotTranslation.plus(
-                shooterOffset.rotateBy(robotPose.getRotation()));
-        Logger.recordOutput("Shooter/ShooterPose3d", new Pose3d(
-                shooterFieldPos.getX(),
-                shooterFieldPos.getY(),
-                ShooterConstants.SHOOTER_HEIGHT_METERS,
-                new Rotation3d(0.0, 0.0, robotPose.getRotation().getRadians())));
-
-        return publishMotionCompensation(
-                rawDistanceMeters,
-                compensatedDistanceMeters,
-                timeInAirSec,
-                velocityTowardHubMetersPerSec,
-                velocityPerpendicularHubMetersPerSec,
-                compensatedHeading);
+    public LaunchCalculator.MotionCompensation getMotionCompensationToHub(
+            Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
+        LaunchCalculator.MotionCompensation result = launchCalculator.calculate(robotPose, robotRelativeSpeeds);
+        logMotionCompensation(result, robotPose);
+        return result;
     }
 
-    private double lookupTimeInAir(double distanceMeters) {
-        double clamped = clampDistanceToShotMap(distanceMeters);
-        double time = timeInAirSecondsByDistance.get(clamped);
-        return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
-    }
-
-    private MotionCompensation publishMotionCompensation(
-            double rawDistanceMeters,
-            double compensatedDistanceMeters,
-            double timeInAirSec,
-            double velocityTowardHubMps,
-            double velocityPerpendicularHubMps,
-            Rotation2d compensatedHeading) {
-        Logger.recordOutput("Shooter/RawHubDistanceMeters", rawDistanceMeters);
-        Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", compensatedDistanceMeters);
-        Logger.recordOutput("Shooter/VelocityTowardHubMps", velocityTowardHubMps);
-        Logger.recordOutput("Shooter/VelocityPerpendicularHubMps", velocityPerpendicularHubMps);
-        Logger.recordOutput("Shooter/TimeInAirSec", timeInAirSec);
+    private void logMotionCompensation(LaunchCalculator.MotionCompensation result, Pose2d robotPose) {
+        Logger.recordOutput("Shooter/RawHubDistanceMeters", result.rawDistanceMeters());
+        Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", result.compensatedDistanceMeters());
+        Logger.recordOutput("Shooter/VelocityTowardHubMps", result.velocityTowardHubMps());
+        Logger.recordOutput("Shooter/VelocityPerpendicularHubMps", result.velocityPerpendicularHubMps());
+        Logger.recordOutput("Shooter/TimeInAirSec", result.timeInAirSec());
         Logger.recordOutput("Shooter/CompensatedHubHeadingDeg",
-                compensatedHeading != null ? compensatedHeading.getDegrees() : Double.NaN);
+                result.compensatedHeading() != null ? result.compensatedHeading().getDegrees() : Double.NaN);
 
-        return new MotionCompensation(
-                rawDistanceMeters,
-                compensatedDistanceMeters,
-                timeInAirSec,
-                velocityTowardHubMps,
-                velocityPerpendicularHubMps,
-                compensatedHeading);
-    }
-
-    private double clampDistanceToShotMap(double distanceMeters) {
-        if (!Double.isFinite(distanceMeters)) {
-            return distanceMeters;
+        // Publish shooter pose for AdvantageKit visualization
+        if (robotPose != null) {
+            Translation2d shooterFieldPos = robotPose.getTranslation().plus(
+                    ShooterConstants.ROBOT_TO_SHOOTER_OFFSET.rotateBy(robotPose.getRotation()));
+            Logger.recordOutput("Shooter/ShooterPose3d", new Pose3d(
+                    shooterFieldPos.getX(),
+                    shooterFieldPos.getY(),
+                    ShooterConstants.SHOOTER_HEIGHT_METERS,
+                    new Rotation3d(0.0, 0.0, robotPose.getRotation().getRadians())));
         }
-        if (!Double.isFinite(shotMapMinDistanceMeters) || !Double.isFinite(shotMapMaxDistanceMeters)) {
-            return distanceMeters;
-        }
-        return MathUtil.clamp(distanceMeters, shotMapMinDistanceMeters, shotMapMaxDistanceMeters);
     }
 
-    private void publishCompensationVisualization(
-            Translation2d rawRobot,
-            Rotation2d rawRobotHeading,
-            Translation2d headingPredictedRobot,
-            Rotation2d headingPredictedRobotHeading,
-            Translation2d distancePredictedRobot,
-            Rotation2d distancePredictedRobotHeading,
-            Translation2d targetTranslation,
-            boolean hasValidTarget) {
-        Pose3d rawRobotPose = toPose3d(rawRobot, rawRobotHeading);
-        Pose3d headingPredictedPose = toPose3d(headingPredictedRobot, headingPredictedRobotHeading);
-        Pose3d distancePredictedPose = toPose3d(distancePredictedRobot, distancePredictedRobotHeading);
-        Pose3d targetPose = targetTranslation != null
-                ? new Pose3d(targetTranslation.getX(), targetTranslation.getY(), 0.0, new Rotation3d())
-                : new Pose3d();
-
-        Logger.recordOutput(LOG_COMP_RAW_ROBOT_POSE_KEY, rawRobotPose);
-        Logger.recordOutput(LOG_COMP_HEADING_PREDICTED_POSE_KEY, headingPredictedPose);
-        Logger.recordOutput(LOG_COMP_DISTANCE_PREDICTED_POSE_KEY, distancePredictedPose);
-        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, headingPredictedPose); // legacy key for dashboards
-        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, targetPose);
-        Logger.recordOutput(LOG_COMP_RAW_AIM_LINE_KEY, createAimLine(rawRobot, targetTranslation));
-        Logger.recordOutput(LOG_COMP_HEADING_AIM_LINE_KEY, createAimLine(headingPredictedRobot, targetTranslation));
-        Logger.recordOutput(LOG_COMP_DISTANCE_AIM_LINE_KEY, createAimLine(distancePredictedRobot, targetTranslation));
-        Logger.recordOutput("Shooter/Comp/TargetValid", hasValidTarget);
-    }
-
-    private void publishCompensationTargetInvalid() {
-        Logger.recordOutput(LOG_COMP_RAW_ROBOT_POSE_KEY, new Pose3d());
-        Logger.recordOutput(LOG_COMP_HEADING_PREDICTED_POSE_KEY, new Pose3d());
-        Logger.recordOutput(LOG_COMP_DISTANCE_PREDICTED_POSE_KEY, new Pose3d());
-        Logger.recordOutput(LOG_COMP_ROBOT_POSE_KEY, new Pose3d());
-        Logger.recordOutput(LOG_COMP_TARGET_POSE_KEY, new Pose3d());
-        Logger.recordOutput(LOG_COMP_RAW_AIM_LINE_KEY, new Pose3d[0]);
-        Logger.recordOutput(LOG_COMP_HEADING_AIM_LINE_KEY, new Pose3d[0]);
-        Logger.recordOutput(LOG_COMP_DISTANCE_AIM_LINE_KEY, new Pose3d[0]);
-        Logger.recordOutput("Shooter/Comp/TargetValid", false);
-    }
-
-    private static Pose3d toPose3d(Translation2d translation, Rotation2d heading) {
-        return new Pose3d(
-                translation.getX(),
-                translation.getY(),
-                0.0,
-                new Rotation3d(0.0, 0.0, heading.getRadians()));
-    }
-
-    private static Pose3d[] createAimLine(Translation2d fromTranslation, Translation2d targetTranslation) {
-        if (fromTranslation == null || targetTranslation == null) {
-            return new Pose3d[0];
-        }
-        return new Pose3d[] {
-                new Pose3d(fromTranslation.getX(), fromTranslation.getY(), 0.05, new Rotation3d()),
-                new Pose3d(targetTranslation.getX(), targetTranslation.getY(), 0.05, new Rotation3d())
-        };
-    }
-
-    private static void clearCompensationDiagnosticsOutputs() {
-        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_DISTANCE_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_TIME_LOOKUP_CLAMPED_KEY, false);
-        Logger.recordOutput(LOG_COMP_RAW_HEADING_DEG_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_UNCLAMPED_HEADING_DEG_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_LEAD_DEG_UNCLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_LEAD_DEG_CLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_APPLIED_TIME_SEC_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_CLAMPED_KEY, false);
-        Logger.recordOutput(LOG_COMP_TOWARD_DISP_UNCLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_TOWARD_DISP_CLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_PERP_DISP_UNCLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_PERP_DISP_CLAMPED_KEY, Double.NaN);
-        Logger.recordOutput(LOG_COMP_FORWARD_COMPONENT_METERS_KEY, Double.NaN);
-    }
-
-    private void reportCompensationFailure(String reason) {
-        Logger.recordOutput(LOG_COMP_FAILURE_KEY, reason);
-        DriverStation.reportError("[Shooter] Compensation invalid: " + reason, false);
+    /** Rebuilds the LaunchCalculator after shot map or time-in-air map changes. */
+    private void rebuildLaunchCalculator() {
+        launchCalculator = new LaunchCalculator(
+                timeInAirSecondsByDistance,
+                ShooterConstants.ROBOT_TO_SHOOTER_OFFSET,
+                ShooterConstants.PHASE_DELAY_SEC,
+                ShooterConstants.MOTION_COMP_TIME_SCALE);
     }
 
     private static double requireInRange(double value, double minInclusive, double maxInclusive, String name) {
@@ -809,6 +525,7 @@ public class Shooter extends SubsystemBase {
             }
             timeInAirSecondsByDistance.put(distancesMeters[i], timeInAirSec[i]);
         }
+        rebuildLaunchCalculator();
     }
 
     private static void validateDistancesStrictlyIncreasing(double[] distancesMeters, String mapName) {
@@ -877,11 +594,7 @@ public class Shooter extends SubsystemBase {
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {
-        Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
-        if (hubTarget == null || robotPose == null) {
-            return Double.NaN;
-        }
-        return robotPose.getTranslation().getDistance(hubTarget);
+        return LaunchCalculator.getHubDistanceMeters(robotPose);
     }
 
     public Command homeCommand() {

@@ -66,6 +66,7 @@ class PathPlannerNamedAutoSimTest {
         Intake intake = new Intake(new IntakeIOSim());
         ShootCoordinator shootCoordinator = new ShootCoordinator(shooter, transfer);
 
+        frc.robot.RobotState.initialize(drive);
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         assertTrue(
                 AutoRoutines.create(drive).stream()

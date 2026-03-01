@@ -36,6 +36,11 @@ public final class DriveConstants {
 
     public static final double MAX_STEER_VELOCITY_RAD_PER_SEC = DegreesPerSecond.of(1500.0).in(RadiansPerSecond);
 
+    /** Robot physical constants for PathPlanner configuration. */
+    public static final double ROBOT_MASS_KG = 74.088;
+    public static final double ROBOT_MOI = 6.883;
+    public static final double WHEEL_COF = 1.2;
+
     public static final PathConstraints DRIVER_DEFAULT_LIMITS = new PathConstraints(
             MetersPerSecond.of(DRIVER_MAX_LINEAR_VELOCITY_MPS),
             MetersPerSecondPerSecond.of(DRIVER_MAX_LINEAR_ACCELERATION_MPSSQ),

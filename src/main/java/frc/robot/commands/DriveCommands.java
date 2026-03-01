@@ -17,6 +17,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import frc.robot.RobotState;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.util.FieldConstants;
 import java.util.function.DoubleSupplier;
@@ -44,10 +45,11 @@ public final class DriveCommands {
                 .getTranslation();
     }
 
-    private static Rotation2d getAllianceAdjustedFieldHeading(Drive drive) {
+    private static Rotation2d getAllianceAdjustedFieldHeading() {
+        Rotation2d rotation = RobotState.getInstance().getRotation();
         boolean isFlipped = DriverStation.getAlliance().isPresent()
                 && DriverStation.getAlliance().get() == Alliance.Red;
-        return isFlipped ? drive.getRotation().plus(Rotation2d.kPi) : drive.getRotation();
+        return isFlipped ? rotation.plus(Rotation2d.kPi) : rotation;
     }
 
     /**
@@ -78,7 +80,7 @@ public final class DriveCommands {
                             omega * drive.getMaxAngularSpeedRadPerSec());
 
                     ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
                             : speeds;
 
                     drive.runDriverVelocity(commandSpeeds);
@@ -104,19 +106,19 @@ public final class DriveCommands {
         return Commands.run(
                 () -> {
                     double omega = alignController.calculate(
-                            drive.getRotation().getRadians(),
+                            RobotState.getInstance().getRotation().getRadians(),
                             targetHeading[0],
                             0.0);
                     drive.runDriverVelocity(new ChassisSpeeds(0.0, 0.0, omega));
                 },
                 drive)
                 .beforeStarting(() -> {
-                    Rotation2d snappedHeading = snapToNearestCardinal(drive.getRotation());
+                    Rotation2d snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
                     targetHeading[0] = snappedHeading;
-                    alignController.reset(drive.getRotation().getRadians(), snappedHeading);
+                    alignController.reset(RobotState.getInstance().getRotation().getRadians(), snappedHeading);
                 })
                 .until(() -> Math.abs(MathUtil.angleModulus(
-                        targetHeading[0].minus(drive.getRotation()).getRadians())) <= HEADING_SNAP_TOLERANCE_RAD)
+                        targetHeading[0].minus(RobotState.getInstance().getRotation()).getRadians())) <= HEADING_SNAP_TOLERANCE_RAD)
                 .andThen(Commands.runOnce(drive::stop, drive))
                 .withName("DriveHeadingSnap");
     }
@@ -135,7 +137,7 @@ public final class DriveCommands {
                 xSupplier,
                 ySupplier,
                 omegaFallbackSupplier,
-                () -> FieldConstants.getHubFacingHeading(drive.getPose()));
+                () -> FieldConstants.getHubFacingHeading(RobotState.getInstance().getPose()));
     }
 
     /**
@@ -163,7 +165,7 @@ public final class DriveCommands {
                     fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
 
                     double omega = alignController.calculate(
-                            drive.getRotation().getRadians(), targetHeading, fallbackOmega);
+                            RobotState.getInstance().getRotation().getRadians(), targetHeading, fallbackOmega);
 
                     ChassisSpeeds speeds = new ChassisSpeeds(
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
@@ -171,7 +173,7 @@ public final class DriveCommands {
                             omega);
 
                     ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading(drive))
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
                             : speeds;
 
                     drive.runDriverVelocity(commandSpeeds);
@@ -179,7 +181,7 @@ public final class DriveCommands {
                 drive)
                 .beforeStarting(() -> {
                     Rotation2d initialTarget = applyHubAutoAlignHeadingOffset(headingSupplier.get());
-                    alignController.reset(drive.getRotation().getRadians(), initialTarget);
+                    alignController.reset(RobotState.getInstance().getRotation().getRadians(), initialTarget);
                 })
                 .withName("DriveAutoAlignToHubPose");
     }

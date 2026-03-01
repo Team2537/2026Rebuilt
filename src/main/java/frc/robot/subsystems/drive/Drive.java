@@ -73,17 +73,14 @@ public class Drive extends SubsystemBase {
                     Math.hypot(TunerConstants.BackRight.LocationX, TunerConstants.BackRight.LocationY)));
 
     // PathPlanner config constants
-    private static final double ROBOT_MASS_KG = 74.088;
-    private static final double ROBOT_MOI = 6.883;
-    private static final double WHEEL_COF = 1.2;
     private static final double LOOP_PERIOD_SECONDS = 0.02;
     private static final RobotConfig PP_CONFIG = new RobotConfig(
-            ROBOT_MASS_KG,
-            ROBOT_MOI,
+            DriveConstants.ROBOT_MASS_KG,
+            DriveConstants.ROBOT_MOI,
             new ModuleConfig(
                     TunerConstants.FrontLeft.WheelRadius,
                     TunerConstants.kSpeedAt12Volts.in(MetersPerSecond),
-                    WHEEL_COF,
+                    DriveConstants.WHEEL_COF,
                     DCMotor.getKrakenX60Foc(1)
                             .withReduction(TunerConstants.FrontLeft.DriveMotorGearRatio),
                     TunerConstants.FrontLeft.SlipCurrent,

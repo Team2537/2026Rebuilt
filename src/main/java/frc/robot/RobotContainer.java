@@ -8,7 +8,6 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
@@ -32,6 +31,7 @@ import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.intake.IntakeIOReal;
 import frc.robot.subsystems.intake.IntakeIOSim;
+import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
@@ -41,14 +41,6 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
@@ -57,19 +49,6 @@ import org.littletonrobotics.junction.Logger;
 /** Owns subsystems, bindings, and autonomous orchestration. */
 public final class RobotContainer {
     private static final int GOD_CONTROLLER_PORT = 5;
-    private static final int COMMAND_EVENT_HISTORY_LIMIT = 40;
-    // Must stay a power of two because robotPeriodic uses a bitmask check.
-    private static final int COMMAND_LOG_EVERY_CYCLES = Constants.ENABLE_PERF_LOG_DECIMATION
-            ? Constants.PERF_LOG_DECIMATION_CYCLES
-            : 1;
-    private static final String UNKNOWN_COMMAND_SOURCE = "unknown";
-    private static final String DASHBOARD_OVERRIDE_AUTO_AIM_KEY = "Overrides/OverrideAutoAim";
-    private static final String DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY = "Overrides/AimDistanceMeters";
-    private static final String DASHBOARD_OVERRIDE_CLEAR_ALL_KEY = "Overrides/ClearAll";
-    private static final String DASHBOARD_OVERRIDE_DISABLE_VISION_KEY = "Overrides/DisableVision";
-    private static final String DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY = "Overrides/Status/OverrideAutoAimActive";
-    private static final String DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY = "Overrides/Status/AimDistanceMeters";
-    private static final double DEFAULT_OVERRIDE_AIM_DISTANCE_METERS = 1.5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
 
     private final Drive drive;
@@ -83,13 +62,10 @@ public final class RobotContainer {
     private final CommandXboxController driverController = new CommandXboxController(0);
     private final CommandXboxController godController;
 
+    private final CommandTelemetry commandTelemetry = new CommandTelemetry();
+    private final DashboardOverrides dashboardOverrides = new DashboardOverrides();
+
     private FuelSim fuelSim;
-    private final Map<Command, String> commandSources = new WeakHashMap<>();
-    private final Map<Command, Double> commandStartTimesSec = new IdentityHashMap<>();
-    private final Map<Command, Integer> commandRunIds = new IdentityHashMap<>();
-    private final ArrayDeque<String> recentCommandEvents = new ArrayDeque<>();
-    private int commandTelemetryCycle = 0;
-    private int nextCommandRunId = 1;
 
     public RobotContainer() {
         godController =
@@ -98,7 +74,8 @@ public final class RobotContainer {
                         : null;
 
         drive = createDrive();
-        vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION) ? new Vision(drive) : null;
+        RobotState.initialize(drive);
+        vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION) ? new Vision(RobotState.getInstance()) : null;
         shooter = createShooter();
         transfer = createTransfer();
         intake = createIntake();
@@ -108,12 +85,12 @@ public final class RobotContainer {
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         autoSelector = new AutoSelector(AutoRoutines.create(drive));
 
-        configureCommandTelemetry();
+        commandTelemetry.configure();
         configureBindings();
-        initDashboardOverrideEntries();
+        dashboardOverrides.init();
         publishDashboardSysIdCommands();
         publishDashboardActionCommands();
-        publishDashboardOverrideCommands();
+        dashboardOverrides.publishCommands(commandTelemetry);
     }
 
     public Command getAutonomousCommand() {
@@ -121,36 +98,33 @@ public final class RobotContainer {
     }
 
     public void robotPeriodic() {
-        commandTelemetryCycle++;
-        if ((commandTelemetryCycle & (COMMAND_LOG_EVERY_CYCLES - 1)) == 0) {
-            updateCommandLoggingOutputs(Timer.getFPGATimestamp());
-        }
-        updateDashboardOverrideStatus();
+        commandTelemetry.periodic();
+        dashboardOverrides.periodic(vision);
     }
 
     public void disabledInit() {
-        schedule("mode.disabledInit.stopManipulators", stopManipulatorsCommand());
+        commandTelemetry.schedule("mode.disabledInit.stopManipulators", stopManipulatorsCommand());
     }
 
     public void autonomousInit() {
         Command selectedAuto = getAutonomousCommand();
-        schedule("mode.autonomousInit.selectedAuto", selectedAuto);
+        commandTelemetry.schedule("mode.autonomousInit.selectedAuto", selectedAuto);
         if (!commandUsesIntakeOrShooter(selectedAuto)) {
             scheduleHomingAndBackground("mode.autonomousInit");
         }
     }
 
     public void teleopInit() {
-        cancelAllCommands("mode.teleopInit");
+        commandTelemetry.cancelAllCommands("mode.teleopInit");
         scheduleHomingAndBackground("mode.teleopInit");
     }
 
     public void teleopExit() {
-        schedule("mode.teleopExit.stopManipulators", stopManipulatorsCommand());
+        commandTelemetry.schedule("mode.teleopExit.stopManipulators", stopManipulatorsCommand());
     }
 
     public void testInit() {
-        cancelAllCommands("mode.testInit");
+        commandTelemetry.cancelAllCommands("mode.testInit");
     }
 
     public void simulationPeriodic() {
@@ -158,7 +132,7 @@ public final class RobotContainer {
             fuelSim = new FuelSim();
         }
         fuelSim.update(
-                drive.getPose(),
+                RobotState.getInstance().getPose(),
                 shooter.getMeasuredAverageShooterRpm(),
                 shooter.getTargetHoodAngleRad(),
                 shooter.isKickerActive(),
@@ -166,9 +140,9 @@ public final class RobotContainer {
     }
 
     private void scheduleHomingAndBackground(String source) {
-        schedule(source + ".intakeHomeThenBackground",
+        commandTelemetry.schedule(source + ".intakeHomeThenBackground",
                 intake.homeCommand().andThen(intake.backgroundCommand()).withName("IntakeHomeThenBackground"));
-        schedule(source + ".shooterHomeThenBackground",
+        commandTelemetry.schedule(source + ".shooterHomeThenBackground",
                 shooter.homeCommand().andThen(shooter.backgroundCommand()).withName("ShooterHomeThenBackground"));
     }
 
@@ -179,221 +153,12 @@ public final class RobotContainer {
         return command.getRequirements().contains(intake) || command.getRequirements().contains(shooter);
     }
 
-    private void configureCommandTelemetry() {
-        CommandScheduler scheduler = CommandScheduler.getInstance();
-        scheduler.onCommandInitialize(this::handleCommandInitialize);
-        scheduler.onCommandFinish(this::handleCommandFinish);
-        scheduler.onCommandInterrupt(this::handleCommandInterrupt);
-        updateCommandLoggingOutputs(Timer.getFPGATimestamp());
-    }
-
     private void bindOnTrue(Trigger trigger, String source, Command command) {
-        trigger.onTrue(withCommandSource(source, command));
+        trigger.onTrue(commandTelemetry.withCommandSource(source, command));
     }
 
     private void bindWhileTrue(Trigger trigger, String source, Command command) {
-        trigger.whileTrue(withCommandSource(source, command));
-    }
-
-    private Command withCommandSource(String source, Command command) {
-        commandSources.put(command, normalizeCommandSource(source));
-        return command;
-    }
-
-    private void schedule(String source, Command... commands) {
-        String normalizedSource = normalizeCommandSource(source);
-        List<Command> commandsToSchedule = new ArrayList<>();
-        List<String> commandNames = new ArrayList<>();
-
-        for (Command command : commands) {
-            if (command == null) {
-                continue;
-            }
-            Command trackedCommand = withCommandSource(normalizedSource, command);
-            commandsToSchedule.add(trackedCommand);
-            commandNames.add(normalizeCommandName(trackedCommand));
-        }
-
-        if (commandsToSchedule.isEmpty()) {
-            return;
-        }
-
-        recordCommandEvent("REQUEST source=" + normalizedSource + " commands=" + String.join(", ", commandNames));
-        Logger.recordOutput("commands/lastSchedule/source", normalizedSource);
-        Logger.recordOutput("commands/lastSchedule/commands", commandNames.toArray(String[]::new));
-        CommandScheduler.getInstance().schedule(commandsToSchedule.toArray(Command[]::new));
-    }
-
-    private void cancelAllCommands(String source) {
-        String normalizedSource = normalizeCommandSource(source);
-        recordCommandEvent("CANCEL_ALL source=" + normalizedSource);
-        Logger.recordOutput("commands/lastCancelAllSource", normalizedSource);
-        CommandScheduler.getInstance().cancelAll();
-    }
-
-    private void handleCommandInitialize(Command command) {
-        double nowSec = Timer.getFPGATimestamp();
-        int runId = nextCommandRunId++;
-        commandStartTimesSec.put(command, nowSec);
-        commandRunIds.put(command, runId);
-
-        String commandName = normalizeCommandName(command);
-        String source = commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE);
-        String requirements = getRequirementsSummary(command);
-        String commandKey = sanitizeCommandKey(commandName);
-
-        Logger.recordOutput("commands/" + commandName, true);
-        Logger.recordOutput("commands/byName/" + commandKey + "/running", true);
-        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
-        Logger.recordOutput("commands/lastStarted/name", commandName);
-        Logger.recordOutput("commands/lastStarted/source", source);
-        Logger.recordOutput("commands/lastStarted/runId", runId);
-        Logger.recordOutput("commands/lastStarted/requirements", requirements);
-
-        recordCommandEvent(String.format(
-                Locale.US,
-                "START run=%d name=%s source=%s requirements=%s",
-                runId,
-                commandName,
-                source,
-                requirements));
-        updateCommandLoggingOutputs(nowSec);
-    }
-
-    private void handleCommandFinish(Command command) {
-        handleCommandEnd(command, false);
-    }
-
-    private void handleCommandInterrupt(Command command) {
-        handleCommandEnd(command, true);
-    }
-
-    private void handleCommandEnd(Command command, boolean interrupted) {
-        double nowSec = Timer.getFPGATimestamp();
-        Double startTimeSec = commandStartTimesSec.remove(command);
-        Integer runId = commandRunIds.remove(command);
-
-        String commandName = normalizeCommandName(command);
-        String source = commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE);
-        String commandKey = sanitizeCommandKey(commandName);
-        double durationSec = startTimeSec == null ? 0.0 : nowSec - startTimeSec;
-        boolean stillRunning = isCommandNameRunning(commandName);
-
-        Logger.recordOutput("commands/" + commandName, stillRunning);
-        Logger.recordOutput("commands/byName/" + commandKey + "/running", stillRunning);
-        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
-        Logger.recordOutput("commands/lastEnded/name", commandName);
-        Logger.recordOutput("commands/lastEnded/source", source);
-        Logger.recordOutput("commands/lastEnded/runId", runId == null ? -1 : runId);
-        Logger.recordOutput("commands/lastEnded/durationSec", durationSec);
-        Logger.recordOutput("commands/lastEnded/interrupted", interrupted);
-
-        recordCommandEvent(String.format(
-                Locale.US,
-                "%s run=%d name=%s source=%s duration=%.3fs",
-                interrupted ? "INTERRUPT" : "FINISH",
-                runId == null ? -1 : runId,
-                commandName,
-                source,
-                durationSec));
-        updateCommandLoggingOutputs(nowSec);
-    }
-
-    private void updateCommandLoggingOutputs(double nowSec) {
-        List<Map.Entry<Command, Double>> runningEntries = new ArrayList<>(commandStartTimesSec.entrySet());
-        runningEntries.sort(Map.Entry.comparingByValue(Comparator.naturalOrder()));
-
-        List<String> runningNames = new ArrayList<>();
-        List<String> runningInstances = new ArrayList<>();
-
-        for (Map.Entry<Command, Double> entry : runningEntries) {
-            Command command = entry.getKey();
-            String name = normalizeCommandName(command);
-            if (!runningNames.contains(name)) {
-                runningNames.add(name);
-            }
-            runningInstances.add(String.format(
-                    Locale.US,
-                    "run=%d name=%s source=%s elapsed=%.3fs requirements=%s",
-                    commandRunIds.getOrDefault(command, -1),
-                    name,
-                    commandSources.getOrDefault(command, UNKNOWN_COMMAND_SOURCE),
-                    nowSec - entry.getValue(),
-                    getRequirementsSummary(command)));
-        }
-
-        Logger.recordOutput("commands/running/count", runningEntries.size());
-        Logger.recordOutput("commands/running/names", runningNames.toArray(String[]::new));
-        Logger.recordOutput("commands/running/instances", runningInstances.toArray(String[]::new));
-        Logger.recordOutput("commands/recentEvents", recentCommandEvents.toArray(String[]::new));
-    }
-
-    private int countRunningInstances(String commandName) {
-        int count = 0;
-        for (Command runningCommand : commandStartTimesSec.keySet()) {
-            if (commandName.equals(normalizeCommandName(runningCommand))) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private boolean isCommandNameRunning(String commandName) {
-        return countRunningInstances(commandName) > 0;
-    }
-
-    private static String getRequirementsSummary(Command command) {
-        List<String> requirementNames = new ArrayList<>();
-        for (var requirement : command.getRequirements()) {
-            String requirementName = requirement.getName();
-            if (requirementName == null || requirementName.isBlank()) {
-                requirementName = requirement.getClass().getSimpleName();
-            }
-            requirementNames.add(requirementName);
-        }
-        requirementNames.sort(String::compareTo);
-        return requirementNames.isEmpty() ? "[]" : "[" + String.join(", ", requirementNames) + "]";
-    }
-
-    private void recordCommandEvent(String event) {
-        String eventWithTimestamp = String.format(Locale.US, "%.3fs %s", Timer.getFPGATimestamp(), event);
-        recentCommandEvents.addLast(eventWithTimestamp);
-        while (recentCommandEvents.size() > COMMAND_EVENT_HISTORY_LIMIT) {
-            recentCommandEvents.removeFirst();
-        }
-        Logger.recordOutput("commands/lastEvent", eventWithTimestamp);
-    }
-
-    private static String normalizeCommandName(Command command) {
-        if (command == null) {
-            return "UnnamedCommand";
-        }
-        String name = command.getName();
-        if (name == null || name.isBlank()) {
-            String fallbackName = command.getClass().getSimpleName();
-            if (fallbackName == null || fallbackName.isBlank()) {
-                return "UnnamedCommand";
-            }
-            return fallbackName;
-        }
-        return name;
-    }
-
-    private static String normalizeCommandSource(String source) {
-        return source == null || source.isBlank() ? UNKNOWN_COMMAND_SOURCE : source;
-    }
-
-    private static String sanitizeCommandKey(String key) {
-        StringBuilder sanitized = new StringBuilder(key.length());
-        for (int i = 0; i < key.length(); i++) {
-            char character = key.charAt(i);
-            if (Character.isLetterOrDigit(character) || character == '_' || character == '-') {
-                sanitized.append(character);
-            } else {
-                sanitized.append('_');
-            }
-        }
-        return sanitized.isEmpty() ? "unnamed" : sanitized.toString();
+        trigger.whileTrue(commandTelemetry.withCommandSource(source, command));
     }
 
     private static Drive createDrive() {
@@ -457,14 +222,14 @@ public final class RobotContainer {
 
     private void configureBindings() {
         drive.setDefaultCommand(
-                withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
+                commandTelemetry.withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
                         drive,
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX())
                         .withName("DriveJoystickDefault")));
-        shooter.setDefaultCommand(withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
-        intake.setDefaultCommand(withCommandSource("default.intakeBackground", intake.backgroundCommand()));
+        shooter.setDefaultCommand(commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
+        intake.setDefaultCommand(commandTelemetry.withCommandSource("default.intakeBackground", intake.backgroundCommand()));
 
         bindOnTrue(driverController.leftBumper(), "driver.leftBumper.onTrue",
                 drive.toggleSlowMode().withName("DriveToggleSlowMode"));
@@ -488,7 +253,7 @@ public final class RobotContainer {
                 driverController.povUp(),
                 "driver.povUp.onTrue",
                 Commands.runOnce(
-                                () -> schedule(
+                                () -> commandTelemetry.schedule(
                                         "driver.povUp.shooterBackground",
                                         shooter.backgroundCommand()))
                         .withName("ScheduleShooterBackground"));
@@ -499,7 +264,7 @@ public final class RobotContainer {
                 createSetOdometryFromUnifiedVisionCommand());
 
         Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
-        Supplier<Shooter.MotionCompensation> motionCompensationSupplier =
+        Supplier<LaunchCalculator.MotionCompensation> motionCompensationSupplier =
                 createTeleopMotionCompensationSupplier(shootingPoseSupplier);
         DoubleSupplier hubDistanceSupplier =
                 () -> motionCompensationSupplier.get().compensatedDistanceMeters();
@@ -560,25 +325,25 @@ public final class RobotContainer {
     private void publishDashboardSysIdCommands() {
         SmartDashboard.putData(
                 "Shooter/SysId/QuasistaticForward",
-                withCommandSource(
+                commandTelemetry.withCommandSource(
                         "dashboard.shooterSysId.quasistaticForward",
                         shooter.sysIdQuasistatic(SysIdRoutine.Direction.kForward)
                                 .withName("ShooterSysIdQuasistaticForward")));
         SmartDashboard.putData(
                 "Shooter/SysId/QuasistaticReverse",
-                withCommandSource(
+                commandTelemetry.withCommandSource(
                         "dashboard.shooterSysId.quasistaticReverse",
                         shooter.sysIdQuasistatic(SysIdRoutine.Direction.kReverse)
                                 .withName("ShooterSysIdQuasistaticReverse")));
         SmartDashboard.putData(
                 "Shooter/SysId/DynamicForward",
-                withCommandSource(
+                commandTelemetry.withCommandSource(
                         "dashboard.shooterSysId.dynamicForward",
                         shooter.sysIdDynamic(SysIdRoutine.Direction.kForward)
                                 .withName("ShooterSysIdDynamicForward")));
         SmartDashboard.putData(
                 "Shooter/SysId/DynamicReverse",
-                withCommandSource(
+                commandTelemetry.withCommandSource(
                         "dashboard.shooterSysId.dynamicReverse",
                         shooter.sysIdDynamic(SysIdRoutine.Direction.kReverse)
                                 .withName("ShooterSysIdDynamicReverse")));
@@ -619,81 +384,32 @@ public final class RobotContainer {
                 createSetOdometryFromUnifiedVisionCommand().withName("DashboardDriveSetOdometryFromUnifiedVision"));
     }
 
-    private void publishDashboardOverrideCommands() {
-        putDashboardCommand(
-                DASHBOARD_OVERRIDE_CLEAR_ALL_KEY,
-                "dashboard.overrides.clearAll",
-                clearAllOverridesCommand());
-    }
-
     private void putDashboardCommand(String dashboardKey, String source, Command command) {
-        SmartDashboard.putData(dashboardKey, withCommandSource(source, command));
-    }
-
-    private void initDashboardOverrideEntries() {
-        SmartDashboard.setDefaultBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
-        SmartDashboard.setDefaultNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
-        SmartDashboard.setDefaultBoolean(DASHBOARD_OVERRIDE_DISABLE_VISION_KEY, false);
-        SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY, false);
-        SmartDashboard.putNumber(DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
-    }
-
-    private void updateDashboardOverrideStatus() {
-        boolean overrideAutoAimEnabled = isDashboardOverrideAutoAimEnabled();
-        double overrideAimDistanceMeters = getDashboardOverrideAimDistanceMeters();
-        boolean visionDisabled = SmartDashboard.getBoolean(DASHBOARD_OVERRIDE_DISABLE_VISION_KEY, false);
-        SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_STATUS_AUTO_AIM_ACTIVE_KEY, overrideAutoAimEnabled);
-        SmartDashboard.putNumber(DASHBOARD_OVERRIDE_STATUS_AIM_DISTANCE_METERS_KEY, overrideAimDistanceMeters);
-        Logger.recordOutput("dashboard/overrides/autoAimEnabled", overrideAutoAimEnabled);
-        Logger.recordOutput("dashboard/overrides/aimDistanceMeters", overrideAimDistanceMeters);
-        Logger.recordOutput("dashboard/overrides/visionDisabled", visionDisabled);
-        if (vision != null) {
-            vision.setDashboardDisabled(visionDisabled);
-        }
-    }
-
-    private boolean isDashboardOverrideAutoAimEnabled() {
-        return SmartDashboard.getBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
-    }
-
-    private double getDashboardOverrideAimDistanceMeters() {
-        double distanceMeters =
-                SmartDashboard.getNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
-        if (Double.isFinite(distanceMeters) && distanceMeters > 0.0) {
-            return distanceMeters;
-        }
-        return DEFAULT_OVERRIDE_AIM_DISTANCE_METERS;
-    }
-
-    private Command clearAllOverridesCommand() {
-        return Commands.runOnce(() -> {
-            SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_AUTO_AIM_KEY, false);
-            SmartDashboard.putNumber(DASHBOARD_OVERRIDE_AIM_DISTANCE_METERS_KEY, DEFAULT_OVERRIDE_AIM_DISTANCE_METERS);
-            SmartDashboard.putBoolean(DASHBOARD_OVERRIDE_DISABLE_VISION_KEY, false);
-        }).withName("DashboardClearAllOverrides");
+        SmartDashboard.putData(dashboardKey, commandTelemetry.withCommandSource(source, command));
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
         // Single-source aiming pose: estimator translation + live gyro heading.
         // This avoids frame discontinuities from switching between tag and odometry heading sources.
-        return () -> new Pose2d(drive.getPose().getTranslation(), drive.getRotation());
+        RobotState robotState = RobotState.getInstance();
+        return () -> new Pose2d(robotState.getPose().getTranslation(), robotState.getRotation());
     }
 
-    private Supplier<Shooter.MotionCompensation> createTeleopMotionCompensationSupplier(
+    private Supplier<LaunchCalculator.MotionCompensation> createTeleopMotionCompensationSupplier(
             Supplier<Pose2d> shootingPoseSupplier) {
         // Use the periodic cycle counter instead of FPGA time division so the cache
         // stays correct even if loop timing jitters.
         final int[] cachedCycle = new int[] {Integer.MIN_VALUE};
-        final Shooter.MotionCompensation[] cachedCompensation = new Shooter.MotionCompensation[] {
-                new Shooter.MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null)
+        final LaunchCalculator.MotionCompensation[] cachedCompensation = new LaunchCalculator.MotionCompensation[] {
+                new LaunchCalculator.MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null)
         };
 
         return () -> {
-            if (commandTelemetryCycle != cachedCycle[0]) {
-                cachedCycle[0] = commandTelemetryCycle;
+            if (commandTelemetry.getCycle() != cachedCycle[0]) {
+                cachedCycle[0] = commandTelemetry.getCycle();
                 cachedCompensation[0] = shooter.getMotionCompensationToHub(
                         shootingPoseSupplier.get(),
-                        drive.getMeasuredChassisSpeeds());
+                        RobotState.getInstance().getMeasuredChassisSpeeds());
             }
             return cachedCompensation[0];
         };
@@ -719,7 +435,7 @@ public final class RobotContainer {
             }
 
             boolean targetAvailable = targetHeading != null;
-            Rotation2d robotHeading = drive.getRotation();
+            Rotation2d robotHeading = RobotState.getInstance().getRotation();
             Logger.recordOutput("Shooting/AimTargetAvailable", targetAvailable);
             Logger.recordOutput("Shooting/RobotHeadingDeg", robotHeading.getDegrees());
             if (targetHeading == null) {
@@ -796,7 +512,7 @@ public final class RobotContainer {
                         distanceMetersSupplier,
                         targetHeadingSupplier,
                         aimReadySupplier),
-                this::isDashboardOverrideAutoAimEnabled)
+                dashboardOverrides::isAutoAimEnabled)
                 .withName("ShooterTriggerSelectedMode");
     }
 
@@ -811,7 +527,7 @@ public final class RobotContainer {
                         ySupplier,
                         omegaSupplier)
                         .withName("DriveJoystickOverrideAutoAim"),
-                shootCoordinator.shootForDistance(this::getDashboardOverrideAimDistanceMeters, () -> true)
+                shootCoordinator.shootForDistance(dashboardOverrides::getAimDistanceMeters, () -> true)
                         .withName("ShooterShootOverrideDistance"))
                 .withName("ShooterTriggerOverrideAutoAimShoot");
     }
@@ -830,9 +546,9 @@ public final class RobotContainer {
                         targetHeadingSupplier),
                 shootCoordinator.aimForDistance(distanceMetersSupplier))
                 .withName("ShooterAimOnly");
-        Command overrideAimOnly = shootCoordinator.aimForDistance(this::getDashboardOverrideAimDistanceMeters)
+        Command overrideAimOnly = shootCoordinator.aimForDistance(dashboardOverrides::getAimDistanceMeters)
                 .withName("ShooterAimOnlyOverrideDistance");
-        return Commands.either(overrideAimOnly, normalAimOnly, this::isDashboardOverrideAutoAimEnabled)
+        return Commands.either(overrideAimOnly, normalAimOnly, dashboardOverrides::isAutoAimEnabled)
                 .withName("ShooterAimOnlySelectedMode");
     }
 
@@ -855,22 +571,15 @@ public final class RobotContainer {
                         false);
                 return;
             }
-            Pose2d unifiedVisionPose = vision.getUnifiedRobotPoseRaw();
-            if (unifiedVisionPose != null) {
-                Logger.recordOutput("vision/odometryOverrideSource", "rawUnifiedVisionPose");
-            } else {
-                unifiedVisionPose = vision.getUnifiedRobotPose();
-                Logger.recordOutput("vision/odometryOverrideSource", "filteredUnifiedVisionPose");
-            }
-
+            Pose2d unifiedVisionPose = vision.getUnifiedRobotPose();
             if (unifiedVisionPose == null) {
                 DriverStation.reportWarning(
                         "Cannot set odometry from unified vision pose: no recent vision pose is available.",
                         false);
                 return;
             }
-            drive.setPose(unifiedVisionPose);
+            Logger.recordOutput("vision/odometryOverrideSource", "unifiedVisionPose");
+            RobotState.getInstance().setPose(unifiedVisionPose);
         }, drive).withName("DriveSetOdometryFromUnifiedVision");
     }
-
 }

@@ -9,8 +9,10 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.Constants;
+import frc.robot.RobotState;
 import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
@@ -32,9 +34,10 @@ public final class AutoCommands {
 
     private AutoCommands() {}
 
-    private static DoubleSupplier createHubDistanceSupplier(Drive drive, Shooter shooter) {
+    private static DoubleSupplier createHubDistanceSupplier(Shooter shooter) {
+        RobotState robotState = RobotState.getInstance();
         return () -> shooter.getMotionCompensatedHubDistanceMeters(
-                drive.getPose(), drive.getMeasuredChassisSpeeds());
+                robotState.getPose(), robotState.getMeasuredChassisSpeeds());
     }
 
     /**
@@ -43,7 +46,7 @@ public final class AutoCommands {
      */
     public static Command aimForHub(
             Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
-        return shootCoordinator.aimForDistance(createHubDistanceSupplier(drive, shooter))
+        return shootCoordinator.aimForDistance(createHubDistanceSupplier(shooter))
                 .withName("AutoAimForHub");
     }
 
@@ -54,7 +57,7 @@ public final class AutoCommands {
     public static Command shootHub(
             Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
         return Commands.parallel(
-                        shootCoordinator.shootForDistance(createHubDistanceSupplier(drive, shooter)),
+                        shootCoordinator.shootForDistance(createHubDistanceSupplier(shooter)),
                         Commands.run(drive::stopWithX, drive))
                 .withName("AutoShootHub");
     }
@@ -65,8 +68,8 @@ public final class AutoCommands {
      */
     public static Command shootHubOnMove(
             Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
-        Supplier<Shooter.MotionCompensation> compensationSupplier =
-                createHubMotionCompensationSupplier(drive, shooter);
+        Supplier<LaunchCalculator.MotionCompensation> compensationSupplier =
+                createHubMotionCompensationSupplier(shooter);
         DoubleSupplier distanceSupplier =
                 () -> compensationSupplier.get().compensatedDistanceMeters();
         Supplier<Rotation2d> targetHeadingSupplier =
@@ -82,23 +85,23 @@ public final class AutoCommands {
                 createCycleCachedRotationSupplier(
                         () -> profiledHeadingTarget.calculate(rawDesiredRobotHeadingSupplier.get()));
         BooleanSupplier aimReadySupplier =
-                createAimReadySupplier(drive, profiledDesiredRobotHeadingSupplier);
+                createAimReadySupplier(profiledDesiredRobotHeadingSupplier);
 
         return withPathRotationOverride(
                         shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
-                        drive,
                         rawDesiredRobotHeadingSupplier,
                         profiledDesiredRobotHeadingSupplier,
                         profiledHeadingTarget)
                 .withName("AutoShootHubOnMove");
     }
 
-    private static Supplier<Shooter.MotionCompensation> createHubMotionCompensationSupplier(
-            Drive drive, Shooter shooter) {
+    private static Supplier<LaunchCalculator.MotionCompensation> createHubMotionCompensationSupplier(
+            Shooter shooter) {
+        RobotState robotState = RobotState.getInstance();
         final long[] cachedCycleTimestampUs = new long[] {Long.MIN_VALUE};
-        final Shooter.MotionCompensation[] cachedCompensation =
-                new Shooter.MotionCompensation[] {
-                    new Shooter.MotionCompensation(
+        final LaunchCalculator.MotionCompensation[] cachedCompensation =
+                new LaunchCalculator.MotionCompensation[] {
+                    new LaunchCalculator.MotionCompensation(
                             Double.NaN,
                             Double.NaN,
                             Double.NaN,
@@ -112,15 +115,15 @@ public final class AutoCommands {
             if (timestampUs != cachedCycleTimestampUs[0]) {
                 cachedCycleTimestampUs[0] = timestampUs;
                 cachedCompensation[0] = shooter.getMotionCompensationToHub(
-                        drive.getPose(),
-                        drive.getMeasuredChassisSpeeds());
+                        robotState.getPose(),
+                        robotState.getMeasuredChassisSpeeds());
             }
             return cachedCompensation[0];
         };
     }
 
     private static BooleanSupplier createAimReadySupplier(
-            Drive drive, Supplier<Rotation2d> desiredRobotHeadingSupplier) {
+            Supplier<Rotation2d> desiredRobotHeadingSupplier) {
         final boolean[] aimReadyLatched = new boolean[] {false};
         final Rotation2d[] lastValidDesiredRobotHeading = new Rotation2d[] {null};
         final double[] lastValidTargetTimestampSec = new double[] {Double.NaN};
@@ -142,7 +145,7 @@ public final class AutoCommands {
                 }
             }
 
-            Rotation2d robotHeading = drive.getRotation();
+            Rotation2d robotHeading = RobotState.getInstance().getRotation();
             Logger.recordOutput("AutoAim/RobotHeadingDeg", robotHeading.getDegrees());
             Logger.recordOutput("AutoAim/TargetHeld", targetHeld);
             Logger.recordOutput("AutoAim/TargetAvailable", desiredRobotHeading != null);
@@ -187,7 +190,6 @@ public final class AutoCommands {
     @SuppressWarnings("deprecation")
     private static Command withPathRotationOverride(
             Command command,
-            Drive drive,
             Supplier<Rotation2d> rawDesiredRobotHeadingSupplier,
             Supplier<Rotation2d> desiredRobotHeadingSupplier,
             ProfiledHeadingTarget profiledHeadingTarget) {
@@ -210,7 +212,7 @@ public final class AutoCommands {
 
         return command
                 .beforeStarting(() -> {
-                    profiledHeadingTarget.reset(drive.getRotation());
+                    profiledHeadingTarget.reset(RobotState.getInstance().getRotation());
                     PPHolonomicDriveController.setRotationTargetOverride(rotationOverrideSupplier);
                     Logger.recordOutput("AutoAim/PathRotationOverrideEnabled", true);
                 })

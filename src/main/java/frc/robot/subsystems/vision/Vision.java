@@ -1,6 +1,5 @@
 package frc.robot.subsystems.vision;
 
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
@@ -12,8 +11,8 @@ import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.RobotState;
 import frc.robot.RobotType;
-import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
 import frc.robot.util.ElasticNotifications;
@@ -52,15 +51,11 @@ public final class Vision extends SubsystemBase {
     private static final double MAX_VISION_HEADING_DELTA_DEGREES = 20.0;
     private static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
     private static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
-    private static final double UNIFIED_RAW_POSE_MAX_AGE_SECONDS = 0.25;
     private static final double UNIFIED_POSE_MAX_AGE_SECONDS = 0.5;
-    private static final double UNIFIED_POSE_SMOOTH_ALPHA = 0.35;
-    private static final double UNIFIED_POSE_MAX_STEP_METERS = 0.35;
-    private static final double UNIFIED_POSE_MAX_STEP_DEGREES = 10.0;
     private static final boolean ENABLE_VISION_EVENT_LOGS = false;
     private static final boolean ENABLE_VERBOSE_VISION_DIAGNOSTICS = false;
 
-    private final Drive drive;
+    private final RobotState robotState;
     private final Supplier<Pose2d> robotPoseSupplier;
     private final List<VisionIO> ios;
     private final List<VisionIOInputsAutoLogged> inputs;
@@ -70,8 +65,6 @@ public final class Vision extends SubsystemBase {
 
     private double hubYawRad = Double.NaN;
     private Pose2d hubTagRobotPose = null;
-    private Pose2d unifiedRobotPoseRaw = null;
-    private double unifiedRobotPoseRawTimestampSeconds = Double.NaN;
     private Pose2d unifiedRobotPose = null;
     private double unifiedRobotPoseTimestampSeconds = Double.NaN;
     private int visionEventSequence = 0;
@@ -80,10 +73,10 @@ public final class Vision extends SubsystemBase {
     private boolean lastAllCamerasConnected = true;
     private boolean dashboardDisabled = false;
 
-    public Vision(Drive drive) {
+    public Vision(RobotState robotState) {
         super("vision");
-        this.drive = drive;
-        this.robotPoseSupplier = drive::getPose;
+        this.robotState = robotState;
+        this.robotPoseSupplier = robotState::getPose;
         this.ios = createIOs();
         this.inputs = ios.stream().map(io -> new VisionIOInputsAutoLogged()).toList();
         this.cameraLogKeys = new ArrayList<>(ios.size());
@@ -118,19 +111,11 @@ public final class Vision extends SubsystemBase {
     }
 
     /**
-     * Returns the most recent filtered vision pose that passed consistency checks.
+     * Returns the most recent unified vision pose that passed consistency checks.
      * Returns null when unavailable or stale.
      */
     public Pose2d getUnifiedRobotPose() {
         return unifiedRobotPose;
-    }
-
-    /**
-     * Returns the most recent raw unified vision pose before consistency checks.
-     * Returns null when unavailable or stale.
-     */
-    public Pose2d getUnifiedRobotPoseRaw() {
-        return unifiedRobotPoseRaw;
     }
 
     /** Allows the dashboard to disable vision pose updates at runtime. */
@@ -143,7 +128,6 @@ public final class Vision extends SubsystemBase {
         Logger.recordOutput("RobotState/VisionDisabledOverride", dashboardDisabled);
 
         Pose2d currentPose = robotPoseSupplier.get();
-        PoseObservation bestRawObservation = null;
         PoseObservation bestConsistentObservation = null;
         Pose2d bestConsistentMeasuredPose = null;
         List<CandidateObservationDiagnostics> candidateDiagnostics =
@@ -171,10 +155,7 @@ public final class Vision extends SubsystemBase {
             }
 
             Pose2d measuredPose = bestObservation.pose().toPose2d();
-            Pose2d referencePose = drive.getPoseAtTimestamp(bestObservation.timestampSeconds());
-            if (isBetterObservation(bestObservation, bestRawObservation)) {
-                bestRawObservation = bestObservation;
-            }
+            Pose2d referencePose = robotState.getPoseAtTimestamp(bestObservation.timestampSeconds());
 
             double stdDevFactor = Math.pow(bestObservation.averageTagDistance(), 2) / bestObservation.tagCount();
             double clampedFactor = Math.max(1.0, stdDevFactor);
@@ -213,7 +194,7 @@ public final class Vision extends SubsystemBase {
             // Let vision correct field translation while keeping heading anchored to gyro.
             if (!dashboardDisabled) {
                 Pose2d estimatorMeasurementPose = new Pose2d(measuredPose.getTranslation(), referencePose.getRotation());
-                drive.addVisionMeasurement(
+                robotState.addVisionMeasurement(
                         estimatorMeasurementPose,
                         bestObservation.timestampSeconds(),
                         VecBuilder.fill(linearStdDev, linearStdDev, ESTIMATOR_ANGULAR_STD_DEV_RAD));
@@ -238,7 +219,6 @@ public final class Vision extends SubsystemBase {
                     index);
         }
 
-        updateUnifiedRawPose(bestRawObservation);
         updateUnifiedPose(
                 bestConsistentMeasuredPose,
                 bestConsistentObservation != null ? bestConsistentObservation.timestampSeconds() : Double.NaN);
@@ -248,8 +228,6 @@ public final class Vision extends SubsystemBase {
             logUnifiedPoseDiagnostics(currentPose);
         }
 
-        Logger.recordOutput("vision/unifiedRobotPoseRaw", unifiedRobotPoseRaw != null ? unifiedRobotPoseRaw : new Pose2d());
-        Logger.recordOutput("vision/unifiedRobotPoseRawValid", unifiedRobotPoseRaw != null);
         Logger.recordOutput("vision/unifiedRobotPose", unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
         Logger.recordOutput("vision/unifiedRobotPoseValid", unifiedRobotPose != null);
 
@@ -326,38 +304,10 @@ public final class Vision extends SubsystemBase {
         return candidate.averageTagDistance() < currentBest.averageTagDistance();
     }
 
-    private void updateUnifiedRawPose(PoseObservation bestRawObservation) {
-        if (bestRawObservation != null) {
-            Pose2d newRawPose = bestRawObservation.pose().toPose2d();
-            if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
-                logUnifiedRawStepDiagnostics(newRawPose);
-            }
-            unifiedRobotPoseRaw = newRawPose;
-            unifiedRobotPoseRawTimestampSeconds = bestRawObservation.timestampSeconds();
-            return;
-        }
-
-        if (unifiedRobotPoseRaw == null) {
-            return;
-        }
-
-        double ageSeconds = Timer.getFPGATimestamp() - unifiedRobotPoseRawTimestampSeconds;
-        if (!Double.isFinite(ageSeconds) || ageSeconds > UNIFIED_RAW_POSE_MAX_AGE_SECONDS) {
-            unifiedRobotPoseRaw = null;
-            unifiedRobotPoseRawTimestampSeconds = Double.NaN;
-        }
-    }
-
     private void updateUnifiedPose(Pose2d bestConsistentPose, double bestConsistentTimestampSeconds) {
         if (bestConsistentPose != null && Double.isFinite(bestConsistentTimestampSeconds)) {
-            Pose2d previousPose = unifiedRobotPose;
-            unifiedRobotPose = previousPose == null
-                    ? bestConsistentPose
-                    : smoothPose(previousPose, bestConsistentPose);
+            unifiedRobotPose = bestConsistentPose;
             unifiedRobotPoseTimestampSeconds = bestConsistentTimestampSeconds;
-            if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
-                logUnifiedFilteredStepDiagnostics(previousPose, unifiedRobotPose);
-            }
             return;
         }
 
@@ -372,26 +322,6 @@ public final class Vision extends SubsystemBase {
         }
     }
 
-    private static Pose2d smoothPose(Pose2d previous, Pose2d measured) {
-        Translation2d delta = measured.getTranslation().minus(previous.getTranslation());
-        double deltaNorm = delta.getNorm();
-        double requestedTranslationStep = deltaNorm * UNIFIED_POSE_SMOOTH_ALPHA;
-        double clampedTranslationStep = Math.min(requestedTranslationStep, UNIFIED_POSE_MAX_STEP_METERS);
-        Translation2d newTranslation = deltaNorm < 1e-9
-                ? previous.getTranslation()
-                : previous.getTranslation().plus(delta.times(clampedTranslationStep / deltaNorm));
-
-        double headingDeltaRad =
-                MathUtil.angleModulus(measured.getRotation().minus(previous.getRotation()).getRadians());
-        double requestedHeadingStepRad = headingDeltaRad * UNIFIED_POSE_SMOOTH_ALPHA;
-        double clampedHeadingStepRad = MathUtil.clamp(
-                requestedHeadingStepRad,
-                -Units.degreesToRadians(UNIFIED_POSE_MAX_STEP_DEGREES),
-                Units.degreesToRadians(UNIFIED_POSE_MAX_STEP_DEGREES));
-        Rotation2d newRotation = previous.getRotation().plus(new Rotation2d(clampedHeadingStepRad));
-        return new Pose2d(newTranslation, newRotation);
-    }
-
     private static PoseDelta calculatePoseDelta(Pose2d measuredPose, Pose2d referencePose) {
         Translation2d deltaTranslation = measuredPose.getTranslation().minus(referencePose.getTranslation());
         double translationDelta = deltaTranslation.getNorm();
@@ -404,58 +334,16 @@ public final class Vision extends SubsystemBase {
                 Math.abs(Math.IEEEremainder(first.minus(second).getRadians(), 2.0 * Math.PI)));
     }
 
-    private void logUnifiedRawStepDiagnostics(Pose2d newRawPose) {
-        if (unifiedRobotPoseRaw == null) {
-            return;
-        }
-        PoseDelta step = calculatePoseDelta(newRawPose, unifiedRobotPoseRaw);
-        Logger.recordOutput("vision/jump/rawStepTranslationMeters", step.translationMeters());
-        Logger.recordOutput("vision/jump/rawStepHeadingDegrees", step.headingDegrees());
-        Logger.recordOutput(
-                "vision/jump/rawStepIsLarge",
-                step.translationMeters() > VISION_JUMP_TRANSLATION_THRESHOLD_METERS
-                        || step.headingDegrees() > VISION_JUMP_HEADING_THRESHOLD_DEGREES);
-    }
-
-    private void logUnifiedFilteredStepDiagnostics(Pose2d previousPose, Pose2d newPose) {
-        if (previousPose == null || newPose == null) {
-            return;
-        }
-        PoseDelta step = calculatePoseDelta(newPose, previousPose);
-        Logger.recordOutput("vision/jump/filteredStepTranslationMeters", step.translationMeters());
-        Logger.recordOutput("vision/jump/filteredStepHeadingDegrees", step.headingDegrees());
-        Logger.recordOutput(
-                "vision/jump/filteredStepIsLarge",
-                step.translationMeters() > VISION_JUMP_TRANSLATION_THRESHOLD_METERS
-                        || step.headingDegrees() > VISION_JUMP_HEADING_THRESHOLD_DEGREES);
-    }
-
     private void logUnifiedPoseDiagnostics(Pose2d currentPose) {
-        if (currentPose == null) {
-            Logger.recordOutput("vision/jump/rawToOdometryTranslationMeters", Double.NaN);
-            Logger.recordOutput("vision/jump/rawToOdometryHeadingDegrees", Double.NaN);
-            Logger.recordOutput("vision/jump/filteredToOdometryTranslationMeters", Double.NaN);
-            Logger.recordOutput("vision/jump/filteredToOdometryHeadingDegrees", Double.NaN);
+        if (currentPose == null || unifiedRobotPose == null) {
+            Logger.recordOutput("vision/jump/unifiedToOdometryTranslationMeters", Double.NaN);
+            Logger.recordOutput("vision/jump/unifiedToOdometryHeadingDegrees", Double.NaN);
             return;
         }
 
-        if (unifiedRobotPoseRaw != null) {
-            PoseDelta rawDelta = calculatePoseDelta(unifiedRobotPoseRaw, currentPose);
-            Logger.recordOutput("vision/jump/rawToOdometryTranslationMeters", rawDelta.translationMeters());
-            Logger.recordOutput("vision/jump/rawToOdometryHeadingDegrees", rawDelta.headingDegrees());
-        } else {
-            Logger.recordOutput("vision/jump/rawToOdometryTranslationMeters", Double.NaN);
-            Logger.recordOutput("vision/jump/rawToOdometryHeadingDegrees", Double.NaN);
-        }
-
-        if (unifiedRobotPose != null) {
-            PoseDelta filteredDelta = calculatePoseDelta(unifiedRobotPose, currentPose);
-            Logger.recordOutput("vision/jump/filteredToOdometryTranslationMeters", filteredDelta.translationMeters());
-            Logger.recordOutput("vision/jump/filteredToOdometryHeadingDegrees", filteredDelta.headingDegrees());
-        } else {
-            Logger.recordOutput("vision/jump/filteredToOdometryTranslationMeters", Double.NaN);
-            Logger.recordOutput("vision/jump/filteredToOdometryHeadingDegrees", Double.NaN);
-        }
+        PoseDelta delta = calculatePoseDelta(unifiedRobotPose, currentPose);
+        Logger.recordOutput("vision/jump/unifiedToOdometryTranslationMeters", delta.translationMeters());
+        Logger.recordOutput("vision/jump/unifiedToOdometryHeadingDegrees", delta.headingDegrees());
     }
 
     private void logCandidateDiagnostics(List<CandidateObservationDiagnostics> candidates) {
@@ -784,12 +672,8 @@ public final class Vision extends SubsystemBase {
     }
 
     private void resetJumpDiagnosticsOutputs() {
-        Logger.recordOutput("vision/jump/rawStepTranslationMeters", Double.NaN);
-        Logger.recordOutput("vision/jump/rawStepHeadingDegrees", Double.NaN);
-        Logger.recordOutput("vision/jump/rawStepIsLarge", false);
-        Logger.recordOutput("vision/jump/filteredStepTranslationMeters", Double.NaN);
-        Logger.recordOutput("vision/jump/filteredStepHeadingDegrees", Double.NaN);
-        Logger.recordOutput("vision/jump/filteredStepIsLarge", false);
+        Logger.recordOutput("vision/jump/unifiedToOdometryTranslationMeters", Double.NaN);
+        Logger.recordOutput("vision/jump/unifiedToOdometryHeadingDegrees", Double.NaN);
     }
 
     private record PoseDelta(double translationMeters, double headingDegrees) {

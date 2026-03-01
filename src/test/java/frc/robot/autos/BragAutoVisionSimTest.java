@@ -101,8 +101,9 @@ class BragAutoVisionSimTest {
         Transfer transfer = new Transfer(new TransferIOSim());
         Intake intake = new Intake(new IntakeIOSim());
         ShootCoordinator shootCoordinator = new ShootCoordinator(shooter, transfer);
+        frc.robot.RobotState.initialize(drive);
         @SuppressWarnings("unused")
-        Vision vision = new Vision(drive);
+        Vision vision = new Vision(frc.robot.RobotState.getInstance());
 
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         assertTrue(

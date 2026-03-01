@@ -21,6 +21,7 @@ import frc.robot.subsystems.drive.GyroIOSim;
 import frc.robot.subsystems.drive.ModuleIOSim;
 import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIOSim;
+import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIOSim;
 import frc.robot.subsystems.transfer.Transfer;
@@ -105,6 +106,7 @@ class AlongAllianceMovingShotAutoSimTest {
         ShootCoordinator shootCoordinator = new ShootCoordinator(shooter, transfer);
         FuelSim fuelSim = new FuelSim();
 
+        frc.robot.RobotState.initialize(drive);
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
 
         assertTrue(
@@ -469,7 +471,7 @@ class AlongAllianceMovingShotAutoSimTest {
             double omegaEstimateErrorRadPerSec =
                     Math.abs(speeds.omegaRadiansPerSecond - estimatedOmegaRadPerSec);
 
-            Shooter.MotionCompensation compensation =
+            LaunchCalculator.MotionCompensation compensation =
                     shooter.getMotionCompensationToHub(currentPose, speeds);
             Rotation2d compensatedHeading = compensation.compensatedHeading();
             double absAimErrorDeg = calculateAimErrorDeg(drive.getRotation(), compensatedHeading);
