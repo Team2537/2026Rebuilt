@@ -4,7 +4,9 @@ import edu.wpi.first.hal.FRCNetComm.tInstances;
 import edu.wpi.first.hal.FRCNetComm.tResourceType;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.hal.HALUtil;
+import edu.wpi.first.net.WebServer;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -58,6 +60,7 @@ public final class Robot extends LoggedRobot {
         }
 
         Logger.start();
+        WebServer.start(5800, Filesystem.getDeployDirectory().getPath());
 
         robotContainer = new RobotContainer();
     }
