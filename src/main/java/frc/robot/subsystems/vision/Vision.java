@@ -262,12 +262,16 @@ public final class Vision extends SubsystemBase {
                     List.of(
                             new VisionIOPhotonVision(CAMERA_NAMES.get(0), ROBOT_TO_CAMERAS.get(0), 0),
                             new VisionIOPhotonVision(CAMERA_NAMES.get(1), ROBOT_TO_CAMERAS.get(1), 1));
-            case SIMULATION ->
-                    List.of(
-                            new VisionIOPhotonVisionSim(
-                                    CAMERA_NAMES.get(0), ROBOT_TO_CAMERAS.get(0), 0, robotPoseSupplier),
-                            new VisionIOPhotonVisionSim(
-                                    CAMERA_NAMES.get(1), ROBOT_TO_CAMERAS.get(1), 1, robotPoseSupplier));
+            case SIMULATION -> {
+                // Use the ground truth pose (pure odometry, no vision corrections) so the
+                // sim cameras see the real robot position and can correct estimator drift.
+                Supplier<Pose2d> simTruthPoseSupplier = robotState::getSimGroundTruthPose;
+                yield List.of(
+                        new VisionIOPhotonVisionSim(
+                                CAMERA_NAMES.get(0), ROBOT_TO_CAMERAS.get(0), 0, simTruthPoseSupplier),
+                        new VisionIOPhotonVisionSim(
+                                CAMERA_NAMES.get(1), ROBOT_TO_CAMERAS.get(1), 1, simTruthPoseSupplier));
+            }
             case REPLAY -> List.of(new NullVisionIO(), new NullVisionIO());
         };
     }

@@ -61,6 +61,14 @@ public final class RobotState {
         return drive.getPoseAtTimestamp(timestampSeconds);
     }
 
+    /**
+     * Returns the sim ground truth pose (pure odometry, no vision corrections).
+     * Falls back to the fused estimator pose when not in simulation.
+     */
+    public Pose2d getSimGroundTruthPose() {
+        return drive.getSimGroundTruthPose();
+    }
+
     /** Resets the odometry pose. */
     public void setPose(Pose2d pose) {
         drive.setPose(pose);

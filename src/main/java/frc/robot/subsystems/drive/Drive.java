@@ -32,6 +32,7 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Twist2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.numbers.N1;
@@ -120,6 +121,9 @@ public class Drive extends SubsystemBase {
     private final SwerveModulePosition[] odomModuleDeltas = new SwerveModulePosition[4];
     private SwerveDrivePoseEstimator poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation,
             lastModulePositions, Pose2d.kZero);
+    // Tracks pure odometry (no vision corrections) in sim mode so the vision sim
+    // cameras see the true robot position rather than the fused estimate.
+    private final SwerveDriveOdometry simGroundTruthOdometry;
     private boolean fieldOriented = true;
 
     public Drive(
@@ -163,6 +167,11 @@ public class Drive extends SubsystemBase {
                 (targetPose) -> {
                     Logger.recordOutput("Odometry/TrajectorySetpoint", targetPose);
                 });
+
+        // Sim ground truth odometry (vision-free pose for camera placement)
+        simGroundTruthOdometry = RobotType.MODE == RobotType.Mode.SIMULATION
+                ? new SwerveDriveOdometry(kinematics, rawGyroRotation, lastModulePositions, Pose2d.kZero)
+                : null;
 
         // Configure SysId
         sysId = new SysIdRoutine(
@@ -251,6 +260,9 @@ public class Drive extends SubsystemBase {
 
             // Apply update
             poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, odomModulePositions);
+            if (simGroundTruthOdometry != null) {
+                simGroundTruthOdometry.update(rawGyroRotation, odomModulePositions);
+            }
         }
 
         // Update gyro alert and notification
@@ -448,6 +460,14 @@ public class Drive extends SubsystemBase {
     }
 
     /**
+     * Returns the sim ground truth pose (pure odometry, no vision corrections).
+     * Falls back to the fused estimator pose when not in simulation.
+     */
+    public Pose2d getSimGroundTruthPose() {
+        return simGroundTruthOdometry != null ? simGroundTruthOdometry.getPoseMeters() : getPose();
+    }
+
+    /**
      * Returns the estimator pose sampled at a historical timestamp.
      * Falls back to current pose if the estimator buffer does not have that sample.
      */
@@ -474,6 +494,9 @@ public class Drive extends SubsystemBase {
             gyroInputs.yawPosition = rotation;
             gyroIO.setYaw(rotation);
             poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
+            if (simGroundTruthOdometry != null) {
+                simGroundTruthOdometry.resetPosition(rawGyroRotation, getModulePositions(), pose);
+            }
         } finally {
             odometryLock.unlock();
         }
