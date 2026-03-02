@@ -38,7 +38,7 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final double MOTION_COMP_TIME_SCALE = 1.0;
+    public static final double MOTION_COMP_TIME_SCALE = 1.08;
 
     /**
      * Shooter position relative to robot center, in robot coordinates (x=forward, y=left).
@@ -66,7 +66,7 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_DISTANCE_METERS_SIM = {0.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
     private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0};
     private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0 };
-    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {88.0, 78.5, 72.2, 62.2, 64.1, 55.7, 53.9};
+    private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {86.0, 76.5, 70.2, 60.2, 62.1, 53.7, 51.9};
     // Physically computed from sim ballistic physics:
     // t_descent = (vz + sqrt(vz^2 - 2*g*(1.83 - 0.68))) / g
     // where vz = muzzle_speed * sin(hood_angle), muzzle_speed = RPM * 2pi/60 * 0.0508m * 0.85

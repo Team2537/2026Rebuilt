@@ -137,16 +137,25 @@ final class FullFunctionalityBindings {
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Rapid toggle case should start first toggle", "starts>=1", toggle1Delta));
             assertTrue(
-                    toggle1Delta.interrupts() >= 1,
+                    toggle1Delta.finishes() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Rapid toggle case should interrupt first toggle", "interrupts>=1", toggle1Delta));
+                            "Rapid toggle case should finish first toggle", "finishes>=1", toggle1Delta));
             assertTrue(
                     toggle2Delta.starts() >= 1 && toggle2Delta.finishes() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Rapid toggle case should start and finish second toggle",
                             "starts>=1 and finishes>=1",
                             toggle2Delta));
-            assertTrue(!context.intake.isExtended(), "Rapid toggle case should end retracted.");
+            boolean rapidToggleSettledRetract = context.runUntil(
+                    () -> Math.abs(Units.radiansToRotations(context.intakeInputs.leftPositionRad)
+                            - IntakeConstants.RETRACTED_POSITION_ROT) <= 0.8
+                            && Math.abs(Units.radiansToRotations(context.intakeInputs.rightPositionRad)
+                            - expectedRightRetractRot) <= 0.8
+                            && !context.intake.isExtended(),
+                    320);
+            assertTrue(
+                    rapidToggleSettledRetract,
+                    "Rapid toggle case should settle retracted after the second toggle command event.");
 
             double leftRapidToggle = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
             double rightRapidToggle = Units.radiansToRotations(context.intakeInputs.rightPositionRad);
@@ -162,6 +171,65 @@ final class FullFunctionalityBindings {
                             "Rapid toggle case should finish with right intake near retract target",
                             expectedRightRetractRot + "±0.8 rot",
                             rightRapidToggle));
+
+            context.intake.setExtended(false);
+            context.runCycles(10);
+            Command repeatedToggle =
+                    context.intake.toggleExtendedCommand().withName("FF_IntakeToggleRepeatedBinding");
+            FullFunctionalityHarness.CommandCounts repeatedToggleBefore =
+                    context.recorder.getCounts("FF_IntakeToggleRepeatedBinding");
+            double initialRepeatedLeftRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+
+            CommandScheduler.getInstance().schedule(repeatedToggle);
+            context.runCycles(8);
+            double leftAfterFirstRepeatedToggle = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            assertTrue(
+                    leftAfterFirstRepeatedToggle > initialRepeatedLeftRot + 0.35,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "First press of repeated-toggle binding should begin extension progress",
+                            "leftAfterFirst > initial+0.35 rot",
+                            String.format(
+                                    Locale.US,
+                                    "initial=%.3f leftAfterFirst=%.3f",
+                                    initialRepeatedLeftRot,
+                                    leftAfterFirstRepeatedToggle)));
+
+            CommandScheduler.getInstance().schedule(repeatedToggle);
+            boolean repeatedToggleReturnedToRetract = context.runUntil(
+                    () -> Math.abs(Units.radiansToRotations(context.intakeInputs.leftPositionRad)
+                            - IntakeConstants.RETRACTED_POSITION_ROT) <= 0.8
+                            && !context.intake.isExtended(),
+                    320);
+            assertTrue(
+                    repeatedToggleReturnedToRetract,
+                    "Second press of repeated-toggle binding should interrupt/reverse motion and settle retracted.");
+            double finalRepeatedLeftRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            assertTrue(
+                    finalRepeatedLeftRot < leftAfterFirstRepeatedToggle - 0.25,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Second repeated-toggle press should reverse extension direction, not ignore until completion",
+                            "finalLeft < leftAfterFirst-0.25 rot",
+                            String.format(
+                                    Locale.US,
+                                    "leftAfterFirst=%.3f finalLeft=%.3f",
+                                    leftAfterFirstRepeatedToggle,
+                                    finalRepeatedLeftRot)));
+            FullFunctionalityHarness.CommandCounts repeatedToggleDelta =
+                    context.recorder.getCounts("FF_IntakeToggleRepeatedBinding").minus(repeatedToggleBefore);
+            assertEquals(
+                    2,
+                    repeatedToggleDelta.starts(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Repeated-toggle binding should schedule exactly twice",
+                            "starts=2",
+                            repeatedToggleDelta));
+            assertEquals(
+                    2,
+                    repeatedToggleDelta.finishes(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Repeated-toggle binding should finish both presses",
+                            "finishes=2",
+                            repeatedToggleDelta));
 
             context.intake.setExtended(false);
             context.runCycles(10);

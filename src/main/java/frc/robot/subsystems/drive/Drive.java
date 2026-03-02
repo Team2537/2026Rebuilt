@@ -147,13 +147,16 @@ public class Drive extends SubsystemBase {
         PhoenixOdometryThread.getInstance().start();
 
         // Configure AutoBuilder for PathPlanner
+        double autoRotationKp = RobotType.MODE == RobotType.Mode.SIMULATION ? 7.5 : 5.0;
+
         AutoBuilder.configure(
                 this::getPose,
                 this::setPose,
                 this::getChassisSpeeds,
                 (speeds, feedforwards) -> runVelocity(speeds, feedforwards),
                 new PPHolonomicDriveController(
-                        new PIDConstants(7.0, 0.0, 0.0), new PIDConstants(5.0, 0.0, 0.0)),
+                        new PIDConstants(7.0, 0.0, 0.0),
+                        new PIDConstants(autoRotationKp, 0.0, 0.0)),
                 PP_CONFIG,
                 () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
                 this);
