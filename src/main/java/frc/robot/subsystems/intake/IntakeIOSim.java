@@ -13,6 +13,7 @@ public class IntakeIOSim implements IntakeIO {
     private static final double MAX_VOLTS = IntakeConstants.INTAKE_MAX_VOLTS;
     private static final double MAX_ROLLER_RPM = IntakeConstants.ROLLER_MAX_RPM;
     private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
+    private static final double RIGHT_MOTOR_INVERSION = -1.0;
 
     private static final DCMotor INTAKE_GEARBOX = DCMotor.getKrakenX60Foc(1);
     private static final DCMotor ROLLER_GEARBOX = DCMotor.getKrakenX60Foc(1);
@@ -82,7 +83,7 @@ public class IntakeIOSim implements IntakeIO {
         } else if (rightIntakePositionClosedLoop) {
             rightAtRetractStop = false;
             rightAppliedVolts = MathUtil.clamp(
-                    rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
+                    -rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
                     -rightIntakeVoltageLimit,
                     rightIntakeVoltageLimit);
         } else {
@@ -99,7 +100,7 @@ public class IntakeIOSim implements IntakeIO {
                 : 0.0;
 
         leftIntakeSim.setInputVoltage(leftAppliedVolts);
-        rightIntakeSim.setInputVoltage(rightAppliedVolts);
+        rightIntakeSim.setInputVoltage(rightAppliedVolts * RIGHT_MOTOR_INVERSION);
         rollerSim.setInputVoltage(rollerAppliedVolts);
 
         leftIntakeSim.update(LOOP_PERIOD_SEC);

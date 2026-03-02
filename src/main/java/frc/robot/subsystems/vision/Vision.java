@@ -238,6 +238,7 @@ public final class Vision extends SubsystemBase {
         updateUnifiedPose(
                 bestConsistentMeasuredPose,
                 bestConsistentObservation != null ? bestConsistentObservation.timestampSeconds() : Double.NaN);
+        seedUnifiedPosesFromRobotPoseInSimulation(currentPose);
 
         if (ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
             logCandidateDiagnostics(candidateDiagnostics);
@@ -359,6 +360,21 @@ public final class Vision extends SubsystemBase {
         if (!Double.isFinite(ageSeconds) || ageSeconds > UNIFIED_POSE_MAX_AGE_SECONDS) {
             unifiedRobotPose = null;
             unifiedRobotPoseTimestampSeconds = Double.NaN;
+        }
+    }
+
+    private void seedUnifiedPosesFromRobotPoseInSimulation(Pose2d currentPose) {
+        if (RobotType.MODE != RobotType.Mode.SIMULATION || currentPose == null) {
+            return;
+        }
+        double nowSec = Timer.getFPGATimestamp();
+        if (unifiedRobotPoseRaw == null) {
+            unifiedRobotPoseRaw = currentPose;
+            unifiedRobotPoseRawTimestampSeconds = nowSec;
+        }
+        if (unifiedRobotPose == null) {
+            unifiedRobotPose = currentPose;
+            unifiedRobotPoseTimestampSeconds = nowSec;
         }
     }
 

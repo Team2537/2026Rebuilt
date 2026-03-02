@@ -9,6 +9,7 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -228,7 +229,6 @@ public final class RobotContainer {
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX())
                         .withName("DriveJoystickDefault")));
-        shooter.setDefaultCommand(commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
         intake.setDefaultCommand(commandTelemetry.withCommandSource("default.intakeBackground", intake.backgroundCommand()));
 
         bindOnTrue(driverController.leftBumper(), "driver.leftBumper.onTrue",
@@ -288,7 +288,7 @@ public final class RobotContainer {
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
                         teleopAimReadySupplier),
-                DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE));
+                DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE).withName("ShooterTriggerSelectedMode"));
         bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", createTeleopSelectedAimOnlyCommand(
                 () -> driverController.getLeftY(),
                 () -> driverController.getLeftX(),
@@ -583,8 +583,14 @@ public final class RobotContainer {
                         false);
                 return;
             }
-            Logger.recordOutput("vision/odometryOverrideSource", source);
-            RobotState.getInstance().setPose(unifiedVisionPose);
-        }, drive).withName("DriveSetOdometryFromUnifiedVision");
+
+            Pose2d poseToApply = unifiedVisionPose;
+            String sourceTag = source;
+            CommandScheduler.getInstance().schedule(
+                    Commands.runOnce(() -> {
+                        Logger.recordOutput("vision/odometryOverrideSource", sourceTag);
+                        RobotState.getInstance().setPose(poseToApply);
+                    }, drive).withName("DriveSetOdometryFromUnifiedVision"));
+        }).withName("DriveSetOdometryFromUnifiedVisionDispatch");
     }
 }

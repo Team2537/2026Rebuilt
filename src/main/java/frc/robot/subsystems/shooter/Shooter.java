@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -161,10 +162,21 @@ public class Shooter extends SubsystemBase {
     }
 
     public void setTargets(ShotSetpoint setpoint) {
-        setTargets(setpoint.leftRpm(), setpoint.rightRpm(), setpoint.hoodAngleRad());
+        setTargetsInternal(setpoint.leftRpm(), setpoint.rightRpm(), setpoint.hoodAngleRad(), true);
     }
 
     public void setTargets(double leftRpm, double rightRpm, double hoodAngleRad) {
+        setTargetsInternal(leftRpm, rightRpm, hoodAngleRad, true);
+    }
+
+    private void setTargetsInternal(
+            double leftRpm,
+            double rightRpm,
+            double hoodAngleRad,
+            boolean allowBackgroundHoldoff) {
+        if (allowBackgroundHoldoff && RobotBase.isSimulation()) {
+            cancelBackgroundShooterCommandsIfOnlyBackgroundIsActive();
+        }
         targetLeftRpm = MathUtil.clamp(leftRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
         io.setLeftVelocity(targetLeftRpm);
         targetRightRpm = MathUtil.clamp(rightRpm, -ShooterConstants.SHOOTER_MAX_RPM, ShooterConstants.SHOOTER_MAX_RPM);
@@ -395,14 +407,28 @@ public class Shooter extends SubsystemBase {
     public Command slowShooterMotorsCommand() {
         return Commands.run(
                 () -> {
-                    setTargets(
+                    setTargetsInternal(
                             ShooterConstants.SLOW_SHOOTER_RPM,
                             ShooterConstants.SLOW_SHOOTER_RPM,
-                            ShooterConstants.HOOD_MIN_ANGLE_RAD);
+                            ShooterConstants.HOOD_MIN_ANGLE_RAD,
+                            false);
                     stopKicker();
                 },
                 this)
                 .withName("ShooterSlowShooterMotors");
+    }
+
+    private void cancelBackgroundShooterCommandsIfOnlyBackgroundIsActive() {
+        Command current = getCurrentCommand();
+        if (current != null && isBackgroundLikeShooterCommand(current.getName())) {
+            CommandScheduler.getInstance().cancel(current);
+        }
+    }
+
+    private static boolean isBackgroundLikeShooterCommand(String commandName) {
+        return "ShooterBackground".equals(commandName)
+                || "ShooterHomeThenBackground".equals(commandName)
+                || "ShooterSlowShooterMotors".equals(commandName);
     }
 
     public Command backgroundCommand() {
@@ -600,26 +626,34 @@ public class Shooter extends SubsystemBase {
     public Command homeCommand() {
         BooleanSupplier atHomingStop =
                 () -> Math.abs(inputs.hoodStatorCurrentAmps) > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS;
+        double preAimAngleRad = initialHoodPreAimAngleRad();
         return Commands.sequence(
             Commands.runOnce(() -> io.setHoodVoltage(homingVoltage()), this),
             Commands.waitUntil(atHomingStop)
                     .withTimeout(homingWaitTimeoutSec())
                     .withName("HoodHomeWaitUntil"),
-            Commands.runOnce(() -> io.stop(), this),
             Commands.either(
                     Commands.sequence(
-                    Commands.runOnce(() -> io.resetHoodEncoder(), this),
-                    Commands.runOnce(() -> io.setHoodAngle(initialHoodPreAimAngleRad()), this)),
-                Commands.runOnce(
-                        () -> {
-                            DriverStation.reportWarning(
-                                    "Hood homing timed out before current threshold; skipping encoder reset/retract.",
-                                    false);
-                        },
-                        this),
-                atHomingStop))
-                .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
-                .finallyDo(interrupted -> io.stop())
+                            Commands.runOnce(io::stop, this),
+                            Commands.runOnce(io::resetHoodEncoder, this),
+                            Commands.runOnce(() -> io.setHoodAngle(preAimAngleRad), this),
+                            Commands.waitUntil(() -> Math.abs(inputs.hoodPositionRad - preAimAngleRad)
+                                            <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD)
+                                    .withTimeout(homePreAimSettleTimeoutSec())
+                                    .withName("HoodHomePreAimWaitUntil")),
+                    Commands.sequence(
+                            Commands.runOnce(io::stop, this),
+                            Commands.runOnce(
+                                    () -> DriverStation.reportWarning(
+                                            "Hood homing timed out before current threshold; skipping encoder reset/retract.",
+                                            false),
+                                    this)),
+                    atHomingStop))
+                .finallyDo(interrupted -> {
+                    if (interrupted) {
+                        io.stop();
+                    }
+                })
                 .withName("HoodHome");
     }
 
@@ -628,7 +662,11 @@ public class Shooter extends SubsystemBase {
     }
 
     private static double homingWaitTimeoutSec() {
-        return RobotBase.isReal() ? ShooterConstants.HOMING_WAIT_TIMEOUT_SEC : 1.0;
+        return ShooterConstants.HOMING_WAIT_TIMEOUT_SEC;
+    }
+
+    private static double homePreAimSettleTimeoutSec() {
+        return RobotBase.isReal() ? 0.8 : 1.2;
     }
 
     private static double initialHoodPreAimAngleRad() {

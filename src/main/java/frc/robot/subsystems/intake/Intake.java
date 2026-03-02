@@ -11,9 +11,23 @@ import org.littletonrobotics.junction.Logger;
 
 public class Intake extends SubsystemBase {
 
+    private enum MotionState {
+        UNKNOWN,
+        RETRACTED,
+        EXTENDED,
+        MOVING_TO_RETRACTED,
+        MOVING_TO_EXTENDED,
+        HOMING
+    }
+
     private final IntakeIO io;
     private final IntakeIOInputsAutoLogged inputs = new IntakeIOInputsAutoLogged();
-    private boolean extended = false;
+    private MotionState motionState = MotionState.RETRACTED;
+    private boolean requestedExtended = false;
+    private boolean leftHomeSucceeded = false;
+    private boolean rightHomeSucceeded = false;
+    private MotionState preHomeMotionState = MotionState.RETRACTED;
+    private boolean preHomeRequestedExtended = false;
 
     public Intake(IntakeIO io) {
         super("intake");
@@ -29,11 +43,15 @@ public class Intake extends SubsystemBase {
             io.stop();
         }
 
-        Logger.recordOutput("Intake/Extended", extended);
+        updateMotionStateFromSensors();
+        Logger.recordOutput("Intake/Extended", isExtended());
+        Logger.recordOutput("Intake/RequestedExtended", requestedExtended);
+        Logger.recordOutput("Intake/MotionState", motionState.name());
     }
 
     public void setExtended(boolean isExtended) {
-        this.extended = isExtended;
+        requestedExtended = isExtended;
+        motionState = isExtended ? MotionState.EXTENDED : MotionState.RETRACTED;
         requestIntakePosition(
                 isExtended ? IntakeConstants.EXTENDED_POSITION_ROT : IntakeConstants.RETRACTED_POSITION_ROT,
                 IntakeConstants.INTAKE_VELOCITY,
@@ -42,74 +60,106 @@ public class Intake extends SubsystemBase {
     }
 
     public boolean isExtended() {
-        return extended;
+        return motionState == MotionState.EXTENDED;
     }
 
     public Command retractCommand() {
-        return moveToPositionCommand(false).withName("IntakeRetract");
+        return moveToPositionCommand(
+                false,
+                IntakeConstants.INTAKE_VELOCITY,
+                IntakeConstants.INTAKE_ACCELERATION,
+                IntakeConstants.INTAKE_MAX_VOLTS,
+                "IntakeWaitForPosition").withName("IntakeRetract");
     }
 
     public Command slowRetractCommand() {
-        return Commands.sequence(
-                        Commands.runOnce(
-                                () -> requestIntakePosition(
-                                        IntakeConstants.RETRACTED_POSITION_ROT,
-                                        IntakeConstants.SLOW_INTAKE_VELOCITY,
-                                        IntakeConstants.SLOW_INTAKE_ACCELERATION,
-                                        IntakeConstants.SLOW_RETRACT_MAX_VOLTS),
-                                this),
-                        Commands.waitUntil(() -> isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT))
-                                .withTimeout(IntakeConstants.MOVE_TIMEOUT_SEC)
-                                .withName("IntakeWaitForSlowRetract"),
-                        Commands.runOnce(() -> {
-                            if (isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT)) {
-                                extended = false;
-                            }
-                        }, this))
-                .withName("IntakeSlowRetract");
+        return moveToPositionCommand(
+                false,
+                IntakeConstants.SLOW_INTAKE_VELOCITY,
+                IntakeConstants.SLOW_INTAKE_ACCELERATION,
+                IntakeConstants.SLOW_RETRACT_MAX_VOLTS,
+                "IntakeWaitForSlowRetract").withName("IntakeSlowRetract");
     }
 
     public Command extendCommand() {
-        return moveToPositionCommand(true).withName("IntakeExtend");
+        return moveToPositionCommand(
+                true,
+                IntakeConstants.INTAKE_VELOCITY,
+                IntakeConstants.INTAKE_ACCELERATION,
+                IntakeConstants.INTAKE_MAX_VOLTS,
+                "IntakeWaitForPosition").withName("IntakeExtend");
     }
 
     public Command toggleExtendedCommand() {
         return Commands.either(
                 retractCommand(),
                 extendCommand(),
-                this::isExtended)
+                this::isExtendRequested)
                 .withName("IntakeToggleExtended");
     }
 
     public Command homeCommand() {
         return Commands.sequence(
+                Commands.runOnce(() -> {
+                    preHomeMotionState = motionState;
+                    preHomeRequestedExtended = requestedExtended;
+                    motionState = MotionState.HOMING;
+                    leftHomeSucceeded = false;
+                    rightHomeSucceeded = false;
+                }, this),
                 Commands.parallel(homeLeftCommand(), homeRightCommand()).withName("IntakeHomeBoth"),
-                Commands.sequence(
-                        Commands.waitSeconds(0.1),
-                        Commands.runOnce(() -> io.resetEncoders(), this),
-                        Commands.runOnce(() -> setExtended(false), this)))
-                .withInterruptBehavior(Command.InterruptionBehavior.kCancelIncoming)
-                .finallyDo(interrupted -> io.stop())
+                Commands.either(
+                        Commands.sequence(
+                                Commands.waitSeconds(0.1),
+                                Commands.runOnce(io::resetEncoders, this),
+                                Commands.runOnce(
+                                        () -> beginMotionToPosition(
+                                                false,
+                                                IntakeConstants.RETRACTED_POSITION_ROT,
+                                                IntakeConstants.INTAKE_VELOCITY,
+                                                IntakeConstants.INTAKE_ACCELERATION,
+                                                IntakeConstants.INTAKE_MAX_VOLTS),
+                                        this)),
+                        Commands.runOnce(
+                                () -> {
+                                    motionState = preHomeMotionState;
+                                    requestedExtended = preHomeRequestedExtended;
+                                    DriverStation.reportWarning(
+                                            "Intake homing did not hit both current thresholds; skipping encoder reset/retract.",
+                                            false);
+                                },
+                                this),
+                        this::didHomeSucceed))
+                .finallyDo(interrupted -> {
+                    if (interrupted) {
+                        io.stop();
+                        motionState = MotionState.UNKNOWN;
+                    }
+                })
                 .withName("IntakeHome");
     }
 
     private Command homeLeftCommand() {
         return homeSideCommand(
-                () -> io.setLeftIntakeVoltage(IntakeConstants.HOMING_VOLTAGE),
+                () -> io.setLeftIntakeVoltage(homingVoltage()),
                 io::stopLeftIntake,
                 () -> Math.abs(inputs.leftStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
+                (success) -> leftHomeSucceeded = success,
+                () -> leftHomeSucceeded,
                 "IntakeHomeLeftWaitUntil",
-                "Left intake homing timed out before current threshold; continuing.",
+                "Left intake homing timed out before current threshold.",
                 "IntakeHomeLeft");
     }
 
     private Command homeRightCommand() {
         return homeSideCommand(
-                () -> io.setRightIntakeVoltage(IntakeConstants.HOMING_VOLTAGE),
+                () -> io.setRightIntakeVoltage(homingVoltage()),
                 io::stopRightIntake,
                 () -> Math.abs(inputs.rightStatorCurrentAmps) > IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS,
+                (success) -> rightHomeSucceeded = success,
+                () -> rightHomeSucceeded,
                 "IntakeHomeRightWaitUntil",
-                "Right intake homing timed out before current threshold; continuing.",
+                "Right intake homing timed out before current threshold.",
                 "IntakeHomeRight");
     }
 
@@ -117,24 +167,34 @@ public class Intake extends SubsystemBase {
             Runnable homeAction,
             Runnable stopAction,
             BooleanSupplier atHomingStop,
+            java.util.function.Consumer<Boolean> setSuccess,
+            BooleanSupplier didSucceed,
             String waitCommandName,
             String timeoutWarning,
             String commandName) {
         return Commands.sequence(
+                        Commands.runOnce(() -> setSuccess.accept(false)),
                         Commands.runOnce(homeAction),
-                        Commands.waitUntil(atHomingStop)
-                                .withTimeout(homingWaitTimeoutSec())
-                                .withName(waitCommandName),
+                        Commands.sequence(
+                                        Commands.waitUntil(atHomingStop).withName(waitCommandName),
+                                        Commands.runOnce(() -> setSuccess.accept(true)))
+                                .withTimeout(homingWaitTimeoutSec()),
                         Commands.runOnce(stopAction),
-                        Commands.either(
-                                Commands.none(),
-                                Commands.runOnce(() -> DriverStation.reportWarning(timeoutWarning, false)),
-                                atHomingStop))
+                        Commands.runOnce(
+                                () -> {
+                                    if (!didSucceed.getAsBoolean()) {
+                                        DriverStation.reportWarning(timeoutWarning, false);
+                                    }
+                                }))
                 .withName(commandName);
     }
 
     private static double homingWaitTimeoutSec() {
-        return RobotBase.isReal() ? IntakeConstants.HOMING_WAIT_TIMEOUT_SEC : 1.0;
+        return IntakeConstants.HOMING_WAIT_TIMEOUT_SEC;
+    }
+
+    private static double homingVoltage() {
+        return RobotBase.isSimulation() ? -12.0 : IntakeConstants.HOMING_VOLTAGE;
     }
 
     public Command spinRoller() {
@@ -158,7 +218,10 @@ public class Intake extends SubsystemBase {
     }
 
     public Command stopCommand() {
-        return Commands.runOnce(io::stop, this).withName("IntakeStop");
+        return Commands.runOnce(() -> {
+            io.stop();
+            motionState = MotionState.UNKNOWN;
+        }, this).withName("IntakeStop");
     }
 
     public Command stopAndRetractCommand() {
@@ -170,15 +233,29 @@ public class Intake extends SubsystemBase {
 
     public void stopAll() {
         io.stop();
+        motionState = MotionState.UNKNOWN;
     }
 
-    private Command moveToPositionCommand(boolean shouldExtend) {
+    private Command moveToPositionCommand(
+            boolean shouldExtend,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts,
+            String waitCommandName) {
         double targetRot = shouldExtend ? IntakeConstants.EXTENDED_POSITION_ROT : IntakeConstants.RETRACTED_POSITION_ROT;
         return Commands.sequence(
-                Commands.runOnce(() -> setExtended(shouldExtend), this),
+                Commands.runOnce(
+                        () -> beginMotionToPosition(
+                                shouldExtend,
+                                targetRot,
+                                velocityRotPerSec,
+                                accelerationRotPerSecSq,
+                                maxVolts),
+                        this),
                 Commands.waitUntil(() -> isAtTargetPosition(targetRot))
                         .withTimeout(IntakeConstants.MOVE_TIMEOUT_SEC)
-                        .withName("IntakeWaitForPosition"));
+                        .withName(waitCommandName),
+                Commands.runOnce(() -> completeMotionState(shouldExtend, targetRot), this));
     }
 
     private void requestIntakePosition(
@@ -195,5 +272,55 @@ public class Intake extends SubsystemBase {
         double rightTargetRot = IntakeConstants.RIGHT_OPPOSES_LEFT ? -leftTargetRot : leftTargetRot;
         return Math.abs(leftPositionRot - leftTargetRot) <= IntakeConstants.POSITION_TOLERANCE_ROT
                 && Math.abs(rightPositionRot - rightTargetRot) <= IntakeConstants.POSITION_TOLERANCE_ROT;
+    }
+
+    private void beginMotionToPosition(
+            boolean shouldExtend,
+            double targetRot,
+            double velocityRotPerSec,
+            double accelerationRotPerSecSq,
+            double maxVolts) {
+        requestedExtended = shouldExtend;
+        motionState = shouldExtend ? MotionState.MOVING_TO_EXTENDED : MotionState.MOVING_TO_RETRACTED;
+        requestIntakePosition(targetRot, velocityRotPerSec, accelerationRotPerSecSq, maxVolts);
+    }
+
+    private void completeMotionState(boolean shouldExtend, double targetRot) {
+        if (isAtTargetPosition(targetRot)) {
+            motionState = shouldExtend ? MotionState.EXTENDED : MotionState.RETRACTED;
+            return;
+        }
+        motionState = shouldExtend ? MotionState.MOVING_TO_EXTENDED : MotionState.MOVING_TO_RETRACTED;
+    }
+
+    private boolean didHomeSucceed() {
+        return leftHomeSucceeded && rightHomeSucceeded;
+    }
+
+    private boolean isExtendRequested() {
+        return requestedExtended;
+    }
+
+    private void updateMotionStateFromSensors() {
+        if (motionState == MotionState.HOMING) {
+            return;
+        }
+        if (!requestedExtended && isAtTargetPosition(IntakeConstants.RETRACTED_POSITION_ROT)) {
+            motionState = MotionState.RETRACTED;
+            return;
+        }
+        if (requestedExtended && isAtTargetPosition(IntakeConstants.EXTENDED_POSITION_ROT)) {
+            motionState = MotionState.EXTENDED;
+            return;
+        }
+        if (requestedExtended && motionState == MotionState.EXTENDED) {
+            return;
+        }
+        if (!requestedExtended && motionState == MotionState.RETRACTED) {
+            return;
+        }
+        if (motionState != MotionState.MOVING_TO_EXTENDED && motionState != MotionState.MOVING_TO_RETRACTED) {
+            motionState = MotionState.UNKNOWN;
+        }
     }
 }

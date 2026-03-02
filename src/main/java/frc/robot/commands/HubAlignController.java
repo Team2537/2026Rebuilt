@@ -85,7 +85,11 @@ public class HubAlignController {
 
         boolean targetHeld = false;
         Rotation2d effectiveTarget = targetHeading;
-        if (effectiveTarget == null && lastTargetHeading != null && Double.isFinite(lastTargetTimestampSec)) {
+        boolean allowTargetHold = Math.abs(fallbackOmega) > 1e-4;
+        if (allowTargetHold
+                && effectiveTarget == null
+                && lastTargetHeading != null
+                && Double.isFinite(lastTargetTimestampSec)) {
             double targetAgeSec = nowSec - lastTargetTimestampSec;
             if (targetAgeSec <= TARGET_HOLD_SEC) {
                 effectiveTarget = lastTargetHeading;

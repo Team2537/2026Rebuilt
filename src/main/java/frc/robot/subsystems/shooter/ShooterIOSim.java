@@ -65,6 +65,7 @@ public class ShooterIOSim implements ShooterIO {
     private boolean hoodClosedLoop = false;
     private boolean hoodHomingActive = false;
     private boolean hoodHomingAtStop = false;
+    private int hoodHomingCycles = 0;
 
     private double leftOpenLoopVolts = 0.0;
     private double rightOpenLoopVolts = 0.0;
@@ -73,6 +74,7 @@ public class ShooterIOSim implements ShooterIO {
     private double hoodOpenLoopVolts = 0.0;
     private double hoodAppliedVolts = 0.0;
     private double kickerAppliedVolts = 0.0;
+    private double hoodPositionOffsetRad = 0.0;
 
     @Override
     public void updateInputs(ShooterIOInputs inputs) {
@@ -88,11 +90,13 @@ public class ShooterIOSim implements ShooterIO {
                 : rightOpenLoopVolts;
         rightAppliedVolts = clampOutputVolts(rightAppliedVolts);
 
+        double hoodPositionRad = hoodSim.getAngularPositionRad() - hoodPositionOffsetRad;
         double requestedHoodVolts = hoodClosedLoop
-                ? hoodPositionController.calculate(hoodSim.getAngularPositionRad(), targetHoodAngleRad)
+                ? hoodPositionController.calculate(hoodPositionRad, targetHoodAngleRad)
                 : hoodOpenLoopVolts;
         if (hoodHomingActive) {
-            if (hoodSim.getAngularPositionRad() <= HOOD_HOMING_STOP_ANGLE_RAD) {
+            hoodHomingCycles++;
+            if (hoodHomingCycles > 1 && hoodPositionRad <= HOOD_HOMING_STOP_ANGLE_RAD) {
                 hoodHomingAtStop = true;
             }
             requestedHoodVolts = hoodHomingAtStop ? 0.0 : requestedHoodVolts;
@@ -129,7 +133,7 @@ public class ShooterIOSim implements ShooterIO {
         inputs.shooterRightSupplyCurrentAmps = Math.abs(rightShooterSim.getCurrentDrawAmps());
         inputs.shooterRightTempCelsius = AMBIENT_TEMP_C;
 
-        inputs.hoodPositionRad = hoodSim.getAngularPositionRad();
+        inputs.hoodPositionRad = hoodPositionRad;
         inputs.hoodVelocityRpm = hoodSim.getAngularVelocityRPM();
         inputs.hoodAppliedVolts = hoodAppliedVolts;
         double hoodSupplyCurrentAmps = Math.abs(hoodSim.getCurrentDrawAmps());
@@ -179,6 +183,7 @@ public class ShooterIOSim implements ShooterIO {
         hoodOpenLoopVolts = 0.0;
         hoodHomingActive = false;
         hoodHomingAtStop = false;
+        hoodHomingCycles = 0;
     }
 
     @Override
@@ -201,6 +206,7 @@ public class ShooterIOSim implements ShooterIO {
         hoodOpenLoopVolts = 0.0;
         hoodHomingActive = false;
         hoodHomingAtStop = false;
+        hoodHomingCycles = 0;
         kickerMode = KickerControlMode.OFF;
 
         targetLeftRpm = 0.0;
@@ -215,12 +221,21 @@ public class ShooterIOSim implements ShooterIO {
     }
 
     @Override
+    public void resetHoodEncoder() {
+        hoodPositionOffsetRad = hoodSim.getAngularPositionRad();
+    }
+
+    @Override
     public void setHoodVoltage(double volts) {
         hoodClosedLoop = false;
         hoodOpenLoopVolts = volts;
         hoodHomingActive = volts < 0.0;
         if (!hoodHomingActive) {
             hoodHomingAtStop = false;
+            hoodHomingCycles = 0;
+        } else {
+            hoodHomingAtStop = false;
+            hoodHomingCycles = 0;
         }
     }
 
