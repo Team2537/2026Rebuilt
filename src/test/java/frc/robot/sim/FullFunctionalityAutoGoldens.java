@@ -26,17 +26,17 @@ final class FullFunctionalityAutoGoldens {
 
     static final Map<String, AutoGolden> BY_NAME = Map.of(
             "Along Alliance Moving Shot",
-                    new AutoGolden(9.740, 13.527169, 7.999617, 5.016771, 26.487923, true, true, false),
+                    new AutoGolden(9.620, 13.527169, 7.999617, 5.016771, 22.796878, true, true, false),
             "brag",
-                    new AutoGolden(7.260, 5.297118, 2.577218, 6.393992, 131.395182, true, true, false),
+                    new AutoGolden(7.120, 5.297118, 2.577218, 6.393992, 127.858596, true, true, false),
             "mid back up then score",
-                    new AutoGolden(11.900, 1.046438, 2.507755, 2.060382, -141.028122, true, true, false),
+                    new AutoGolden(11.780, 1.046438, 2.507755, 2.060382, -137.705373, true, true, false),
             "right mid cycle",
-                    new AutoGolden(20.620, 12.411352, 3.010898, 1.311304, -125.421394, true, true, true),
+                    new AutoGolden(20.500, 12.411352, 3.010898, 1.311304, -120.957228, true, true, true),
             "right mid rush cycle",
-                    new AutoGolden(22.540, 12.403353, 3.010899, 1.311305, -125.356403, true, true, true),
+                    new AutoGolden(22.540, 12.403353, 3.010899, 1.311305, -120.957281, true, true, true),
             "right rush event auto",
-                    new AutoGolden(19.600, 13.697500, 2.709103, 1.716465, -133.948806, true, true, false),
+                    new AutoGolden(19.600, 13.697500, 2.709103, 1.716465, -130.089862, true, true, false),
             "right sweeper",
                     new AutoGolden(6.820, 9.442767, 8.076786, 6.064262, 33.505692, false, false, false));
 

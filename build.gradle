@@ -80,7 +80,7 @@ dependencies {
     simulationRelease wpi.sim.enableRelease()
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
-    testImplementation 'org.junit.platform:junit-platform-suite:1.10.1'
+    testCompileOnly 'org.junit.platform:junit-platform-suite-api:1.10.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
     def akitJson = new groovy.json.JsonSlurper().parseText(new File(projectDir.getAbsolutePath() + "/vendordeps/AdvantageKit.json").text)
@@ -89,9 +89,21 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // Full-functionality desktop sims share global resources (camera server ports, logger singletons).
+    // Keep one worker to avoid cross-test process contention and flaky NoClassDefFoundError cascades.
+    maxParallelForks = 1
+    // The JUnit suite wrapper re-runs classes already discovered directly by Gradle.
+    // Exclude the wrapper by test name to avoid duplicate heavy simulation runs.
+    filter {
+        excludeTestsMatching 'frc.robot.sim.FullFunctionalityTest'
+    }
     // AdvantageKit logger uses global static lifecycle and is not safely restartable
     // across all test classes within one JVM.
     forkEvery = 1
+    reports {
+        // XML writer intermittently fails on this desktop sim suite; keep HTML/binary reports only.
+        junitXml.required = false
+    }
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
     [
             'shooter.sim.motionCompTimeScale',

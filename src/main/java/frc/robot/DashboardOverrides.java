@@ -32,9 +32,9 @@ public final class DashboardOverrides {
         boolean visionDisabled = SmartDashboard.getBoolean(DISABLE_VISION_KEY, false);
         SmartDashboard.putBoolean(STATUS_AUTO_AIM_ACTIVE_KEY, overrideAutoAimEnabled);
         SmartDashboard.putNumber(STATUS_AIM_DISTANCE_METERS_KEY, overrideAimDistanceMeters);
-        Logger.recordOutput("dashboard/overrides/autoAimEnabled", overrideAutoAimEnabled);
-        Logger.recordOutput("dashboard/overrides/aimDistanceMeters", overrideAimDistanceMeters);
-        Logger.recordOutput("dashboard/overrides/visionDisabled", visionDisabled);
+        Logger.recordOutput("Dashboard/Overrides/AutoAimEnabled", overrideAutoAimEnabled);
+        Logger.recordOutput("Dashboard/Overrides/AimDistanceMeters", overrideAimDistanceMeters);
+        Logger.recordOutput("Dashboard/Overrides/VisionDisabled", visionDisabled);
         if (vision != null) {
             vision.setDashboardDisabled(visionDisabled);
         }

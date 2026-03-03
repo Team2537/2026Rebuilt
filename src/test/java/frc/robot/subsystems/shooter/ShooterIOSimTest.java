@@ -1,5 +1,7 @@
 package frc.robot.subsystems.shooter;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.hal.HAL;
@@ -7,11 +9,13 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class ShooterIOSimTest {
+    private static final double EPSILON = 1e-6;
     @BeforeEach
     void setUp() {
         HAL.initialize(500, 0);
@@ -51,7 +55,8 @@ class ShooterIOSimTest {
             }
         }
 
-        assertTrue(kickerEverActive,
+        assertTrue(
+                kickerEverActive,
                 "Kicker never became active in simulation. everEnabled=" + everEnabled + " everAtSetpoint=" + everAtSetpoint);
     }
 
@@ -84,5 +89,131 @@ class ShooterIOSimTest {
                         + " finalLeftRpm=" + inputs.shooterLeftVelocityRpm
                         + " finalRightRpm=" + inputs.shooterRightVelocityRpm
                         + " finalHoodDeg=" + Math.toDegrees(inputs.hoodPositionRad));
+    }
+
+    @Test
+    void dynamicDistanceChangesMidShotRemainStable() {
+        Shooter shooter = new Shooter(new ShooterIOSim());
+        double minDistance = ShooterConstants.SHOT_MAP_DISTANCE_METERS[0];
+        double maxDistance = ShooterConstants.SHOT_MAP_DISTANCE_METERS[
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1];
+        AtomicReference<Double> distanceMeters = new AtomicReference<>(minDistance);
+
+        Command shoot = shooter.shoot(distanceMeters::get);
+        CommandScheduler.getInstance().schedule(shoot);
+
+        boolean atSetpointBeforeSwitch = false;
+        boolean atSetpointAfterSwitch = false;
+        for (int i = 0; i < 800; i++) {
+            if (i == 220) {
+                distanceMeters.set(maxDistance);
+            }
+            if (i == 440) {
+                distanceMeters.set((minDistance + maxDistance) * 0.5);
+            }
+
+            DriverStationSim.notifyNewData();
+            CommandScheduler.getInstance().run();
+            if (i < 220 && shooter.atSetpoint()) {
+                atSetpointBeforeSwitch = true;
+            }
+            if (i > 520 && shooter.atSetpoint()) {
+                atSetpointAfterSwitch = true;
+            }
+        }
+
+        assertTrue(atSetpointBeforeSwitch, "Shooter never reached setpoint before distance switch.");
+        assertTrue(atSetpointAfterSwitch, "Shooter never recovered setpoint after distance switches.");
+    }
+
+    @Test
+    void shotMapBoundaryQueriesReturnFiniteTargets() {
+        Shooter shooter = new Shooter(new ShooterIOSim());
+        double minDistance = ShooterConstants.SHOT_MAP_DISTANCE_METERS[0];
+        double maxDistance = ShooterConstants.SHOT_MAP_DISTANCE_METERS[
+                ShooterConstants.SHOT_MAP_DISTANCE_METERS.length - 1];
+
+        Shooter.ShotSetpoint belowMin = shooter.calculateSetpointForDistance(minDistance - 1.0);
+        Shooter.ShotSetpoint aboveMax = shooter.calculateSetpointForDistance(maxDistance + 1.0);
+
+        assertTrue(
+                Double.isFinite(belowMin.leftRpm())
+                        && Double.isFinite(belowMin.rightRpm())
+                        && Double.isFinite(belowMin.hoodAngleRad())
+                        && Double.isFinite(aboveMax.leftRpm())
+                        && Double.isFinite(aboveMax.rightRpm())
+                        && Double.isFinite(aboveMax.hoodAngleRad()),
+                "Shot map interpolation returned non-finite boundary values.");
+    }
+
+    @Test
+    void simIoKickerModesAndClampBehavior() {
+        ShooterIOSim io = new ShooterIOSim();
+        ShooterIO.ShooterIOInputs inputs = new ShooterIO.ShooterIOInputs();
+
+        io.setKickerTorque(ShooterConstants.KICKER_MAX_TORQUE_CURRENT_AMPS * 2.0);
+        io.updateInputs(inputs);
+        assertEquals(
+                ShooterConstants.MAX_OUTPUT_VOLTS,
+                Math.abs(inputs.kickerAppliedVolts),
+                1e-3,
+                "Kicker torque mode should clamp to max output volts");
+
+        io.setKickerVoltage(4.0);
+        io.updateInputs(inputs);
+        assertEquals(4.0, inputs.kickerAppliedVolts, 1e-3);
+
+        io.stop();
+        io.updateInputs(inputs);
+        assertEquals(0.0, inputs.kickerAppliedVolts, EPSILON);
+    }
+
+    @Test
+    void hoodHomingCurrentAppearsOnlyAfterSimulatedHardStop() {
+        ShooterIOSim io = new ShooterIOSim();
+        ShooterIO.ShooterIOInputs inputs = new ShooterIO.ShooterIOInputs();
+
+        io.setHoodVoltage(-12.0);
+
+        boolean homingCurrentObserved = false;
+        for (int i = 0; i < 250; i++) {
+            io.updateInputs(inputs);
+            if (inputs.hoodStatorCurrentAmps > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS) {
+                homingCurrentObserved = true;
+                break;
+            }
+        }
+
+        assertTrue(
+                homingCurrentObserved,
+                "Expected simulated hood homing current once hood reached hard stop");
+
+        io.setHoodVoltage(0.0);
+        io.updateInputs(inputs);
+        assertFalse(
+                inputs.hoodStatorCurrentAmps > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS,
+                "Homing current should clear once homing voltage is removed");
+    }
+
+    @Test
+    void stopClearsClosedLoopOutputs() {
+        ShooterIOSim io = new ShooterIOSim();
+        ShooterIO.ShooterIOInputs inputs = new ShooterIO.ShooterIOInputs();
+
+        io.setLeftVelocity(2500.0);
+        io.setRightVelocity(2500.0);
+        io.setHoodAngle(Math.toRadians(35.0));
+        io.setKickerVoltage(6.0);
+        io.updateInputs(inputs);
+        assertTrue(Math.abs(inputs.shooterLeftAppliedVolts) > 0.0);
+        assertTrue(Math.abs(inputs.kickerAppliedVolts) > 0.0);
+
+        io.stop();
+        io.updateInputs(inputs);
+
+        assertEquals(0.0, inputs.shooterLeftAppliedVolts, EPSILON);
+        assertEquals(0.0, inputs.shooterRightAppliedVolts, EPSILON);
+        assertEquals(0.0, inputs.hoodAppliedVolts, EPSILON);
+        assertEquals(0.0, inputs.kickerAppliedVolts, EPSILON);
     }
 }

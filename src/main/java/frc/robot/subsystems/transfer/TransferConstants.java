@@ -13,6 +13,9 @@ public final class TransferConstants {
     public static final double STATUS_UPDATE_HZ = 50.0;
     public static final double STATOR_CURRENT_LIMIT_AMPS = 80.0;
     public static final double SUPPLY_CURRENT_LIMIT_AMPS = 50.0;
+    public static final double JAM_CURRENT_THRESHOLD_AMPS = 40.0;
+    public static final int JAM_DETECT_CYCLES = 8;
+    public static final double JAM_NOTIFY_COOLDOWN_SEC = 1.5;
 
     private TransferConstants() {}
 }

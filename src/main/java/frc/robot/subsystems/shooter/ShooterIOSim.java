@@ -18,6 +18,13 @@ public class ShooterIOSim implements ShooterIO {
     private static final double HOOD_HOMING_STATOR_CURRENT_AMPS =
             ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
     private static final double HOOD_HOMING_STOP_ANGLE_RAD = ShooterConstants.HOOD_MIN_ANGLE_RAD + 0.001;
+    // Tuned for similar setpoint settle behavior in sim vs real without instability.
+    private static final double SIM_SHOOTER_KP = 0.02;
+    private static final double SIM_SHOOTER_KI = 0.008;
+    private static final double SIM_SHOOTER_KD = 0.0;
+    private static final double SIM_HOOD_KP = 28.0;
+    private static final double SIM_HOOD_KI = 0.0;
+    private static final double SIM_HOOD_KD = 0.35;
 
     private final DCMotorSim leftShooterSim = new DCMotorSim(
             LinearSystemId.createDCMotorSystem(
@@ -44,9 +51,12 @@ public class ShooterIOSim implements ShooterIO {
                     ShooterConstants.KICKER_SENSOR_TO_MECHANISM_RATIO),
             KICKER_GEARBOX);
 
-    private final PIDController leftVelocityController = new PIDController(0.01, 0.01, 0.0);
-    private final PIDController rightVelocityController = new PIDController(0.01, 0.01, 0.0);
-    private final PIDController hoodPositionController = new PIDController(16.0, 0.0, 0.15);
+    private final PIDController leftVelocityController =
+            new PIDController(SIM_SHOOTER_KP, SIM_SHOOTER_KI, SIM_SHOOTER_KD);
+    private final PIDController rightVelocityController =
+            new PIDController(SIM_SHOOTER_KP, SIM_SHOOTER_KI, SIM_SHOOTER_KD);
+    private final PIDController hoodPositionController =
+            new PIDController(SIM_HOOD_KP, SIM_HOOD_KI, SIM_HOOD_KD);
 
     private enum KickerControlMode {
         OFF,

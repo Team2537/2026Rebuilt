@@ -8,7 +8,6 @@ import edu.wpi.first.hal.HAL;
 import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import frc.robot.Constants;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.transfer.Transfer;
@@ -49,7 +48,7 @@ class ShootCoordinatorTest {
         Shooter shooter = new Shooter(shooterIO);
         Transfer transfer = new Transfer(transferIO);
         ShootCoordinator coordinator =
-                new ShootCoordinator(shooter, transfer, Constants.FeedGateMode.IMMEDIATE);
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.IMMEDIATE);
 
         Command command = coordinator.shootForDistance(() -> 4.0, () -> false);
         CommandScheduler.getInstance().schedule(command);
@@ -67,7 +66,7 @@ class ShootCoordinatorTest {
         Shooter shooter = new Shooter(shooterIO);
         Transfer transfer = new Transfer(transferIO);
         ShootCoordinator coordinator =
-                new ShootCoordinator(shooter, transfer, Constants.FeedGateMode.SHOOTER_AND_AIM);
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
 
         Command command = coordinator.shootForDistance(() -> 4.0, () -> false);
         CommandScheduler.getInstance().schedule(command);
@@ -79,13 +78,34 @@ class ShootCoordinatorTest {
     }
 
     @Test
-    void invalidDistanceAlwaysBlocksFeed() {
+    void shooterAndAimPolicyDebouncesBeforeFeeding() {
         TestShooterIO shooterIO = new TestShooterIO();
         TestTransferIO transferIO = new TestTransferIO();
         Shooter shooter = new Shooter(shooterIO);
         Transfer transfer = new Transfer(transferIO);
         ShootCoordinator coordinator =
-                new ShootCoordinator(shooter, transfer, Constants.FeedGateMode.IMMEDIATE);
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
+
+        Command command = coordinator.shootForDistance(() -> 4.0, () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(2);
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+
+        runSchedulerCycles(1);
+        assertTrue(shooter.isKickerActive());
+        assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void invalidDistanceAlwaysBlocksFeedAndRecoveryReopensGate() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.IMMEDIATE);
         AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
 
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
@@ -100,6 +120,113 @@ class ShootCoordinatorTest {
 
         assertFalse(shooter.isKickerActive());
         assertEquals(0.0, transferIO.percent, EPSILON);
+
+        distanceMeters.set(5.0);
+        runSchedulerCycles(2);
+
+        assertTrue(shooter.isKickerActive());
+        assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void infiniteDistanceIsRejectedAsInvalid() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.IMMEDIATE);
+        AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
+
+        Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
+        CommandScheduler.getInstance().schedule(command);
+        runSchedulerCycles(3);
+        assertTrue(shooter.isKickerActive());
+
+        distanceMeters.set(Double.POSITIVE_INFINITY);
+        runSchedulerCycles(2);
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+
+        distanceMeters.set(Double.NEGATIVE_INFINITY);
+        runSchedulerCycles(2);
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void modeSwitchFromImmediateToStrictClosesGate() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator immediate =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.IMMEDIATE);
+        ShootCoordinator strict =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
+
+        Command immediateCommand = immediate.shootForDistance(() -> 4.0, () -> true);
+        CommandScheduler.getInstance().schedule(immediateCommand);
+        runSchedulerCycles(2);
+
+        assertTrue(shooter.isKickerActive());
+
+        immediateCommand.cancel();
+        runSchedulerCycles(1);
+
+        Command strictCommand = strict.shootForDistance(() -> 4.0, () -> false);
+        CommandScheduler.getInstance().schedule(strictCommand);
+        runSchedulerCycles(3);
+
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void aimDropResetsDebounceAndRequiresFreshStableCycles() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
+        AtomicReference<Boolean> aimReady = new AtomicReference<>(true);
+
+        Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(3);
+        assertTrue(shooter.isKickerActive());
+
+        aimReady.set(false);
+        runSchedulerCycles(1);
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+
+        aimReady.set(true);
+        runSchedulerCycles(1);
+        assertFalse(shooter.isKickerActive(), "Debounce should require a second stable cycle after aim drop.");
+        runSchedulerCycles(1);
+        assertTrue(shooter.isKickerActive());
+        assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void hoodNotAtSetpointBlocksShooterAtSetpointPolicy() {
+        LaggingHoodShooterIO shooterIO = new LaggingHoodShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AT_SETPOINT);
+
+        Command command = coordinator.shootForDistance(() -> 4.0, () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(10);
+
+        assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
     }
 
     @Test
@@ -109,7 +236,7 @@ class ShootCoordinatorTest {
         Shooter shooter = new Shooter(shooterIO);
         Transfer transfer = new Transfer(transferIO);
         ShootCoordinator coordinator =
-                new ShootCoordinator(shooter, transfer, Constants.FeedGateMode.IMMEDIATE);
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.IMMEDIATE);
 
         Command command = coordinator.shootForDistance(() -> 4.0, () -> true);
         CommandScheduler.getInstance().schedule(command);
@@ -120,6 +247,7 @@ class ShootCoordinatorTest {
         runSchedulerCycles(2);
 
         assertFalse(shooter.isKickerActive());
+        assertFalse(coordinator.isActivelyFeeding());
         assertEquals(0.0, transferIO.percent, EPSILON);
         assertEquals(0.0, shooter.getTargetAverageShooterRpm(), EPSILON);
     }
@@ -131,7 +259,7 @@ class ShootCoordinatorTest {
         }
     }
 
-    private static final class TestShooterIO implements ShooterIO {
+    private static class TestShooterIO implements ShooterIO {
         private double leftRpm;
         private double rightRpm;
         private double hoodRad;
@@ -156,6 +284,13 @@ class ShootCoordinatorTest {
         @Override
         public void setHoodAngle(double angle) {
             hoodRad = angle;
+        }
+    }
+
+    private static final class LaggingHoodShooterIO extends TestShooterIO {
+        @Override
+        public void setHoodAngle(double angle) {
+            // Simulate hood lag/failure: commanded angle never reflects in measured position.
         }
     }
 

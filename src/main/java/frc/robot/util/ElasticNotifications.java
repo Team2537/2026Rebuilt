@@ -1,5 +1,7 @@
 package frc.robot.util;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StringTopic;
@@ -7,6 +9,7 @@ import java.util.Locale;
 
 /** Sends toast notifications to the Elastic dashboard via NetworkTables. */
 public final class ElasticNotifications {
+    private static final ObjectMapper mapper = new ObjectMapper();
     private static final StringPublisher publisher;
 
     static {
@@ -24,14 +27,18 @@ public final class ElasticNotifications {
     }
 
     public static void send(Level level, String title, String description) {
-        String json = String.format(
-                Locale.US,
-                "{\"level\":\"%s\",\"title\":\"%s\",\"description\":\"%s\",\"displayTime\":%d,\"width\":350,\"height\":-1}",
+        NotificationPayload payload = new NotificationPayload(
                 level.name().toLowerCase(Locale.US),
-                escapeJson(title),
-                escapeJson(description),
-                level == Level.ERROR ? 5000 : 3000);
-        publisher.set(json);
+                title == null ? "" : title,
+                description == null ? "" : description,
+                level == Level.ERROR ? 5000 : 3000,
+                350,
+                -1);
+        try {
+            publisher.set(mapper.writeValueAsString(payload));
+        } catch (JsonProcessingException exception) {
+            publisher.set("{\"level\":\"error\",\"title\":\"Notification Serialization\",\"description\":\"Failed to serialize Elastic notification payload\",\"displayTime\":5000,\"width\":350,\"height\":-1}");
+        }
     }
 
     public static void sendInfo(String title, String description) {
@@ -46,10 +53,11 @@ public final class ElasticNotifications {
         send(Level.ERROR, title, description);
     }
 
-    private static String escapeJson(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-    }
+    private record NotificationPayload(
+            String level,
+            String title,
+            String description,
+            int displayTime,
+            int width,
+            int height) {}
 }

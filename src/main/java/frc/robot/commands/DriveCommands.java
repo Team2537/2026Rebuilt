@@ -107,24 +107,25 @@ public final class DriveCommands {
     /** Returns a command that snaps heading to the nearest cardinal direction. */
     public static Command headingSnap(Drive drive) {
         HubAlignController alignController = new HubAlignController();
-        final Rotation2d[] targetHeading = new Rotation2d[] {Rotation2d.kZero};
+        HeadingSnapState state = new HeadingSnapState();
 
         return Commands.run(
                 () -> {
                     double omega = alignController.calculate(
                             RobotState.getInstance().getRotation().getRadians(),
-                            targetHeading[0],
+                            state.targetHeading,
                             0.0);
                     drive.runDriverVelocity(new ChassisSpeeds(0.0, 0.0, omega));
                 },
                 drive)
                 .beforeStarting(() -> {
                     Rotation2d snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
-                    targetHeading[0] = snappedHeading;
+                    state.targetHeading = snappedHeading;
                     alignController.reset(RobotState.getInstance().getRotation().getRadians(), snappedHeading);
                 })
                 .until(() -> Math.abs(MathUtil.angleModulus(
-                        targetHeading[0].minus(RobotState.getInstance().getRotation()).getRadians())) <= HEADING_SNAP_TOLERANCE_RAD)
+                        state.targetHeading.minus(RobotState.getInstance().getRotation()).getRadians()))
+                        <= HEADING_SNAP_TOLERANCE_RAD)
                 .andThen(Commands.runOnce(drive::stop, drive))
                 .withName("DriveHeadingSnap");
     }
@@ -254,6 +255,10 @@ public final class DriveCommands {
         double[] positions = new double[4];
         Rotation2d lastAngle = Rotation2d.kZero;
         double gyroDelta = 0.0;
+    }
+
+    private static class HeadingSnapState {
+        Rotation2d targetHeading = Rotation2d.kZero;
     }
 
 }

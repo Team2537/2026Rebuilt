@@ -2,9 +2,11 @@ package frc.robot.autos;
 
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -14,7 +16,10 @@ import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.util.AimReadyLatch;
 import frc.robot.util.AutoAimHeadingConfig;
+import frc.robot.util.CycleCache;
+import frc.robot.util.TargetHoldover;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
@@ -23,7 +28,8 @@ import org.littletonrobotics.junction.Logger;
 
 /** Reusable autonomous command primitives intended for composition in PathPlanner. */
 public final class AutoCommands {
-    private static final long CONTROL_LOOP_PERIOD_US = 20_000L;
+    private static final long CONTROL_LOOP_PERIOD_US =
+            Math.round(TimedRobot.kDefaultPeriod * 1_000_000.0);
 
     private AutoCommands() {}
 
@@ -109,62 +115,30 @@ public final class AutoCommands {
     private static Supplier<LaunchCalculator.MotionCompensation> createHubMotionCompensationSupplier(
             Shooter shooter) {
         RobotState robotState = RobotState.getInstance();
-        final long[] cachedCycleTimestampUs = new long[] {Long.MIN_VALUE};
-        final LaunchCalculator.MotionCompensation[] cachedCompensation =
-                new LaunchCalculator.MotionCompensation[] {
-                    new LaunchCalculator.MotionCompensation(
-                            Double.NaN,
-                            Double.NaN,
-                            Double.NaN,
-                            Double.NaN,
-                            Double.NaN,
-                            null)
-                };
+        CycleCache<LaunchCalculator.MotionCompensation> cache = new CycleCache<>();
 
-        return () -> {
-            long timestampUs = RobotController.getFPGATime();
-            if (timestampUs != cachedCycleTimestampUs[0]) {
-                cachedCycleTimestampUs[0] = timestampUs;
-                cachedCompensation[0] = shooter.getMotionCompensationToHub(
-                        robotState.getPose(),
-                        robotState.getMeasuredChassisSpeeds());
-            }
-            return cachedCompensation[0];
-        };
+        return () -> cache.get(loopCycleKey(), () -> shooter.getMotionCompensationToHub(
+                robotState.getPose(),
+                robotState.getMeasuredChassisSpeeds()));
     }
 
     private static BooleanSupplier createAimReadySupplier(
             Supplier<Rotation2d> desiredRobotHeadingSupplier) {
-        final boolean[] aimReadyLatched = new boolean[] {false};
-        final Rotation2d[] lastValidDesiredRobotHeading = new Rotation2d[] {null};
-        final double[] lastValidTargetTimestampSec = new double[] {Double.NaN};
+        TargetHoldover<Rotation2d> holdover =
+                new TargetHoldover<>(AutoAimHeadingConfig.TARGET_HOLD_SEC, Timer::getFPGATimestamp);
+        AimReadyLatch latch = new AimReadyLatch(
+                AutoAimHeadingConfig.AIM_TOLERANCE_RAD,
+                AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD);
 
         return () -> {
-            Rotation2d desiredRobotHeading = desiredRobotHeadingSupplier.get();
-            double nowSec = Timer.getFPGATimestamp();
-            boolean targetHeld = false;
-
-            if (desiredRobotHeading != null) {
-                lastValidDesiredRobotHeading[0] = desiredRobotHeading;
-                lastValidTargetTimestampSec[0] = nowSec;
-            } else if (lastValidDesiredRobotHeading[0] != null) {
-                double targetAgeSec = nowSec - lastValidTargetTimestampSec[0];
-                if (Double.isFinite(targetAgeSec)
-                        && targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
-                    desiredRobotHeading = lastValidDesiredRobotHeading[0];
-                    targetHeld = true;
-                }
-            }
-
+            TargetHoldover.HoldResult<Rotation2d> holdResult =
+                    holdover.apply(desiredRobotHeadingSupplier.get());
+            Rotation2d desiredRobotHeading = holdResult.value();
             Rotation2d robotHeading = RobotState.getInstance().getRotation();
             Logger.recordOutput("AutoAim/RobotHeadingDeg", robotHeading.getDegrees());
-            Logger.recordOutput("AutoAim/TargetHeld", targetHeld);
+            Logger.recordOutput("AutoAim/TargetHeld", holdResult.held());
             Logger.recordOutput("AutoAim/TargetAvailable", desiredRobotHeading != null);
-            Logger.recordOutput(
-                    "AutoAim/TargetAgeSec",
-                    Double.isFinite(lastValidTargetTimestampSec[0])
-                            ? nowSec - lastValidTargetTimestampSec[0]
-                            : Double.NaN);
+            Logger.recordOutput("AutoAim/TargetAgeSec", holdResult.ageSec());
 
             if (desiredRobotHeading == null) {
                 Logger.recordOutput("AutoAim/TargetHeadingDeg", Double.NaN);
@@ -172,7 +146,7 @@ public final class AutoCommands {
                 Logger.recordOutput("AutoAim/AimErrorRad", Double.NaN);
                 Logger.recordOutput("AutoAim/AimErrorDeg", Double.NaN);
                 Logger.recordOutput("AutoAim/AimReadyLatched", false);
-                aimReadyLatched[0] = false;
+                latch.reset();
                 return false;
             }
 
@@ -180,21 +154,14 @@ public final class AutoCommands {
             double headingErrorRad = MathUtil.angleModulus(
                     desiredRobotHeading.minus(robotHeading).getRadians());
             double absHeadingErrorRad = Math.abs(headingErrorRad);
-
-            if (aimReadyLatched[0]) {
-                aimReadyLatched[0] =
-                        absHeadingErrorRad <= AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
-            } else {
-                aimReadyLatched[0] =
-                        absHeadingErrorRad <= AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
-            }
+            boolean aimReady = latch.update(absHeadingErrorRad);
 
             Logger.recordOutput("AutoAim/TargetHeadingDeg", targetHeading.getDegrees());
             Logger.recordOutput("AutoAim/DesiredRobotHeadingDeg", desiredRobotHeading.getDegrees());
             Logger.recordOutput("AutoAim/AimErrorRad", headingErrorRad);
             Logger.recordOutput("AutoAim/AimErrorDeg", Math.toDegrees(headingErrorRad));
-            Logger.recordOutput("AutoAim/AimReadyLatched", aimReadyLatched[0]);
-            return aimReadyLatched[0];
+            Logger.recordOutput("AutoAim/AimReadyLatched", aimReady);
+            return aimReady;
         };
     }
 
@@ -238,71 +205,46 @@ public final class AutoCommands {
 
     private static Supplier<Rotation2d> createCycleCachedRotationSupplier(
             Supplier<Rotation2d> sourceSupplier) {
-        final long[] lastLoop = new long[] {Long.MIN_VALUE};
-        final Rotation2d[] cachedValue = new Rotation2d[] {null};
-        return () -> {
-            long currentLoop = RobotController.getFPGATime() / CONTROL_LOOP_PERIOD_US;
-            if (currentLoop != lastLoop[0]) {
-                lastLoop[0] = currentLoop;
-                cachedValue[0] = sourceSupplier.get();
-            }
-            return cachedValue[0];
-        };
+        CycleCache<Rotation2d> cache = new CycleCache<>();
+        return () -> cache.get(loopCycleKey(), sourceSupplier);
+    }
+
+    private static long loopCycleKey() {
+        if (CONTROL_LOOP_PERIOD_US <= 0L) {
+            return RobotController.getFPGATime();
+        }
+        return RobotController.getFPGATime() / CONTROL_LOOP_PERIOD_US;
     }
 
     private static final class ProfiledHeadingTarget {
-        private final TrapezoidProfile.Constraints constraints;
-        private TrapezoidProfile.State state = new TrapezoidProfile.State();
-        private double lastTimestampSec = Double.NaN;
+        private final ProfiledPIDController controller;
         private boolean initialized = false;
 
         ProfiledHeadingTarget(TrapezoidProfile.Constraints constraints) {
-            this.constraints = constraints;
+            controller = new ProfiledPIDController(0, 0, 0, constraints, TimedRobot.kDefaultPeriod);
+            controller.enableContinuousInput(-Math.PI, Math.PI);
         }
 
         void reset(Rotation2d currentHeading) {
             double headingRad = currentHeading != null ? currentHeading.getRadians() : 0.0;
-            state = new TrapezoidProfile.State(headingRad, 0.0);
-            lastTimestampSec = Timer.getFPGATimestamp();
+            controller.reset(headingRad);
             initialized = true;
         }
 
         Rotation2d calculate(Rotation2d goalHeading) {
-            double nowSec = Timer.getFPGATimestamp();
             if (goalHeading == null) {
-                state = new TrapezoidProfile.State(state.position, 0.0);
-                lastTimestampSec = nowSec;
+                controller.reset(controller.getSetpoint().position);
                 return null;
             }
-
             if (!initialized) {
-                state = new TrapezoidProfile.State(goalHeading.getRadians(), 0.0);
-                lastTimestampSec = nowSec;
-                initialized = true;
-                return goalHeading;
+                reset(goalHeading);
             }
-
-            double dtSec = Double.isFinite(lastTimestampSec)
-                    ? MathUtil.clamp(nowSec - lastTimestampSec, 0.0, 0.1)
-                    : 0.02;
-            lastTimestampSec = nowSec;
-
-            if (dtSec <= 1e-6) {
-                return Rotation2d.fromRadians(MathUtil.angleModulus(state.position));
-            }
-
-            double goalRad = unwrapAngleNear(goalHeading.getRadians(), state.position);
-            TrapezoidProfile profile = new TrapezoidProfile(constraints);
-            state = profile.calculate(dtSec, state, new TrapezoidProfile.State(goalRad, 0.0));
-            return Rotation2d.fromRadians(MathUtil.angleModulus(state.position));
+            controller.calculate(controller.getSetpoint().position, goalHeading.getRadians());
+            return Rotation2d.fromRadians(controller.getSetpoint().position);
         }
 
         double getVelocityRadPerSec() {
-            return state.velocity;
-        }
-
-        private static double unwrapAngleNear(double angleRad, double referenceRad) {
-            return referenceRad + MathUtil.angleModulus(angleRad - referenceRad);
+            return controller.getSetpoint().velocity;
         }
     }
 }

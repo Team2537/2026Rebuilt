@@ -32,13 +32,7 @@ public final class FuelSim {
     public static final double DESCENT_ACCURACY_HEIGHT_METERS = 1.83;
     public static final double IDEAL_DESCENT_MISS_DISTANCE_METERS = Units.inchesToMeters(6.0);
 
-    private final double[] xMeters = new double[FUEL_COUNT];
-    private final double[] yMeters = new double[FUEL_COUNT];
-    private final double[] zMeters = new double[FUEL_COUNT];
-    private final double[] vxMetersPerSec = new double[FUEL_COUNT];
-    private final double[] vyMetersPerSec = new double[FUEL_COUNT];
-    private final double[] vzMetersPerSec = new double[FUEL_COUNT];
-    private final boolean[] active = new boolean[FUEL_COUNT];
+    private final FuelState[] fuelStates = new FuelState[FUEL_COUNT];
     private final Pose3d[] publishedPoses = new Pose3d[FUEL_COUNT];
     private final ArrayDeque<DescentCrossingSample> pendingDescentCrossingSamples = new ArrayDeque<>();
     private final double[] recentDescentMissMeters = new double[RECENT_MISS_HISTORY_SIZE];
@@ -68,6 +62,7 @@ public final class FuelSim {
 
     public FuelSim() {
         for (int i = 0; i < FUEL_COUNT; i++) {
+            fuelStates[i] = new FuelState();
             publishedPoses[i] = new Pose3d();
         }
     }
@@ -95,25 +90,20 @@ public final class FuelSim {
             }
         }
 
-        for (int i = 0; i < FUEL_COUNT; i++) {
-            if (!active[i]) {
+        for (FuelState fuel : fuelStates) {
+            if (!fuel.active) {
                 continue;
             }
 
-            double previousX = xMeters[i];
-            double previousY = yMeters[i];
-            double previousZ = zMeters[i];
-            double vx = vxMetersPerSec[i];
-            double vy = vyMetersPerSec[i];
-            double previousVz = vzMetersPerSec[i];
-            double vz = previousVz;
-            vz -= GRAVITY_METERS_PER_SEC2 * clampedDtSec;
-            xMeters[i] += vx * clampedDtSec;
-            yMeters[i] += vy * clampedDtSec;
-            zMeters[i] += vz * clampedDtSec;
-            vxMetersPerSec[i] = vx;
-            vyMetersPerSec[i] = vy;
-            vzMetersPerSec[i] = vz;
+            double previousX = fuel.xMeters;
+            double previousY = fuel.yMeters;
+            double previousZ = fuel.zMeters;
+            double previousVz = fuel.vzMetersPerSec;
+
+            fuel.vzMetersPerSec -= GRAVITY_METERS_PER_SEC2 * clampedDtSec;
+            fuel.xMeters += fuel.vxMetersPerSec * clampedDtSec;
+            fuel.yMeters += fuel.vyMetersPerSec * clampedDtSec;
+            fuel.zMeters += fuel.vzMetersPerSec * clampedDtSec;
 
             recordDescentCrossingSample(
                     cycleStartTimeSec,
@@ -122,15 +112,15 @@ public final class FuelSim {
                     previousY,
                     previousZ,
                     previousVz,
-                    xMeters[i],
-                    yMeters[i],
-                    zMeters[i],
-                    vz,
-                    vx,
-                    vy);
+                    fuel.xMeters,
+                    fuel.yMeters,
+                    fuel.zMeters,
+                    fuel.vzMetersPerSec,
+                    fuel.vxMetersPerSec,
+                    fuel.vyMetersPerSec);
 
-            if (zMeters[i] < 0.0) {
-                resetFuel(i);
+            if (fuel.zMeters < 0.0) {
+                resetFuel(fuel);
             }
         }
 
@@ -161,7 +151,7 @@ public final class FuelSim {
     }
 
     private void spawnFuel(Pose2d robotPose, RobotVelocity robotVelocity, double shooterRpm, double hoodAngleRad) {
-        int index = nextSpawnIndex;
+        FuelState fuel = fuelStates[nextSpawnIndex];
         nextSpawnIndex = (nextSpawnIndex + 1) % FUEL_COUNT;
 
         double yaw = robotPose.getRotation().getRadians() + Math.PI;
@@ -182,13 +172,13 @@ public final class FuelSim {
         double launchVy = robotVelocity.vyMetersPerSec() + tangentialVy + horizontalSpeed * Math.sin(yaw);
         double launchVz = muzzleSpeed * Math.sin(hood);
 
-        xMeters[index] = spawnX;
-        yMeters[index] = spawnY;
-        zMeters[index] = spawnZ;
-        vxMetersPerSec[index] = launchVx;
-        vyMetersPerSec[index] = launchVy;
-        vzMetersPerSec[index] = launchVz;
-        active[index] = true;
+        fuel.xMeters = spawnX;
+        fuel.yMeters = spawnY;
+        fuel.zMeters = spawnZ;
+        fuel.vxMetersPerSec = launchVx;
+        fuel.vyMetersPerSec = launchVy;
+        fuel.vzMetersPerSec = launchVz;
+        fuel.active = true;
     }
 
     private static double computeMuzzleSpeedMetersPerSec(double shooterRpm) {
@@ -200,14 +190,14 @@ public final class FuelSim {
                 MAX_MUZZLE_SPEED_METERS_PER_SEC);
     }
 
-    private void resetFuel(int index) {
-        xMeters[index] = 0.0;
-        yMeters[index] = 0.0;
-        zMeters[index] = 0.0;
-        vxMetersPerSec[index] = 0.0;
-        vyMetersPerSec[index] = 0.0;
-        vzMetersPerSec[index] = 0.0;
-        active[index] = false;
+    private static void resetFuel(FuelState fuel) {
+        fuel.xMeters = 0.0;
+        fuel.yMeters = 0.0;
+        fuel.zMeters = 0.0;
+        fuel.vxMetersPerSec = 0.0;
+        fuel.vyMetersPerSec = 0.0;
+        fuel.vzMetersPerSec = 0.0;
+        fuel.active = false;
     }
 
     private void recordDescentCrossingSample(
@@ -298,7 +288,8 @@ public final class FuelSim {
     private double[] buildRecentMissHistory() {
         int count = Math.min(recentDescentMissCount, RECENT_MISS_HISTORY_SIZE);
         double[] history = new double[count];
-        int startIndex = (recentDescentMissInsertIndex - count + RECENT_MISS_HISTORY_SIZE) % RECENT_MISS_HISTORY_SIZE;
+        int startIndex =
+                (recentDescentMissInsertIndex - count + RECENT_MISS_HISTORY_SIZE) % RECENT_MISS_HISTORY_SIZE;
         for (int i = 0; i < count; i++) {
             history[i] = recentDescentMissMeters[(startIndex + i) % RECENT_MISS_HISTORY_SIZE];
         }
@@ -308,37 +299,48 @@ public final class FuelSim {
     private void publish() {
         int activeCount = 0;
         for (int i = 0; i < FUEL_COUNT; i++) {
-            if (active[i]) {
+            FuelState fuel = fuelStates[i];
+            if (fuel.active) {
                 activeCount++;
-                publishedPoses[i] = new Pose3d(xMeters[i], yMeters[i], zMeters[i], new Rotation3d());
+                publishedPoses[i] = new Pose3d(fuel.xMeters, fuel.yMeters, fuel.zMeters, new Rotation3d());
             } else {
                 publishedPoses[i] = new Pose3d();
             }
         }
 
-        Logger.recordOutput("sim/FUEL/poses", publishedPoses);
-        Logger.recordOutput("sim/FUEL/activeCount", activeCount);
-        Logger.recordOutput("sim/FUEL/diameterMeters", FUEL_DIAMETER_METERS);
-        Logger.recordOutput("sim/FUEL/accuracy/descentHeightMeters", DESCENT_ACCURACY_HEIGHT_METERS);
-        Logger.recordOutput("sim/FUEL/accuracy/idealMissMeters", IDEAL_DESCENT_MISS_DISTANCE_METERS);
-        Logger.recordOutput("sim/FUEL/accuracy/latestDescentMissMeters", latestDescentMissMeters);
-        Logger.recordOutput("sim/FUEL/accuracy/latestDescentMissInches", Units.metersToInches(latestDescentMissMeters));
-        Logger.recordOutput("sim/FUEL/accuracy/totalDescentSamples", totalDescentCrossingSamples);
-        Logger.recordOutput("sim/FUEL/accuracy/withinIdealSamples", descentCrossingSamplesWithinIdeal);
+        Logger.recordOutput("Sim/Fuel/poses", publishedPoses);
+        Logger.recordOutput("Sim/Fuel/activeCount", activeCount);
+        Logger.recordOutput("Sim/Fuel/diameterMeters", FUEL_DIAMETER_METERS);
+        Logger.recordOutput("Sim/Fuel/accuracy/descentHeightMeters", DESCENT_ACCURACY_HEIGHT_METERS);
+        Logger.recordOutput("Sim/Fuel/accuracy/idealMissMeters", IDEAL_DESCENT_MISS_DISTANCE_METERS);
+        Logger.recordOutput("Sim/Fuel/accuracy/latestDescentMissMeters", latestDescentMissMeters);
+        Logger.recordOutput("Sim/Fuel/accuracy/latestDescentMissInches", Units.metersToInches(latestDescentMissMeters));
+        Logger.recordOutput("Sim/Fuel/accuracy/totalDescentSamples", totalDescentCrossingSamples);
+        Logger.recordOutput("Sim/Fuel/accuracy/withinIdealSamples", descentCrossingSamplesWithinIdeal);
         Logger.recordOutput(
-                "sim/FUEL/accuracy/withinIdealFraction",
+                "Sim/Fuel/accuracy/withinIdealFraction",
                 totalDescentCrossingSamples > 0
                         ? (double) descentCrossingSamplesWithinIdeal / totalDescentCrossingSamples
                         : 0.0);
         Logger.recordOutput(
-                "sim/FUEL/accuracy/meanDescentMissMeters",
+                "Sim/Fuel/accuracy/meanDescentMissMeters",
                 totalDescentCrossingSamples > 0
                         ? sumDescentMissMeters / totalDescentCrossingSamples
                         : Double.NaN);
-        Logger.recordOutput("sim/FUEL/accuracy/minDescentMissMeters", minDescentMissMeters);
-        Logger.recordOutput("sim/FUEL/accuracy/maxDescentMissMeters", maxDescentMissMeters);
-        Logger.recordOutput("sim/FUEL/accuracy/recentDescentMissMeters", buildRecentMissHistory());
+        Logger.recordOutput("Sim/Fuel/accuracy/minDescentMissMeters", minDescentMissMeters);
+        Logger.recordOutput("Sim/Fuel/accuracy/maxDescentMissMeters", maxDescentMissMeters);
+        Logger.recordOutput("Sim/Fuel/accuracy/recentDescentMissMeters", buildRecentMissHistory());
     }
 
     private record RobotVelocity(double vxMetersPerSec, double vyMetersPerSec, double omegaRadPerSec) {}
+
+    private static final class FuelState {
+        double xMeters = 0.0;
+        double yMeters = 0.0;
+        double zMeters = 0.0;
+        double vxMetersPerSec = 0.0;
+        double vyMetersPerSec = 0.0;
+        double vzMetersPerSec = 0.0;
+        boolean active = false;
+    }
 }

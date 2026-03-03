@@ -6,7 +6,7 @@ import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.DutyCycleOut;
+import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -23,7 +23,7 @@ public class TransferIOReal implements TransferIO {
 
     private final TalonFX transferMotor = new TalonFX(TransferConstants.TRANSFER_MOTOR_ID, MECHANISM_CAN_BUS);
 
-    private final DutyCycleOut percentRequest = new DutyCycleOut(0.0);
+    private final VoltageOut voltageRequest = new VoltageOut(0.0);
     private final NeutralOut neutralRequest = new NeutralOut();
 
     private final StatusSignal<?> position;
@@ -66,7 +66,8 @@ public class TransferIOReal implements TransferIO {
 
     @Override
     public void setPercent(double percent) {
-        transferMotor.setControl(percentRequest.withOutput(MathUtil.clamp(percent, -1.0, 1.0)));
+        double volts = MathUtil.clamp(percent, -1.0, 1.0) * 12.0;
+        transferMotor.setControl(voltageRequest.withOutput(volts));
     }
 
     @Override

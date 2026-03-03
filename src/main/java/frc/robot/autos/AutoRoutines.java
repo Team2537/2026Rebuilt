@@ -38,14 +38,14 @@ public final class AutoRoutines {
 
     private static List<AutoRoutine> loadPathPlannerRoutines() {
         Path autosDir = Filesystem.getDeployDirectory().toPath().resolve("pathplanner").resolve("autos");
-        Logger.recordOutput("auto/pathPlanner/autosDir", autosDir.toString());
+        Logger.recordOutput("Auto/pathPlanner/autosDir", autosDir.toString());
         if (!Files.isDirectory(autosDir)) {
-            Logger.recordOutput("auto/pathPlanner/autosDirExists", false);
+            Logger.recordOutput("Auto/pathPlanner/autosDirExists", false);
             logPathPlannerLoadResult(List.of(), false, "", "");
             return List.of();
         }
 
-        Logger.recordOutput("auto/pathPlanner/autosDirExists", true);
+        Logger.recordOutput("Auto/pathPlanner/autosDirExists", true);
         List<AutoRoutine> routines = new ArrayList<>();
         try (var autoFiles = Files.list(autosDir)) {
             autoFiles
@@ -81,10 +81,10 @@ public final class AutoRoutines {
             String failureMessage,
             String failureType) {
         String[] routineNames = routines.stream().map(AutoRoutine::name).toArray(String[]::new);
-        Logger.recordOutput("auto/pathPlanner/loadFailed", loadFailed);
-        Logger.recordOutput("auto/pathPlanner/loadFailureMessage", failureMessage);
-        Logger.recordOutput("auto/pathPlanner/loadFailureType", failureType);
-        Logger.recordOutput("auto/pathPlanner/routineCount", routineNames.length);
-        Logger.recordOutput("auto/pathPlanner/routineNames", routineNames);
+        Logger.recordOutput("Auto/pathPlanner/loadFailed", loadFailed);
+        Logger.recordOutput("Auto/pathPlanner/loadFailureMessage", failureMessage);
+        Logger.recordOutput("Auto/pathPlanner/loadFailureType", failureType);
+        Logger.recordOutput("Auto/pathPlanner/routineCount", routineNames.length);
+        Logger.recordOutput("Auto/pathPlanner/routineNames", routineNames);
     }
 }

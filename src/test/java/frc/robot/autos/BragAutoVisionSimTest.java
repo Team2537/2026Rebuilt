@@ -226,27 +226,27 @@ class BragAutoVisionSimTest {
             if (record.isStart()) {
                 var start = record.getStartData();
                 String name = start.name;
-                if (name.contains("vision/events/sequence")) {
+                if (name.contains("Vision/events/sequence")) {
                     sequenceEntry = start.entry;
-                } else if (name.contains("vision/events/jumpCount")) {
+                } else if (name.contains("Vision/events/jumpCount")) {
                     jumpCountEntry = start.entry;
-                } else if (name.contains("vision/events/rejectCount")) {
+                } else if (name.contains("Vision/events/rejectCount")) {
                     rejectCountEntry = start.entry;
-                } else if (name.contains("vision/events/last/type")) {
+                } else if (name.contains("Vision/events/last/type")) {
                     eventTypeEntry = start.entry;
-                } else if (name.contains("vision/events/last/timestampSeconds")) {
+                } else if (name.contains("Vision/events/last/timestampSeconds")) {
                     eventTimestampEntry = start.entry;
-                } else if (name.contains("vision/events/last/cameraIndex")) {
+                } else if (name.contains("Vision/events/last/cameraIndex")) {
                     eventCameraEntry = start.entry;
-                } else if (name.contains("vision/events/last/translationDeltaMeters")) {
+                } else if (name.contains("Vision/events/last/translationDeltaMeters")) {
                     eventTranslationEntry = start.entry;
-                } else if (name.contains("vision/events/last/headingDeltaDegrees")) {
+                } else if (name.contains("Vision/events/last/headingDeltaDegrees")) {
                     eventHeadingEntry = start.entry;
-                } else if (name.contains("vision/events/last/tagCount")) {
+                } else if (name.contains("Vision/events/last/tagCount")) {
                     eventTagCountEntry = start.entry;
-                } else if (name.contains("vision/events/last/ambiguity")) {
+                } else if (name.contains("Vision/events/last/ambiguity")) {
                     eventAmbiguityEntry = start.entry;
-                } else if (name.contains("vision/events/last/avgDistanceMeters")) {
+                } else if (name.contains("Vision/events/last/avgDistanceMeters")) {
                     eventAvgDistanceEntry = start.entry;
                 }
                 continue;

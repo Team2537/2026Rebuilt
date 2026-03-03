@@ -8,6 +8,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.util.AutoAimHeadingConfig;
+import frc.robot.util.TargetHoldover;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -29,9 +30,9 @@ public class HubAlignController {
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
     private final LinearFilter targetVelocityFilter = LinearFilter.movingAverage(TARGET_VELOCITY_FILTER_TAPS);
+    private final TargetHoldover<Rotation2d> targetHoldover =
+            new TargetHoldover<>(AutoAimHeadingConfig.TARGET_HOLD_SEC, Timer::getFPGATimestamp);
 
-    private Rotation2d lastTargetHeading = null;
-    private double lastTargetTimestampSec = Double.NaN;
     private Rotation2d prevEffectiveTarget = null;
     private double prevEffectiveTargetTimeSec = Double.NaN;
 
@@ -52,8 +53,7 @@ public class HubAlignController {
      */
     public void reset(double currentHeadingRad, Rotation2d initialTarget) {
         if (initialTarget != null) {
-            lastTargetHeading = initialTarget;
-            lastTargetTimestampSec = Timer.getFPGATimestamp();
+            targetHoldover.apply(initialTarget);
         } else {
             clearTargetTracking();
         }
@@ -77,23 +77,20 @@ public class HubAlignController {
      */
     public double calculate(double currentHeadingRad, Rotation2d targetHeading, double fallbackOmega) {
         double nowSec = Timer.getFPGATimestamp();
-        if (targetHeading != null) {
-            lastTargetHeading = targetHeading;
-            lastTargetTimestampSec = nowSec;
-        }
 
-        boolean targetHeld = false;
         Rotation2d effectiveTarget = targetHeading;
+        boolean targetHeld = false;
+        double targetAgeSec = Double.NaN;
         boolean allowTargetHold = Math.abs(fallbackOmega) > 1e-4;
-        if (allowTargetHold
-                && effectiveTarget == null
-                && lastTargetHeading != null
-                && Double.isFinite(lastTargetTimestampSec)) {
-            double targetAgeSec = nowSec - lastTargetTimestampSec;
-            if (targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
-                effectiveTarget = lastTargetHeading;
-                targetHeld = true;
-            }
+        if (allowTargetHold) {
+            TargetHoldover.HoldResult<Rotation2d> heldTarget = targetHoldover.apply(targetHeading);
+            effectiveTarget = heldTarget.value();
+            targetHeld = heldTarget.held();
+            targetAgeSec = heldTarget.ageSec();
+        } else if (targetHeading != null) {
+            targetHoldover.apply(targetHeading);
+        } else {
+            targetHoldover.clear();
         }
 
         Logger.recordOutput("Drive/AutoAlign/RawTargetDeg",
@@ -104,7 +101,7 @@ public class HubAlignController {
         Logger.recordOutput("Drive/AutoAlign/UsingFallback", effectiveTarget == null);
         Logger.recordOutput(
                 "Drive/AutoAlign/TargetAgeSec",
-                Double.isFinite(lastTargetTimestampSec) ? nowSec - lastTargetTimestampSec : Double.NaN);
+                targetAgeSec);
 
         // Compute target heading velocity for feedforward — helps track a moving aim point
         double targetVelocityRadPerSec = 0.0;
@@ -174,7 +171,6 @@ public class HubAlignController {
     }
 
     private void clearTargetTracking() {
-        lastTargetHeading = null;
-        lastTargetTimestampSec = Double.NaN;
+        targetHoldover.clear();
     }
 }

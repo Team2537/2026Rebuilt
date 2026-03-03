@@ -24,6 +24,7 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.robot.util.ElasticNotifications;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
@@ -70,6 +71,7 @@ public class Shooter extends SubsystemBase {
     private double targetLeftRpm = 0.0;
     private double targetRightRpm = 0.0;
     private double targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
+    private boolean shooterTargetRequested = false;
     private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
     private ReadinessDiagnostics cachedReadiness = new ReadinessDiagnostics(0, 0, 0, false, false, false, false, false);
@@ -183,6 +185,7 @@ public class Shooter extends SubsystemBase {
         io.setRightVelocity(targetRightRpm);
         targetHoodAngleRad = MathUtil.clamp(hoodAngleRad, ShooterConstants.HOOD_MIN_ANGLE_RAD, ShooterConstants.HOOD_MAX_ANGLE_RAD);
         io.setHoodAngle(targetHoodAngleRad);
+        shooterTargetRequested = Math.abs(targetLeftRpm) > 1e-6 || Math.abs(targetRightRpm) > 1e-6;
     }
 
     public void setTargetsForDistance(double distanceMeters) {
@@ -228,6 +231,7 @@ public class Shooter extends SubsystemBase {
         targetLeftRpm = 0.0;
         targetRightRpm = 0.0;
         targetHoodAngleRad = ShooterConstants.HOOD_MIN_ANGLE_RAD;
+        shooterTargetRequested = false;
     }
 
     public boolean atSetpoint() {
@@ -264,7 +268,7 @@ public class Shooter extends SubsystemBase {
                 Math.abs(hoodAngleErrorRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
 
         boolean atSetpoint = leftVelocityAtSetpoint && rightVelocityAtSetpoint && hoodAngleAtSetpoint;
-        boolean readyToFire = atSetpoint && Math.abs(targetLeftRpm) > 1.0 && Math.abs(targetRightRpm) > 1.0;
+        boolean readyToFire = atSetpoint && shooterTargetRequested;
 
         return new ReadinessDiagnostics(
                 leftVelocityErrorRpm,
@@ -652,6 +656,11 @@ public class Shooter extends SubsystemBase {
                                     () -> DriverStation.reportWarning(
                                             "Hood homing timed out before current threshold; skipping encoder reset/retract.",
                                             false),
+                                    this),
+                            Commands.runOnce(
+                                    () -> ElasticNotifications.sendWarning(
+                                            "Shooter",
+                                            "Hood homing timed out; using current hood position until re-homed."),
                                     this)),
                     atHomingStop))
                 .finallyDo(interrupted -> {

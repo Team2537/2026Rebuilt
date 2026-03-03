@@ -4,7 +4,7 @@ import edu.wpi.first.math.MatBuilder;
 import edu.wpi.first.math.Nat;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Transform3d;
-import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.Timer;
 import frc.robot.util.FieldConstants;
 import java.util.function.Supplier;
 import org.photonvision.simulation.PhotonCameraSim;
@@ -14,7 +14,7 @@ import org.photonvision.simulation.VisionSystemSim;
 /** Simulation implementation of the PhotonVision IO layer. */
 public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
     private static VisionSystemSim sharedVisionSim;
-    private static long lastVisionSimUpdateLoop = Long.MIN_VALUE;
+    private static double lastVisionSimUpdateTimestampSec = Double.NEGATIVE_INFINITY;
 
     private final Supplier<Pose2d> poseSupplier;
     private final PhotonCameraSim cameraSim;
@@ -26,33 +26,35 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
 
         SimCameraProperties cameraProperties = new SimCameraProperties();
         cameraProperties.setCalibration(
-                640,
-                480,
+                VisionConstants.SIM_CAMERA_WIDTH,
+                VisionConstants.SIM_CAMERA_HEIGHT,
                 MatBuilder.fill(
                         Nat.N3(),
                         Nat.N3(),
-                        546.947202769191,
-                        0.0,
-                        317.2326216443899,
-                        0.0,
-                        546.8805910328873,
-                        256.54365866088693,
-                        0.0,
-                        0.0,
-                        1.0),
+                        VisionConstants.SIM_CAMERA_INTRINSICS[0],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[1],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[2],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[3],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[4],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[5],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[6],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[7],
+                        VisionConstants.SIM_CAMERA_INTRINSICS[8]),
                 MatBuilder.fill(
                         Nat.N8(),
                         Nat.N1(),
-                        0.04575330800554877,
-                        -0.06764388351284431,
-                        -0.0002716072733319333,
-                        -0.0008388770763606548,
-                        0.007416750430854674,
-                        -0.0016856447818708886,
-                        0.0027323859252879066,
-                        -0.00029965498573175946));
+                        VisionConstants.SIM_CAMERA_DISTORTION[0],
+                        VisionConstants.SIM_CAMERA_DISTORTION[1],
+                        VisionConstants.SIM_CAMERA_DISTORTION[2],
+                        VisionConstants.SIM_CAMERA_DISTORTION[3],
+                        VisionConstants.SIM_CAMERA_DISTORTION[4],
+                        VisionConstants.SIM_CAMERA_DISTORTION[5],
+                        VisionConstants.SIM_CAMERA_DISTORTION[6],
+                        VisionConstants.SIM_CAMERA_DISTORTION[7]));
         // Remove simulated calibration error to reduce pose jitter in sim
-        cameraProperties.setCalibError(0.0, 0.0);
+        cameraProperties.setCalibError(
+                VisionConstants.SIM_CALIB_ERROR_PIXELS,
+                VisionConstants.SIM_CALIB_ERROR_PIXELS);
 
         this.cameraSim = new PhotonCameraSim(camera, cameraProperties);
         getOrCreateVisionSim().addCamera(cameraSim, robotToCamera);
@@ -65,18 +67,21 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
     }
 
     private static synchronized void updateVisionSimIfNeeded(Pose2d pose) {
-        long currentLoop = RobotController.getFPGATime() / 20_000L;
-        if (currentLoop == lastVisionSimUpdateLoop) {
+        if (pose == null) {
+            return;
+        }
+        double nowSec = Timer.getFPGATimestamp();
+        if (nowSec - lastVisionSimUpdateTimestampSec < VisionConstants.SIM_UPDATE_PERIOD_SEC * 0.5) {
             return;
         }
 
         getOrCreateVisionSim().update(pose);
-        lastVisionSimUpdateLoop = currentLoop;
+        lastVisionSimUpdateTimestampSec = nowSec;
     }
 
     private static synchronized VisionSystemSim getOrCreateVisionSim() {
         if (sharedVisionSim == null) {
-            sharedVisionSim = new VisionSystemSim("main");
+            sharedVisionSim = new VisionSystemSim(VisionConstants.SIM_VISION_SYSTEM_NAME);
             sharedVisionSim.addAprilTags(FieldConstants.TAG_LAYOUT);
         }
         return sharedVisionSim;

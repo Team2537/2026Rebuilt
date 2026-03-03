@@ -1,10 +1,13 @@
 package frc.robot.util;
 
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
-import frc.robot.Constants;
 
 /** Shared heading-alignment tuning used by teleop auto-align and autonomous path overrides. */
 public final class AutoAimHeadingConfig {
+    private static final double DEFAULT_AIM_TOLERANCE_DEG = 3.0;
+    private static final double DEFAULT_AIM_RELEASE_TOLERANCE_DEG = 4.0;
+    private static final double DEFAULT_TARGET_HOLD_SEC = 0.12;
+
     public static final double HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC = Math.toRadians(
             readPositiveDouble("autoAim.headingProfile.maxVelocityDegPerSec", 540.0));
     public static final double HEADING_PROFILE_MAX_ACCELERATION_RAD_PER_SEC2 = Math.toRadians(
@@ -17,11 +20,11 @@ public final class AutoAimHeadingConfig {
     }
 
     public static final double AIM_TOLERANCE_RAD = Math.toRadians(
-            readPositiveDouble("autoAim.aimToleranceDeg", Math.toDegrees(Constants.SHOOTING_AIM_TOLERANCE_RAD)));
+            readPositiveDouble("autoAim.aimToleranceDeg", DEFAULT_AIM_TOLERANCE_DEG));
     public static final double AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(readPositiveDouble(
             "autoAim.aimReleaseToleranceDeg",
-            Math.toDegrees(Constants.SHOOTING_AIM_RELEASE_TOLERANCE_RAD)));
-    public static final double TARGET_HOLD_SEC = Constants.SHOOTING_AIM_TARGET_HOLD_SEC;
+            DEFAULT_AIM_RELEASE_TOLERANCE_DEG));
+    public static final double TARGET_HOLD_SEC = readPositiveDouble("autoAim.targetHoldSec", DEFAULT_TARGET_HOLD_SEC);
 
     private static double readPositiveDouble(String propertyKey, double defaultValue) {
         String raw = System.getProperty(propertyKey);

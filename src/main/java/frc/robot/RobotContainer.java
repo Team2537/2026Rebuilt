@@ -1,15 +1,13 @@
 package frc.robot;
 
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -18,10 +16,10 @@ import frc.robot.autos.AutoRoutines;
 import frc.robot.autos.AutoSelector;
 import frc.robot.commands.DriveCommands;
 import frc.robot.coordination.shooting.ShootCoordinator;
+import frc.robot.coordination.shooting.ShootingTeleopController;
 import frc.robot.generated.TunerConstants;
 import frc.robot.sim.FuelSim;
 import frc.robot.subsystems.drive.Drive;
-import frc.robot.subsystems.drive.DriveConstants;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.GyroIOSim;
@@ -32,7 +30,6 @@ import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.intake.IntakeIOReal;
 import frc.robot.subsystems.intake.IntakeIOSim;
-import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
@@ -42,13 +39,11 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
-import frc.robot.util.AutoAimHeadingConfig;
-import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
-/** Owns subsystems, bindings, and autonomous orchestration. */
+/** Owns subsystem lifecycle, command bindings, and autonomous orchestration wiring. */
 public final class RobotContainer {
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
@@ -59,6 +54,7 @@ public final class RobotContainer {
     private final Transfer transfer;
     private final Intake intake;
     private final ShootCoordinator shootCoordinator;
+    private final ShootingTeleopController shootingTeleopController;
     private final AutoSelector autoSelector;
 
     private final CommandXboxController driverController = new CommandXboxController(0);
@@ -77,12 +73,21 @@ public final class RobotContainer {
 
         drive = createDrive();
         RobotState.initialize(drive);
-        vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION) ? new Vision(RobotState.getInstance()) : null;
+        vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION)
+                ? new Vision(RobotState.getInstance())
+                : null;
         shooter = createShooter();
         transfer = createTransfer();
         intake = createIntake();
         shootCoordinator = new ShootCoordinator(shooter, transfer);
-        Logger.recordOutput("mechanismPoses", new Pose3d[0]);
+        shootingTeleopController = new ShootingTeleopController(
+                drive,
+                shooter,
+                intake,
+                shootCoordinator,
+                dashboardOverrides,
+                commandTelemetry);
+        Logger.recordOutput("Mechanism/Poses", new Pose3d[0]);
 
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         autoSelector = new AutoSelector(AutoRoutines.create(drive));
@@ -142,9 +147,11 @@ public final class RobotContainer {
     }
 
     private void scheduleHomingAndBackground(String source) {
-        commandTelemetry.schedule(source + ".intakeHomeThenBackground",
+        commandTelemetry.schedule(
+                source + ".intakeHomeThenBackground",
                 intake.homeCommand().andThen(intake.backgroundCommand()).withName("IntakeHomeThenBackground"));
-        commandTelemetry.schedule(source + ".shooterHomeThenBackground",
+        commandTelemetry.schedule(
+                source + ".shooterHomeThenBackground",
                 shooter.homeCommand().andThen(shooter.backgroundCommand()).withName("ShooterHomeThenBackground"));
     }
 
@@ -224,21 +231,32 @@ public final class RobotContainer {
 
     private void configureBindings() {
         drive.setDefaultCommand(
-                commandTelemetry.withCommandSource("default.driveJoystick", DriveCommands.joystickDrive(
-                        drive,
-                        () -> driverController.getLeftY(),
-                        () -> driverController.getLeftX(),
-                        () -> -driverController.getRightX())
-                        .withName("DriveJoystickDefault")));
-        intake.setDefaultCommand(commandTelemetry.withCommandSource("default.intakeBackground", intake.backgroundCommand()));
+                commandTelemetry.withCommandSource(
+                        "default.driveJoystick",
+                        DriveCommands.joystickDrive(
+                                        drive,
+                                        () -> driverController.getLeftY(),
+                                        () -> driverController.getLeftX(),
+                                        () -> -driverController.getRightX())
+                                .withName("DriveJoystickDefault")));
+        intake.setDefaultCommand(
+                commandTelemetry.withCommandSource("default.intakeBackground", intake.backgroundCommand()));
 
-        bindOnTrue(driverController.leftBumper(), "driver.leftBumper.onTrue",
+        bindOnTrue(
+                driverController.leftBumper(),
+                "driver.leftBumper.onTrue",
                 drive.toggleSlowMode().withName("DriveToggleSlowMode"));
-        bindOnTrue(driverController.back(), "driver.back.onTrue",
+        bindOnTrue(
+                driverController.back(),
+                "driver.back.onTrue",
                 DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
-        bindOnTrue(driverController.start(), "driver.start.onTrue",
+        bindOnTrue(
+                driverController.start(),
+                "driver.start.onTrue",
                 DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
-        bindOnTrue(driverController.rightStick(), "driver.rightStick.onTrue",
+        bindOnTrue(
+                driverController.rightStick(),
+                "driver.rightStick.onTrue",
                 DriveCommands.headingSnap(drive).withName("DriveHeadingSnap"));
 
         Trigger reverseTransferTrigger = driverController.y();
@@ -264,38 +282,37 @@ public final class RobotContainer {
                 "driver.povLeft.onTrue",
                 createSetOdometryFromUnifiedVisionCommand());
 
-        Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
-        Supplier<LaunchCalculator.MotionCompensation> motionCompensationSupplier =
-                createTeleopMotionCompensationSupplier(shootingPoseSupplier);
-        DoubleSupplier hubDistanceSupplier =
-                () -> motionCompensationSupplier.get().compensatedDistanceMeters();
-        Supplier<Rotation2d> hubHeadingSupplier =
-                () -> motionCompensationSupplier.get().compensatedHeading();
-        Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = hubHeadingSupplier;
-        BooleanSupplier teleopAimReadySupplier =
-                createTeleopAimReadySupplier(teleopAutoAlignHeadingSupplier);
+        ShootingTeleopController.AimingContext aimingContext = shootingTeleopController.createAimingContext();
+        DoubleSupplier hubDistanceSupplier = aimingContext.hubDistanceSupplier();
+        Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = aimingContext.hubHeadingSupplier();
 
         Trigger rightTriggerPressed = driverController.rightTrigger();
         Trigger dashboardTuneTrigger = rightTriggerPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
-        Trigger dashboardTransferTuneTrigger = dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
+        Trigger dashboardTransferTuneTrigger =
+                dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
         Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
         Trigger aimTrigger = driverController.rightBumper();
         Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
-        bindWhileTrue(shootTrigger, "driver.shoot.whileTrue", withConstraintProfile(
-                createTeleopSelectedShootCommand(
+
+        bindWhileTrue(
+                shootTrigger,
+                "driver.shoot.whileTrue",
+                shootingTeleopController.createSelectedShootCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
-                        teleopAimReadySupplier),
-                DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE).withName("ShooterTriggerSelectedMode"));
-        bindWhileTrue(aimOnlyTrigger, "driver.aimOnly.whileTrue", createTeleopSelectedAimOnlyCommand(
-                () -> driverController.getLeftY(),
-                () -> driverController.getLeftX(),
-                () -> -driverController.getRightX(),
-                hubDistanceSupplier,
-                teleopAutoAlignHeadingSupplier));
+                        aimingContext.aimReadySupplier()).withName("ShooterTriggerSelectedMode"));
+        bindWhileTrue(
+                aimOnlyTrigger,
+                "driver.aimOnly.whileTrue",
+                shootingTeleopController.createSelectedAimOnlyCommand(
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        hubDistanceSupplier,
+                        teleopAutoAlignHeadingSupplier));
         bindWhileTrue(
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",
@@ -306,20 +323,35 @@ public final class RobotContainer {
                 transfer.runCommand().withName("TransferDashboardTune"));
 
         if (godController != null) {
-            bindOnTrue(godController.leftBumper(), "god.leftBumper.onTrue",
+            bindOnTrue(
+                    godController.leftBumper(),
+                    "god.leftBumper.onTrue",
                     drive.toggleSlowMode().withName("DriveToggleSlowMode"));
-            bindOnTrue(godController.povDown(), "god.povDown.onTrue",
-                    DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
-            bindWhileTrue(godController.a(), "god.a.whileTrue",
+            bindOnTrue(
+                    godController.povDown(),
+                    "god.povDown.onTrue",
+                    DriveCommands.resetOdometryAndHeading(drive)
+                            .withName("DriveResetOdometryAndHeading"));
+            bindWhileTrue(
+                    godController.a(),
+                    "god.a.whileTrue",
                     drive.sysIdQuasistatic(SysIdRoutine.Direction.kForward)
                             .withName("DriveSysIdQuasistaticForward"));
-            bindWhileTrue(godController.b(), "god.b.whileTrue",
+            bindWhileTrue(
+                    godController.b(),
+                    "god.b.whileTrue",
                     drive.sysIdQuasistatic(SysIdRoutine.Direction.kReverse)
                             .withName("DriveSysIdQuasistaticReverse"));
-            bindWhileTrue(godController.x(), "god.x.whileTrue",
-                    drive.sysIdDynamic(SysIdRoutine.Direction.kForward).withName("DriveSysIdDynamicForward"));
-            bindWhileTrue(godController.y(), "god.y.whileTrue",
-                    drive.sysIdDynamic(SysIdRoutine.Direction.kReverse).withName("DriveSysIdDynamicReverse"));
+            bindWhileTrue(
+                    godController.x(),
+                    "god.x.whileTrue",
+                    drive.sysIdDynamic(SysIdRoutine.Direction.kForward)
+                            .withName("DriveSysIdDynamicForward"));
+            bindWhileTrue(
+                    godController.y(),
+                    "god.y.whileTrue",
+                    drive.sysIdDynamic(SysIdRoutine.Direction.kReverse)
+                            .withName("DriveSysIdDynamicReverse"));
         }
     }
 
@@ -384,187 +416,17 @@ public final class RobotContainer {
         putDashboardCommand(
                 DASHBOARD_ACTIONS_PREFIX + "DriveResetOdometryAndHeading",
                 "dashboard.actions.driveResetOdometryAndHeading",
-                DriveCommands.resetOdometryAndHeading(drive).withName("DashboardDriveResetOdometryAndHeading"));
+                DriveCommands.resetOdometryAndHeading(drive)
+                        .withName("DashboardDriveResetOdometryAndHeading"));
         putDashboardCommand(
                 DASHBOARD_ACTIONS_PREFIX + "DriveSetOdometryFromUnifiedVision",
                 "dashboard.actions.driveSetOdometryFromUnifiedVision",
-                createSetOdometryFromUnifiedVisionCommand().withName("DashboardDriveSetOdometryFromUnifiedVision"));
+                createSetOdometryFromUnifiedVisionCommand()
+                        .withName("DashboardDriveSetOdometryFromUnifiedVision"));
     }
 
     private void putDashboardCommand(String dashboardKey, String source, Command command) {
         SmartDashboard.putData(dashboardKey, commandTelemetry.withCommandSource(source, command));
-    }
-
-    private Supplier<Pose2d> createShootingPoseSupplier() {
-        // Single-source aiming pose: estimator translation + live gyro heading.
-        // This avoids frame discontinuities from switching between tag and odometry heading sources.
-        RobotState robotState = RobotState.getInstance();
-        return () -> new Pose2d(robotState.getPose().getTranslation(), robotState.getRotation());
-    }
-
-    private Supplier<LaunchCalculator.MotionCompensation> createTeleopMotionCompensationSupplier(
-            Supplier<Pose2d> shootingPoseSupplier) {
-        // Use the periodic cycle counter instead of FPGA time division so the cache
-        // stays correct even if loop timing jitters.
-        final int[] cachedCycle = new int[] {Integer.MIN_VALUE};
-        final LaunchCalculator.MotionCompensation[] cachedCompensation = new LaunchCalculator.MotionCompensation[] {
-                new LaunchCalculator.MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null)
-        };
-
-        return () -> {
-            if (commandTelemetry.getCycle() != cachedCycle[0]) {
-                cachedCycle[0] = commandTelemetry.getCycle();
-                cachedCompensation[0] = shooter.getMotionCompensationToHub(
-                        shootingPoseSupplier.get(),
-                        RobotState.getInstance().getMeasuredChassisSpeeds());
-            }
-            return cachedCompensation[0];
-        };
-    }
-
-    private BooleanSupplier createTeleopAimReadySupplier(
-            Supplier<Rotation2d> targetHeadingSupplier) {
-        final boolean[] aimReadyLatched = new boolean[] {false};
-        final Rotation2d[] lastValidTargetHeading = new Rotation2d[] {null};
-        final double[] lastValidTargetTimestampSec = new double[] {Double.NaN};
-        return () -> {
-            Rotation2d targetHeading = targetHeadingSupplier.get();
-            double nowSec = Timer.getFPGATimestamp();
-            if (targetHeading != null) {
-                lastValidTargetHeading[0] = targetHeading;
-                lastValidTargetTimestampSec[0] = nowSec;
-            } else if (lastValidTargetHeading[0] != null) {
-                double targetAgeSec = nowSec - lastValidTargetTimestampSec[0];
-                if (Double.isFinite(targetAgeSec)
-                        && targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
-                    targetHeading = lastValidTargetHeading[0];
-                }
-            }
-
-            boolean targetAvailable = targetHeading != null;
-            Rotation2d robotHeading = RobotState.getInstance().getRotation();
-            Logger.recordOutput("Shooting/AimTargetAvailable", targetAvailable);
-            Logger.recordOutput("Shooting/RobotHeadingDeg", robotHeading.getDegrees());
-            if (targetHeading == null) {
-                Logger.recordOutput("Shooting/TargetHeadingDeg", Double.NaN);
-                Logger.recordOutput("Shooting/DesiredRobotHeadingDeg", Double.NaN);
-                Logger.recordOutput("Shooting/AimErrorRad", Double.NaN);
-                Logger.recordOutput("Shooting/AimErrorDeg", Double.NaN);
-                Logger.recordOutput("Shooting/AimReadyLatched", false);
-                aimReadyLatched[0] = false;
-                return false;
-            }
-
-            Rotation2d desiredRobotHeading = targetHeading.plus(Rotation2d.kPi);
-            double headingErrorRad = MathUtil.angleModulus(
-                    desiredRobotHeading.minus(robotHeading).getRadians());
-            Logger.recordOutput("Shooting/TargetHeadingDeg", targetHeading.getDegrees());
-            Logger.recordOutput("Shooting/DesiredRobotHeadingDeg", desiredRobotHeading.getDegrees());
-            Logger.recordOutput("Shooting/AimErrorRad", headingErrorRad);
-            Logger.recordOutput("Shooting/AimErrorDeg", Math.toDegrees(headingErrorRad));
-            double absHeadingErrorRad = Math.abs(headingErrorRad);
-            if (aimReadyLatched[0]) {
-                aimReadyLatched[0] = absHeadingErrorRad <= AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
-            } else {
-                aimReadyLatched[0] = absHeadingErrorRad <= AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
-            }
-            Logger.recordOutput("Shooting/AimReadyLatched", aimReadyLatched[0]);
-            return aimReadyLatched[0];
-        };
-    }
-
-    private Command createTeleopAutoAlignCommand(
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier) {
-        return DriveCommands.autoAlignToHubPose(
-                drive,
-                xSupplier,
-                ySupplier,
-                omegaFallbackSupplier,
-                targetHeadingSupplier);
-    }
-
-    private Command createTeleopShootCommand(
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            DoubleSupplier distanceMetersSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier) {
-        return Commands.parallel(
-                createTeleopAutoAlignCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        targetHeadingSupplier),
-                shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier),
-                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
-                .withName("ShooterTriggerAimAndShoot");
-    }
-
-    private Command createTeleopSelectedShootCommand(
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            DoubleSupplier distanceMetersSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier) {
-        return Commands.either(
-                createTeleopOverrideAutoAimShootCommand(xSupplier, ySupplier, omegaFallbackSupplier),
-                createTeleopShootCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        distanceMetersSupplier,
-                        targetHeadingSupplier,
-                        aimReadySupplier),
-                dashboardOverrides::isAutoAimEnabled)
-                .withName("ShooterTriggerSelectedMode");
-    }
-
-    private Command createTeleopOverrideAutoAimShootCommand(
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaSupplier) {
-        return Commands.parallel(
-                DriveCommands.joystickDrive(
-                        drive,
-                        xSupplier,
-                        ySupplier,
-                        omegaSupplier)
-                        .withName("DriveJoystickOverrideAutoAim"),
-                shootCoordinator.shootForDistance(dashboardOverrides::getAimDistanceMeters, () -> true)
-                        .withName("ShooterShootOverrideDistance"),
-                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
-                .withName("ShooterTriggerOverrideAutoAimShoot");
-    }
-
-    private Command createTeleopSelectedAimOnlyCommand(
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            DoubleSupplier distanceMetersSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier) {
-        Command normalAimOnly = Commands.parallel(
-                createTeleopAutoAlignCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        targetHeadingSupplier),
-                shootCoordinator.aimForDistance(distanceMetersSupplier))
-                .withName("ShooterAimOnly");
-        Command overrideAimOnly = shootCoordinator.aimForDistance(dashboardOverrides::getAimDistanceMeters)
-                .withName("ShooterAimOnlyOverrideDistance");
-        return Commands.either(overrideAimOnly, normalAimOnly, dashboardOverrides::isAutoAimEnabled)
-                .withName("ShooterAimOnlySelectedMode");
-    }
-
-    private Command withConstraintProfile(Command command, DriveConstants.ConstraintProfile profile) {
-        return command
-                .beforeStarting(() -> drive.setConstraintProfileActive(profile, true))
-                .finallyDo((interrupted) -> drive.setConstraintProfileActive(profile, false));
     }
 
     private Command stopManipulatorsCommand() {
@@ -597,7 +459,7 @@ public final class RobotContainer {
             String sourceTag = source;
             CommandScheduler.getInstance().schedule(
                     Commands.runOnce(() -> {
-                        Logger.recordOutput("vision/odometryOverrideSource", sourceTag);
+                        Logger.recordOutput("Vision/OdometryOverrideSource", sourceTag);
                         RobotState.getInstance().setPose(poseToApply);
                     }, drive).withName("DriveSetOdometryFromUnifiedVision"));
         }).withName("DriveSetOdometryFromUnifiedVisionDispatch");

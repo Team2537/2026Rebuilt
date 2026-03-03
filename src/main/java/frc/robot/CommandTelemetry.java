@@ -77,8 +77,8 @@ public final class CommandTelemetry {
         }
 
         recordCommandEvent("REQUEST source=" + normalizedSource + " commands=" + String.join(", ", commandNames));
-        Logger.recordOutput("commands/lastSchedule/source", normalizedSource);
-        Logger.recordOutput("commands/lastSchedule/commands", commandNames.toArray(String[]::new));
+        Logger.recordOutput("Commands/lastSchedule/source", normalizedSource);
+        Logger.recordOutput("Commands/lastSchedule/commands", commandNames.toArray(String[]::new));
         CommandScheduler.getInstance().schedule(commandsToSchedule.toArray(Command[]::new));
     }
 
@@ -86,7 +86,7 @@ public final class CommandTelemetry {
     public void cancelAllCommands(String source) {
         String normalizedSource = normalizeCommandSource(source);
         recordCommandEvent("CANCEL_ALL source=" + normalizedSource);
-        Logger.recordOutput("commands/lastCancelAllSource", normalizedSource);
+        Logger.recordOutput("Commands/lastCancelAllSource", normalizedSource);
         CommandScheduler.getInstance().cancelAll();
     }
 
@@ -101,13 +101,13 @@ public final class CommandTelemetry {
         String requirements = getRequirementsSummary(command);
         String commandKey = sanitizeCommandKey(commandName);
 
-        Logger.recordOutput("commands/" + commandName, true);
-        Logger.recordOutput("commands/byName/" + commandKey + "/running", true);
-        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
-        Logger.recordOutput("commands/lastStarted/name", commandName);
-        Logger.recordOutput("commands/lastStarted/source", source);
-        Logger.recordOutput("commands/lastStarted/runId", runId);
-        Logger.recordOutput("commands/lastStarted/requirements", requirements);
+        Logger.recordOutput("Commands/" + commandName, true);
+        Logger.recordOutput("Commands/byName/" + commandKey + "/running", true);
+        Logger.recordOutput("Commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
+        Logger.recordOutput("Commands/lastStarted/name", commandName);
+        Logger.recordOutput("Commands/lastStarted/source", source);
+        Logger.recordOutput("Commands/lastStarted/runId", runId);
+        Logger.recordOutput("Commands/lastStarted/requirements", requirements);
 
         recordCommandEvent(String.format(
                 Locale.US,
@@ -138,14 +138,14 @@ public final class CommandTelemetry {
         double durationSec = startTimeSec == null ? 0.0 : nowSec - startTimeSec;
         boolean stillRunning = isCommandNameRunning(commandName);
 
-        Logger.recordOutput("commands/" + commandName, stillRunning);
-        Logger.recordOutput("commands/byName/" + commandKey + "/running", stillRunning);
-        Logger.recordOutput("commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
-        Logger.recordOutput("commands/lastEnded/name", commandName);
-        Logger.recordOutput("commands/lastEnded/source", source);
-        Logger.recordOutput("commands/lastEnded/runId", runId == null ? -1 : runId);
-        Logger.recordOutput("commands/lastEnded/durationSec", durationSec);
-        Logger.recordOutput("commands/lastEnded/interrupted", interrupted);
+        Logger.recordOutput("Commands/" + commandName, stillRunning);
+        Logger.recordOutput("Commands/byName/" + commandKey + "/running", stillRunning);
+        Logger.recordOutput("Commands/byName/" + commandKey + "/activeInstances", countRunningInstances(commandName));
+        Logger.recordOutput("Commands/lastEnded/name", commandName);
+        Logger.recordOutput("Commands/lastEnded/source", source);
+        Logger.recordOutput("Commands/lastEnded/runId", runId == null ? -1 : runId);
+        Logger.recordOutput("Commands/lastEnded/durationSec", durationSec);
+        Logger.recordOutput("Commands/lastEnded/interrupted", interrupted);
 
         recordCommandEvent(String.format(
                 Locale.US,
@@ -181,10 +181,10 @@ public final class CommandTelemetry {
                     getRequirementsSummary(command)));
         }
 
-        Logger.recordOutput("commands/running/count", runningEntries.size());
-        Logger.recordOutput("commands/running/names", runningNames.toArray(String[]::new));
-        Logger.recordOutput("commands/running/instances", runningInstances.toArray(String[]::new));
-        Logger.recordOutput("commands/recentEvents", recentCommandEvents.toArray(String[]::new));
+        Logger.recordOutput("Commands/running/count", runningEntries.size());
+        Logger.recordOutput("Commands/running/names", runningNames.toArray(String[]::new));
+        Logger.recordOutput("Commands/running/instances", runningInstances.toArray(String[]::new));
+        Logger.recordOutput("Commands/recentEvents", recentCommandEvents.toArray(String[]::new));
     }
 
     private int countRunningInstances(String commandName) {
@@ -220,7 +220,7 @@ public final class CommandTelemetry {
         while (recentCommandEvents.size() > COMMAND_EVENT_HISTORY_LIMIT) {
             recentCommandEvents.removeFirst();
         }
-        Logger.recordOutput("commands/lastEvent", eventWithTimestamp);
+        Logger.recordOutput("Commands/lastEvent", eventWithTimestamp);
     }
 
     private static String normalizeCommandName(Command command) {

@@ -27,8 +27,8 @@ public final class AutoSelector {
             availableRoutineNames.add(routine.name());
         }
         String[] routineNames = availableRoutineNames.toArray(String[]::new);
-        Logger.recordOutput("auto/selector/options", routineNames);
-        Logger.recordOutput("auto/selector/optionsCount", routineNames.length);
+        Logger.recordOutput("Auto/selector/options", routineNames);
+        Logger.recordOutput("Auto/selector/optionsCount", routineNames.length);
     }
 
     public Command getSelectedCommand() {
@@ -37,12 +37,12 @@ public final class AutoSelector {
                 dashboardSelection != null ? dashboardSelection : DEFAULT_ROUTINE;
         Command selectedCommand = selectedRoutine.createCommand();
 
-        Logger.recordOutput("auto/selector/selectedRoutineName", selectedRoutine.name());
+        Logger.recordOutput("Auto/selector/selectedRoutineName", selectedRoutine.name());
         Logger.recordOutput(
-                "auto/selector/selectedRoutineIsDefault",
+                "Auto/selector/selectedRoutineIsDefault",
                 DEFAULT_ROUTINE.name().equals(selectedRoutine.name()));
-        Logger.recordOutput("auto/selector/hasDashboardSelection", dashboardSelection != null);
-        Logger.recordOutput("auto/selector/selectedCommandName", getCommandName(selectedCommand));
+        Logger.recordOutput("Auto/selector/hasDashboardSelection", dashboardSelection != null);
+        Logger.recordOutput("Auto/selector/selectedCommandName", getCommandName(selectedCommand));
 
         return selectedCommand;
     }
