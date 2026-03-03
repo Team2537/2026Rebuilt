@@ -325,6 +325,12 @@ public final class RobotContainer {
 
     private void publishDashboardSysIdCommands() {
         SmartDashboard.putData(
+                "Drive/SysId/WheelRadius",
+                commandTelemetry.withCommandSource(
+                        "dashboard.driveSysId.wheelRadius",
+                        DriveCommands.wheelRadiusCharacterization(drive)
+                                .withName("DriveWheelRadiusCharacterization")));
+        SmartDashboard.putData(
                 "Shooter/SysId/QuasistaticForward",
                 commandTelemetry.withCommandSource(
                         "dashboard.shooterSysId.quasistaticForward",

@@ -8,11 +8,13 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -20,6 +22,8 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.RobotState;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.util.FieldConstants;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
@@ -27,6 +31,8 @@ public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(1.2);
+    private static final double WHEEL_RADIUS_MAX_VELOCITY = 0.25; // Rad/Sec
+    private static final double WHEEL_RADIUS_RAMP_RATE = 0.05; // Rad/Sec^2
 
     private DriveCommands() {
     }
@@ -123,6 +129,54 @@ public final class DriveCommands {
                 .withName("DriveHeadingSnap");
     }
 
+    /** Measures the robot wheel radius by spinning in place and integrating gyro angle. */
+    public static Command wheelRadiusCharacterization(Drive drive) {
+        SlewRateLimiter limiter = new SlewRateLimiter(WHEEL_RADIUS_RAMP_RATE);
+        WheelRadiusCharacterizationState state = new WheelRadiusCharacterizationState();
+
+        return Commands.parallel(
+                Commands.sequence(
+                        Commands.runOnce(() -> limiter.reset(0.0)),
+                        Commands.run(
+                                () -> {
+                                    double speed = limiter.calculate(WHEEL_RADIUS_MAX_VELOCITY);
+                                    drive.runVelocity(new ChassisSpeeds(0.0, 0.0, speed));
+                                },
+                                drive)),
+                Commands.sequence(
+                        Commands.waitSeconds(1.0),
+                        Commands.runOnce(() -> {
+                            state.positions = drive.getWheelRadiusCharacterizationPositions();
+                            state.lastAngle = drive.getRotation();
+                            state.gyroDelta = 0.0;
+                        }),
+                        Commands.run(() -> {
+                            Rotation2d rotation = drive.getRotation();
+                            state.gyroDelta += Math.abs(rotation.minus(state.lastAngle).getRadians());
+                            state.lastAngle = rotation;
+                        }).finallyDo(() -> {
+                            double[] positions = drive.getWheelRadiusCharacterizationPositions();
+                            double wheelDelta = 0.0;
+                            for (int i = 0; i < 4; i++) {
+                                wheelDelta += Math.abs(positions[i] - state.positions[i]) / 4.0;
+                            }
+
+                            double wheelRadius = (state.gyroDelta * Drive.DRIVE_BASE_RADIUS) / wheelDelta;
+                            NumberFormat formatter = new DecimalFormat("#0.000");
+                            System.out.println("********** Wheel Radius Characterization Results **********");
+                            System.out.println("\tWheel Delta: " + formatter.format(wheelDelta) + " radians");
+                            System.out.println("\tGyro Delta: " + formatter.format(state.gyroDelta) + " radians");
+                            System.out.println(
+                                    "\tWheel Radius: "
+                                            + formatter.format(wheelRadius)
+                                            + " meters, "
+                                            + formatter.format(Units.metersToInches(wheelRadius))
+                                            + " inches");
+                        })))
+                .finallyDo(() -> drive.stop())
+                .withName("DriveWheelRadiusCharacterization");
+    }
+
     /**
      * Drive command that keeps translational joystick control and auto-rotates to
      * face the hub using odometry + field layout.
@@ -194,6 +248,12 @@ public final class DriveCommands {
         double cardinalStepRad = Math.PI / 2.0;
         double snappedRad = Math.round(heading.getRadians() / cardinalStepRad) * cardinalStepRad;
         return Rotation2d.fromRadians(MathUtil.angleModulus(snappedRad));
+    }
+
+    private static class WheelRadiusCharacterizationState {
+        double[] positions = new double[4];
+        Rotation2d lastAngle = Rotation2d.kZero;
+        double gyroDelta = 0.0;
     }
 
 }
