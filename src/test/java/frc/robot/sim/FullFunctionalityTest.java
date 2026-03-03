@@ -10,6 +10,7 @@ import org.junit.platform.suite.api.Suite;
     FullFunctionalityAutosAndCommands.class,
     FullFunctionalityDriveAndAutoStress.class,
     FullFunctionalityIntakeTransferStress.class,
+    FullFunctionalitySmartRetractDuringShoot.class,
     FullFunctionalityShooterStress.class,
     FullFunctionalityLifecycleInvariants.class,
     FullFunctionalityFaultInjectionDisconnects.class,

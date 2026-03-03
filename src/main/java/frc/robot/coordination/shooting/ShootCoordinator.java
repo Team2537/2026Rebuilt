@@ -18,6 +18,7 @@ public class ShootCoordinator {
     private final Transfer transfer;
     private final Constants.FeedGateMode feedGateMode;
     private int readyStableCycles = 0;
+    private boolean activelyFeeding = false;
 
     public ShootCoordinator(Shooter shooter, Transfer transfer) {
         this(shooter, transfer, Constants.SHOOTING_FEED_GATE_MODE);
@@ -69,6 +70,7 @@ public class ShootCoordinator {
     }
 
     private void applyFeedOutputs(boolean gateOpen) {
+        activelyFeeding = gateOpen;
         if (!gateOpen) {
             shooter.stopKicker();
             transfer.stopAll();
@@ -111,8 +113,13 @@ public class ShootCoordinator {
 
     private void stopAllOutputs() {
         readyStableCycles = 0;
+        activelyFeeding = false;
         shooter.stopAll();
         transfer.stopAll();
+    }
+
+    public boolean isActivelyFeeding() {
+        return activelyFeeding;
     }
 
     private GateDecision evaluateFeedGate(boolean distanceValid, boolean shooterAtSetpoint, boolean aimReady) {

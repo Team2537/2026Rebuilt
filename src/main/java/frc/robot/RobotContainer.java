@@ -493,7 +493,8 @@ public final class RobotContainer {
                         ySupplier,
                         omegaFallbackSupplier,
                         targetHeadingSupplier),
-                shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier))
+                shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier),
+                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerAimAndShoot");
     }
 
@@ -529,7 +530,8 @@ public final class RobotContainer {
                         omegaSupplier)
                         .withName("DriveJoystickOverrideAutoAim"),
                 shootCoordinator.shootForDistance(dashboardOverrides::getAimDistanceMeters, () -> true)
-                        .withName("ShooterShootOverrideDistance"))
+                        .withName("ShooterShootOverrideDistance"),
+                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerOverrideAutoAimShoot");
     }
 

@@ -56,4 +56,20 @@ public final class IntakeConstants {
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 25.0;
     public static final double HOMING_VOLTAGE = -2.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 2.0;
+
+    public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
+    public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
+    public static final int SMART_RETRACT_FEED_RELEASE_CYCLES = 4;
+
+    public static final double SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS = 6.0;
+    public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 3;
+    public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.20;
+    public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 0.35;
+    public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.12;
+
+    public static final double SMART_RETRACT_HOLD_TARGET_CURRENT_AMPS = 20.0;
+    public static final double SMART_RETRACT_HOLD_DEADBAND_AMPS = 2.0;
+    public static final double SMART_RETRACT_HOLD_FAST_STEP_ROT = 0.24;
+    public static final double SMART_RETRACT_HOLD_SLOW_STEP_ROT = 0.10;
+    public static final double SMART_RETRACT_HOLD_BACKOFF_STEP_ROT = 0.06;
 }

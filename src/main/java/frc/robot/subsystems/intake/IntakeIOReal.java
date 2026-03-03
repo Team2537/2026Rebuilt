@@ -9,6 +9,7 @@ import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.controls.DynamicMotionMagicVoltage;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.configs.VoltageConfigs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -155,7 +156,7 @@ public class IntakeIOReal implements IntakeIO {
             double velocityRotPerSec,
             double accelerationRotPerSecSq,
             double maxVolts) {
-        setIntakePosition(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq);
+        setIntakePositionInternal(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq, maxVolts);
     }
 
     @Override
@@ -223,8 +224,9 @@ public class IntakeIOReal implements IntakeIO {
         tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(config, 0.25));
     }
 
-    private void setIntakePosition(double leftTargetRot, double velocity, double acceleration) {
+    private void setIntakePositionInternal(double leftTargetRot, double velocity, double acceleration, double maxVolts) {
         setIntakeMotionProfile(velocity, acceleration);
+        setIntakeVoltageLimit(maxVolts);
         leftPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
         rightPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
         leftIntakeMotor.setControl(leftPositionRequest.withPosition(leftTargetRot));
@@ -251,6 +253,20 @@ public class IntakeIOReal implements IntakeIO {
 
     private double lastIntakeVelocity = Double.NaN;
     private double lastIntakeAcceleration = Double.NaN;
+    private double lastIntakeMaxVolts = Double.NaN;
+
+    private void setIntakeVoltageLimit(double maxVolts) {
+        double clampedVolts = MathUtil.clamp(Math.abs(maxVolts), 0.0, 12.0);
+        if (lastIntakeMaxVolts == clampedVolts) {
+            return;
+        }
+        VoltageConfigs config = new VoltageConfigs()
+                .withPeakForwardVoltage(clampedVolts)
+                .withPeakReverseVoltage(-clampedVolts);
+        tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(config, 0.25));
+        tryUntilOk(5, () -> rightIntakeMotor.getConfigurator().apply(config, 0.25));
+        lastIntakeMaxVolts = clampedVolts;
+    }
 
     private void configureRightMotor() {
         TalonFXConfiguration config = new TalonFXConfiguration();
