@@ -37,16 +37,19 @@ public final class LaunchCalculator {
     private final Translation2d shooterOffset;
     private final double phaseDelaySec;
     private final double motionCompTimeScale;
+    private final double motionCompDistanceTimeScale;
 
     public LaunchCalculator(
             InterpolatingDoubleTreeMap timeInAirSecondsByDistance,
             Translation2d shooterOffset,
             double phaseDelaySec,
-            double motionCompTimeScale) {
+            double motionCompTimeScale,
+            double motionCompDistanceTimeScale) {
         this.timeInAirSecondsByDistance = timeInAirSecondsByDistance;
         this.shooterOffset = shooterOffset;
         this.phaseDelaySec = phaseDelaySec;
         this.motionCompTimeScale = motionCompTimeScale;
+        this.motionCompDistanceTimeScale = motionCompDistanceTimeScale;
     }
 
     /**
@@ -161,7 +164,8 @@ public final class LaunchCalculator {
     }
 
     private double lookupTimeInAir(double distanceMeters) {
-        double time = timeInAirSecondsByDistance.get(distanceMeters);
+        double scaledDistanceMeters = distanceMeters * motionCompDistanceTimeScale;
+        double time = timeInAirSecondsByDistance.get(scaledDistanceMeters);
         return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
     }
 

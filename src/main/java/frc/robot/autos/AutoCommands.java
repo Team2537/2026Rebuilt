@@ -8,13 +8,13 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import frc.robot.Constants;
 import frc.robot.RobotState;
 import frc.robot.commands.DriveCommands;
 import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.util.AutoAimHeadingConfig;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
@@ -23,15 +23,7 @@ import org.littletonrobotics.junction.Logger;
 
 /** Reusable autonomous command primitives intended for composition in PathPlanner. */
 public final class AutoCommands {
-    private static final double AUTO_AIM_TOLERANCE_RAD = Math.toRadians(3.0);
-    private static final double AUTO_AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(4.0);
     private static final long CONTROL_LOOP_PERIOD_US = 20_000L;
-    private static final double AUTO_AIM_HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC = Math.toRadians(540.0);
-    private static final double AUTO_AIM_HEADING_PROFILE_MAX_ACCELERATION_RAD_PER_SEC2 = Math.toRadians(2160.0);
-    private static final TrapezoidProfile.Constraints AUTO_AIM_HEADING_PROFILE_CONSTRAINTS =
-            new TrapezoidProfile.Constraints(
-                    AUTO_AIM_HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC,
-                    AUTO_AIM_HEADING_PROFILE_MAX_ACCELERATION_RAD_PER_SEC2);
 
     private AutoCommands() {}
 
@@ -99,7 +91,7 @@ public final class AutoCommands {
                     return targetHeading == null ? null : targetHeading.plus(Rotation2d.kPi);
                 });
         ProfiledHeadingTarget profiledHeadingTarget =
-                new ProfiledHeadingTarget(AUTO_AIM_HEADING_PROFILE_CONSTRAINTS);
+                new ProfiledHeadingTarget(AutoAimHeadingConfig.createHeadingProfileConstraints());
         Supplier<Rotation2d> profiledDesiredRobotHeadingSupplier =
                 createCycleCachedRotationSupplier(
                         () -> profiledHeadingTarget.calculate(rawDesiredRobotHeadingSupplier.get()));
@@ -158,7 +150,7 @@ public final class AutoCommands {
             } else if (lastValidDesiredRobotHeading[0] != null) {
                 double targetAgeSec = nowSec - lastValidTargetTimestampSec[0];
                 if (Double.isFinite(targetAgeSec)
-                        && targetAgeSec <= Constants.SHOOTING_AIM_TARGET_HOLD_SEC) {
+                        && targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
                     desiredRobotHeading = lastValidDesiredRobotHeading[0];
                     targetHeld = true;
                 }
@@ -191,10 +183,10 @@ public final class AutoCommands {
 
             if (aimReadyLatched[0]) {
                 aimReadyLatched[0] =
-                        absHeadingErrorRad <= AUTO_AIM_RELEASE_TOLERANCE_RAD;
+                        absHeadingErrorRad <= AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
             } else {
                 aimReadyLatched[0] =
-                        absHeadingErrorRad <= AUTO_AIM_TOLERANCE_RAD;
+                        absHeadingErrorRad <= AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
             }
 
             Logger.recordOutput("AutoAim/TargetHeadingDeg", targetHeading.getDegrees());

@@ -25,6 +25,7 @@ import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferConstants;
 import frc.robot.subsystems.transfer.TransferIO;
+import frc.robot.util.AutoAimHeadingConfig;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Locale;
@@ -715,7 +716,7 @@ final class FullFunctionalityUncoveredPathExploration {
         Class<?> cls = Class.forName("frc.robot.autos.AutoCommands$ProfiledHeadingTarget");
         Constructor<?> constructor = cls.getDeclaredConstructor(TrapezoidProfile.Constraints.class);
         constructor.setAccessible(true);
-        return constructor.newInstance(new TrapezoidProfile.Constraints(Math.toRadians(540.0), Math.toRadians(2160.0)));
+        return constructor.newInstance(AutoAimHeadingConfig.createHeadingProfileConstraints());
     }
 
     private static Rotation2d invokeProfiledCalculate(Object profiledHeadingTarget, Rotation2d goal) throws Exception {

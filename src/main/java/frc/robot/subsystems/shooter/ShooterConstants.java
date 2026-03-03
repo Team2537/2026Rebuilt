@@ -38,7 +38,10 @@ public final class ShooterConstants {
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
-    public static final double MOTION_COMP_TIME_SCALE = 1.08;
+    public static final double MOTION_COMP_TIME_SCALE =
+            simOverrideDouble("shooter.sim.motionCompTimeScale", 1.0);
+    public static final double MOTION_COMP_DISTANCE_TIME_SCALE =
+            simOverrideDouble("shooter.sim.motionCompDistanceTimeScale", 1.0);
 
     /**
      * Shooter position relative to robot center, in robot coordinates (x=forward, y=left).
@@ -111,6 +114,28 @@ public final class ShooterConstants {
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 12.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;
 
+
+    private static double simOverrideDouble(String propertyKey, double defaultValue) {
+        if (isReal) {
+            return defaultValue;
+        }
+        String raw = System.getProperty(propertyKey);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            double parsed = Double.parseDouble(raw);
+            if (!Double.isFinite(parsed) || parsed <= 0.0) {
+                throw new IllegalArgumentException(
+                        "Expected " + propertyKey + " > 0 and finite, got " + raw);
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(
+                    "Expected numeric value for " + propertyKey + ", got " + raw,
+                    exception);
+        }
+    }
 
     private ShooterConstants() {}
 }

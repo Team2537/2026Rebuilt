@@ -4,7 +4,7 @@ This runbook is for diagnosing moving-shot auto aim accuracy in sim, with AKit l
 
 ## What this covers
 
-- Runs `Along Alliance Moving Shot` in simulation.
+- Runs a selected PathPlanner auto (default: `Along Alliance Moving Shot`) in simulation.
 - Measures shot accuracy at `z=1.83m` on **descent**.
 - Reports miss distance to hub center and detailed decomposition metrics.
 - Writes both a text summary and `.wpilog`.
@@ -21,12 +21,19 @@ The script:
 - writes artifacts under `logs/auto-aim/<timestamp>/`
 - prints summary + latest `.wpilog`
 - returns nonzero if thresholds fail
+- uses code-default motion-comp scales unless you explicitly set override env vars
+- default descent guardrails:
+  - `AUTO_AIM_MIN_DESCENT_SAMPLES=15`
+  - `AUTO_AIM_ASSERT_MIN_DESCENT_WITHIN_IDEAL_FRACTION=0.65`
 
 ## Useful environment overrides
 
 ```bash
 AUTO_AIM_OUT_DIR=/tmp/auto-aim-run \
+AUTO_AIM_AUTO_NAME=brag \
 AUTO_AIM_ASSERT_DESCENT_P90_METERS=0.50 \
+AUTO_AIM_ASSERT_DESCENT_MAX_METERS=0.75 \
+AUTO_AIM_ASSERT_MIN_DESCENT_WITHIN_IDEAL_FRACTION=0.0 \
 AUTO_AIM_ASSERT_P90_DEG=20 \
 AUTO_AIM_ASSERT_MAX_DEG=30 \
 ./scripts/run_along_alliance_auto_aim_diag.sh
@@ -37,6 +44,7 @@ Use relaxed thresholds when you want data collection without test failure.
 Available knobs:
 
 - `AUTO_AIM_OUT_DIR`
+- `AUTO_AIM_AUTO_NAME`
 - `AUTO_AIM_MIN_DISTANCE_M`
 - `AUTO_AIM_MIN_MOVING_FEED_SAMPLES`
 - `AUTO_AIM_MIN_MOVING_FEED_FRACTION`
@@ -45,6 +53,8 @@ Available knobs:
 - `AUTO_AIM_MIN_DESCENT_SAMPLES`
 - `AUTO_AIM_IDEAL_DESCENT_MISS_METERS`
 - `AUTO_AIM_ASSERT_DESCENT_P90_METERS`
+- `AUTO_AIM_ASSERT_DESCENT_MAX_METERS`
+- `AUTO_AIM_ASSERT_MIN_DESCENT_WITHIN_IDEAL_FRACTION`
 - `AUTO_AIM_POST_AUTO_OBSERVATION_SEC`
 - `SHOOTER_SIM_MOTION_COMP_TIME_SCALE`
 - `SHOOTER_SIM_MOTION_COMP_DISTANCE_TIME_SCALE`
@@ -52,9 +62,18 @@ Available knobs:
 ## Output files
 
 - Summary text:
-  - `along_alliance_moving_shot_summary_*.txt`
+  - `auto_aim_summary_*.txt`
 - AKit log:
   - `*.wpilog`
+
+## Generalization run
+
+```bash
+./scripts/run_auto_aim_generalization_suite.sh
+```
+
+By default this runs both `Along Alliance Moving Shot` and `brag`, then writes
+an aggregate markdown table under `logs/auto-aim-generalization/<timestamp>/`.
 
 ## Primary metrics to compare between agents
 

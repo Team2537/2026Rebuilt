@@ -42,6 +42,7 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
+import frc.robot.util.AutoAimHeadingConfig;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
@@ -429,7 +430,7 @@ public final class RobotContainer {
             } else if (lastValidTargetHeading[0] != null) {
                 double targetAgeSec = nowSec - lastValidTargetTimestampSec[0];
                 if (Double.isFinite(targetAgeSec)
-                        && targetAgeSec <= Constants.SHOOTING_AIM_TARGET_HOLD_SEC) {
+                        && targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
                     targetHeading = lastValidTargetHeading[0];
                 }
             }
@@ -457,9 +458,9 @@ public final class RobotContainer {
             Logger.recordOutput("Shooting/AimErrorDeg", Math.toDegrees(headingErrorRad));
             double absHeadingErrorRad = Math.abs(headingErrorRad);
             if (aimReadyLatched[0]) {
-                aimReadyLatched[0] = absHeadingErrorRad <= Constants.SHOOTING_AIM_RELEASE_TOLERANCE_RAD;
+                aimReadyLatched[0] = absHeadingErrorRad <= AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
             } else {
-                aimReadyLatched[0] = absHeadingErrorRad <= Constants.SHOOTING_AIM_TOLERANCE_RAD;
+                aimReadyLatched[0] = absHeadingErrorRad <= AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
             }
             Logger.recordOutput("Shooting/AimReadyLatched", aimReadyLatched[0]);
             return aimReadyLatched[0];

@@ -5,9 +5,9 @@ import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
+import frc.robot.util.AutoAimHeadingConfig;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -15,17 +15,16 @@ import org.littletonrobotics.junction.Logger;
  * Uses a profiled PID with a short target-loss hold window and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 7.0;
-    private static final double KD = 0.15;
-    private static final double MAX_VELOCITY = 9.0;
-    private static final double MAX_ACCELERATION = 36.0;
-    private static final double TOLERANCE_RAD = Units.degreesToRadians(0.5);
-    private static final double MIN_OMEGA_RAD_PER_SEC = 0.05;
-    private static final double MAX_OMEGA_RAD_PER_SEC = 8.0;
-    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 45.0;
-    private static final double TARGET_HOLD_SEC = 0.12;
-    private static final double HEADING_FEEDFORWARD_GAIN = 0.80;
-    private static final int TARGET_VELOCITY_FILTER_TAPS = 7;
+    private static final double KP = 6.0;
+    private static final double KD = 0.35;
+    private static final double TOLERANCE_RAD = Units.degreesToRadians(0.7);
+    private static final double MIN_OMEGA_RAD_PER_SEC = 0.04;
+    private static final double MAX_OMEGA_RAD_PER_SEC = 6.0;
+    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 24.0;
+    private static final double HEADING_FEEDFORWARD_GAIN = 0.65;
+    private static final double MAX_TARGET_VELOCITY_RAD_PER_SEC = 5.0;
+    private static final double FEEDFORWARD_DEADBAND_RAD_PER_SEC = 0.02;
+    private static final int TARGET_VELOCITY_FILTER_TAPS = 9;
 
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
@@ -39,7 +38,7 @@ public class HubAlignController {
     public HubAlignController() {
         pidController = new ProfiledPIDController(
                 KP, 0.0, KD,
-                new TrapezoidProfile.Constraints(MAX_VELOCITY, MAX_ACCELERATION));
+                AutoAimHeadingConfig.createHeadingProfileConstraints());
         pidController.enableContinuousInput(-Math.PI, Math.PI);
         pidController.setTolerance(TOLERANCE_RAD);
         omegaLimiter = new SlewRateLimiter(OMEGA_SLEW_RATE_RAD_PER_SEC_SQ);
@@ -91,7 +90,7 @@ public class HubAlignController {
                 && lastTargetHeading != null
                 && Double.isFinite(lastTargetTimestampSec)) {
             double targetAgeSec = nowSec - lastTargetTimestampSec;
-            if (targetAgeSec <= TARGET_HOLD_SEC) {
+            if (targetAgeSec <= AutoAimHeadingConfig.TARGET_HOLD_SEC) {
                 effectiveTarget = lastTargetHeading;
                 targetHeld = true;
             }
@@ -115,7 +114,11 @@ public class HubAlignController {
             if (dt > 1e-6 && dt < 0.1) {
                 double rawVelocity = MathUtil.angleModulus(
                         effectiveTarget.minus(prevEffectiveTarget).getRadians()) / dt;
-                targetVelocityRadPerSec = targetVelocityFilter.calculate(rawVelocity);
+                double filteredVelocity = targetVelocityFilter.calculate(rawVelocity);
+                targetVelocityRadPerSec = MathUtil.clamp(
+                        filteredVelocity,
+                        -MAX_TARGET_VELOCITY_RAD_PER_SEC,
+                        MAX_TARGET_VELOCITY_RAD_PER_SEC);
             }
         }
         if (effectiveTarget != null) {
@@ -126,7 +129,13 @@ public class HubAlignController {
             prevEffectiveTargetTimeSec = Double.NaN;
             targetVelocityFilter.reset();
         }
-        double feedforwardOmega = targetVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN;
+        double feedforwardOmega = MathUtil.clamp(
+                targetVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN,
+                -MAX_OMEGA_RAD_PER_SEC,
+                MAX_OMEGA_RAD_PER_SEC);
+        if (Math.abs(feedforwardOmega) < FEEDFORWARD_DEADBAND_RAD_PER_SEC) {
+            feedforwardOmega = 0.0;
+        }
 
         if (effectiveTarget == null) {
             clearTargetTracking();
@@ -151,7 +160,9 @@ public class HubAlignController {
             commandedOmega = MathUtil.clamp(
                     feedbackOmega + feedforwardOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
         }
-        if (Math.abs(commandedOmega) > 0.0 && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
+        if (Math.abs(headingErrorRad) > TOLERANCE_RAD
+                && Math.abs(commandedOmega) > 0.0
+                && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
             commandedOmega = Math.copySign(MIN_OMEGA_RAD_PER_SEC, commandedOmega);
         }
         double limitedOmega = omegaLimiter.calculate(commandedOmega);

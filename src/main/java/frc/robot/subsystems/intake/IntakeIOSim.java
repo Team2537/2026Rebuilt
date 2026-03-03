@@ -13,7 +13,7 @@ public class IntakeIOSim implements IntakeIO {
     private static final double MAX_VOLTS = IntakeConstants.INTAKE_MAX_VOLTS;
     private static final double MAX_ROLLER_RPM = IntakeConstants.ROLLER_MAX_RPM;
     private static final double HOMING_STATOR_CURRENT_AMPS = IntakeConstants.HOMING_CURRENT_THRESHOLD_AMPS + 5.0;
-    private static final double RIGHT_MOTOR_INVERSION = -1.0;
+    private static final double RIGHT_MOTOR_INVERSION = 1.0;
 
     private static final DCMotor INTAKE_GEARBOX = DCMotor.getKrakenX60Foc(1);
     private static final DCMotor ROLLER_GEARBOX = DCMotor.getKrakenX60Foc(1);
@@ -83,7 +83,7 @@ public class IntakeIOSim implements IntakeIO {
         } else if (rightIntakePositionClosedLoop) {
             rightAtRetractStop = false;
             rightAppliedVolts = MathUtil.clamp(
-                    -rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
+                    rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
                     -rightIntakeVoltageLimit,
                     rightIntakeVoltageLimit);
         } else {
@@ -119,10 +119,10 @@ public class IntakeIOSim implements IntakeIO {
         inputs.leftVelocityRpm = leftIntakeSim.getAngularVelocityRPM();
 
         inputs.rightAppliedVolts = rightAppliedVolts;
-        inputs.rightPositionRad = rightIntakeSim.getAngularPositionRad() - rightPositionOffsetRad;
+        inputs.rightPositionRad = -(rightIntakeSim.getAngularPositionRad() - rightPositionOffsetRad);
         inputs.rightSupplyCurrentAmps = rightSupplyCurrentAmps;
         inputs.rightStatorCurrentAmps = rightStatorCurrentAmps;
-        inputs.rightVelocityRpm = rightIntakeSim.getAngularVelocityRPM();
+        inputs.rightVelocityRpm = -rightIntakeSim.getAngularVelocityRPM();
 
         inputs.rollerAppliedVolts = rollerAppliedVolts;
         inputs.rollerPositionRad = rollerSim.getAngularPositionRad();
@@ -222,6 +222,6 @@ public class IntakeIOSim implements IntakeIO {
     }
 
     private static double applyRightAlignment(double leftReference) {
-        return IntakeConstants.RIGHT_OPPOSES_LEFT ? -leftReference : leftReference;
+        return IntakeConstants.RIGHT_OPPOSES_LEFT ? leftReference : -leftReference;
     }
 }

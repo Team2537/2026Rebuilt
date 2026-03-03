@@ -309,6 +309,10 @@ public class Shooter extends SubsystemBase {
     }
 
     private void logMotionCompensation(LaunchCalculator.MotionCompensation result, Pose2d robotPose) {
+        Logger.recordOutput("Shooter/MotionCompTimeScale", ShooterConstants.MOTION_COMP_TIME_SCALE);
+        Logger.recordOutput(
+                "Shooter/MotionCompDistanceTimeScale",
+                ShooterConstants.MOTION_COMP_DISTANCE_TIME_SCALE);
         Logger.recordOutput("Shooter/RawHubDistanceMeters", result.rawDistanceMeters());
         Logger.recordOutput("Shooter/CompensatedHubDistanceMeters", result.compensatedDistanceMeters());
         Logger.recordOutput("Shooter/VelocityTowardHubMps", result.velocityTowardHubMps());
@@ -335,7 +339,8 @@ public class Shooter extends SubsystemBase {
                 timeInAirSecondsByDistance,
                 ShooterConstants.ROBOT_TO_SHOOTER_OFFSET,
                 ShooterConstants.PHASE_DELAY_SEC,
-                ShooterConstants.MOTION_COMP_TIME_SCALE);
+                ShooterConstants.MOTION_COMP_TIME_SCALE,
+                ShooterConstants.MOTION_COMP_DISTANCE_TIME_SCALE);
     }
 
     private static double requireInRange(double value, double minInclusive, double maxInclusive, String name) {

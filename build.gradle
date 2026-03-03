@@ -93,12 +93,18 @@ test {
     // across all test classes within one JVM.
     forkEvery = 1
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
-    if (System.getProperty('shooter.sim.motionCompTimeScale') != null) {
-        systemProperty 'shooter.sim.motionCompTimeScale', System.getProperty('shooter.sim.motionCompTimeScale')
-    }
-    if (System.getProperty('shooter.sim.motionCompDistanceTimeScale') != null) {
-        systemProperty 'shooter.sim.motionCompDistanceTimeScale',
-                System.getProperty('shooter.sim.motionCompDistanceTimeScale')
+    [
+            'shooter.sim.motionCompTimeScale',
+            'shooter.sim.motionCompDistanceTimeScale',
+            'autoAim.headingProfile.maxVelocityDegPerSec',
+            'autoAim.headingProfile.maxAccelerationDegPerSec2',
+            'autoAim.aimToleranceDeg',
+            'autoAim.aimReleaseToleranceDeg',
+            'autoAim.diag.autoName'
+    ].each { propertyKey ->
+        if (System.getProperty(propertyKey) != null) {
+            systemProperty propertyKey, System.getProperty(propertyKey)
+        }
     }
 }
 

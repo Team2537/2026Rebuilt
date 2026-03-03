@@ -43,7 +43,7 @@ import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
 class AlongAllianceMovingShotAutoSimTest {
-    private static final String AUTO_NAME = "Along Alliance Moving Shot";
+    private static final String DEFAULT_AUTO_NAME = "Along Alliance Moving Shot";
     private static final double LOOP_PERIOD_SEC = 0.02;
     private static final double MAX_SIM_TIME_SEC = 45.0;
     private static final double DEFAULT_POST_AUTO_OBSERVATION_SEC = 3.0;
@@ -53,6 +53,7 @@ class AlongAllianceMovingShotAutoSimTest {
 
     private DiagnosticsConfig diagnosticsConfig;
     private Path diagnosticsOutputDir;
+    private String autoName;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -68,13 +69,14 @@ class AlongAllianceMovingShotAutoSimTest {
 
         diagnosticsConfig = DiagnosticsConfig.fromSystemProperties();
         diagnosticsOutputDir = diagnosticsConfig.outputDir();
+        autoName = configuredAutoName();
         Files.createDirectories(diagnosticsOutputDir);
 
         Logger.end();
         Logger.AdvancedHooks.disableRobotBaseCheck();
         Logger.disableConsoleCapture();
         Logger.recordMetadata("TestName", getClass().getSimpleName());
-        Logger.recordMetadata("AutoName", AUTO_NAME);
+        Logger.recordMetadata("AutoName", autoName);
         Logger.recordMetadata("OutputDir", diagnosticsOutputDir.toString());
         Logger.addDataReceiver(new WPILOGWriter(diagnosticsOutputDir.toString()));
         Logger.start();
@@ -113,10 +115,10 @@ class AlongAllianceMovingShotAutoSimTest {
                 AutoRoutines.create(drive).stream()
                         .map(AutoRoutines.AutoRoutine::name)
                         .collect(Collectors.toSet())
-                        .contains("pp/" + AUTO_NAME),
-                "Auto selector routines did not include PathPlanner auto: " + AUTO_NAME);
+                        .contains("pp/" + autoName),
+                "Auto selector routines did not include PathPlanner auto: " + autoName);
 
-        Command auto = new PathPlannerAuto(AUTO_NAME).withName("TestAuto_" + AUTO_NAME);
+        Command auto = new PathPlannerAuto(autoName).withName("TestAuto_" + autoName);
         CommandScheduler.getInstance().schedule(auto);
 
         AimDiagnosticsAccumulator diagnostics =
@@ -158,7 +160,7 @@ class AlongAllianceMovingShotAutoSimTest {
         if (!finished) {
             elapsedSec = maxIterations * LOOP_PERIOD_SEC;
         }
-        DiagnosticsSummary summary = diagnostics.finish(finished, elapsedSec);
+        DiagnosticsSummary summary = diagnostics.finish(autoName, finished, elapsedSec);
         Path summaryFile = writeSummary(summary);
         logSummary(summary, summaryFile);
 
@@ -200,12 +202,31 @@ class AlongAllianceMovingShotAutoSimTest {
                         summary.p90DescentMissDistanceInches(),
                         diagnosticsConfig.maxP90DescentMissDistanceMeters(),
                         diagnosticsConfig.maxP90DescentMissDistanceMeters() * 39.37007874));
+        assertTrue(
+                summary.maxDescentMissDistanceMeters()
+                        <= diagnosticsConfig.maxDescentMissDistanceMeters(),
+                String.format(
+                        Locale.US,
+                        "Max descent miss distance too high. max=%.4f m (%.2f in) maxAllowed=%.4f m (%.2f in)",
+                        summary.maxDescentMissDistanceMeters(),
+                        summary.maxDescentMissDistanceInches(),
+                        diagnosticsConfig.maxDescentMissDistanceMeters(),
+                        diagnosticsConfig.maxDescentMissDistanceMeters() * 39.37007874));
+        assertTrue(
+                summary.descentWithinIdealFraction()
+                        >= diagnosticsConfig.minDescentWithinIdealFraction(),
+                String.format(
+                        Locale.US,
+                        "Descent ideal-hit fraction too low. actual=%.5f minRequired=%.5f",
+                        summary.descentWithinIdealFraction(),
+                        diagnosticsConfig.minDescentWithinIdealFraction()));
     }
 
     private Path writeSummary(DiagnosticsSummary summary) throws IOException {
         String timestamp = SUMMARY_TIMESTAMP_FORMAT.format(LocalDateTime.now());
+        String autoSlug = sanitizeForFilename(summary.autoName());
         Path summaryFile =
-                diagnosticsOutputDir.resolve("along_alliance_moving_shot_summary_" + timestamp + ".txt");
+                diagnosticsOutputDir.resolve("auto_aim_summary_" + autoSlug + "_" + timestamp + ".txt");
         Files.writeString(summaryFile, summary.toMultilineString(diagnosticsConfig));
         Logger.recordOutput("AutoAimDiagnostics/SummaryFile", summaryFile.toString());
         return summaryFile;
@@ -319,6 +340,18 @@ class AlongAllianceMovingShotAutoSimTest {
         return null;
     }
 
+    private static String configuredAutoName() {
+        String configured = getConfiguredValue(
+                "autoAim.diag.autoName",
+                "AUTO_AIM_DIAG_AUTO_NAME",
+                "AUTO_AIM_AUTO_NAME");
+        return configured == null || configured.isBlank() ? DEFAULT_AUTO_NAME : configured;
+    }
+
+    private static String sanitizeForFilename(String value) {
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", "");
+    }
+
     private static double parseDoubleProperty(
             String key,
             double defaultValue,
@@ -363,6 +396,8 @@ class AlongAllianceMovingShotAutoSimTest {
             int minDescentCrossingSamples,
             double idealDescentMissDistanceMeters,
             double maxP90DescentMissDistanceMeters,
+            double maxDescentMissDistanceMeters,
+            double minDescentWithinIdealFraction,
             double postAutoObservationSec) {
         private static DiagnosticsConfig fromSystemProperties() {
             String outputDirValue = getConfiguredValue(
@@ -401,7 +436,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_ASSERT_MAX_DEG"),
                     parseIntProperty(
                             "autoAim.diag.minDescentCrossingSamples",
-                            3,
+                            15,
                             "AUTO_AIM_DIAG_MIN_DESCENT_SAMPLES",
                             "AUTO_AIM_MIN_DESCENT_SAMPLES"),
                     parseDoubleProperty(
@@ -412,6 +447,14 @@ class AlongAllianceMovingShotAutoSimTest {
                             "autoAim.diag.assertDescentP90Meters",
                             0.23,
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_P90_METERS"),
+                    parseDoubleProperty(
+                            "autoAim.diag.assertDescentMaxMeters",
+                            0.24,
+                            "AUTO_AIM_DIAG_ASSERT_DESCENT_MAX_METERS"),
+                    parseDoubleProperty(
+                            "autoAim.diag.assertMinDescentWithinIdealFraction",
+                            0.65,
+                            "AUTO_AIM_DIAG_ASSERT_MIN_DESCENT_WITHIN_IDEAL_FRACTION"),
                     parseDoubleProperty(
                             "autoAim.diag.postAutoObservationSec",
                             DEFAULT_POST_AUTO_OBSERVATION_SEC,
@@ -557,7 +600,7 @@ class AlongAllianceMovingShotAutoSimTest {
             }
         }
 
-        private DiagnosticsSummary finish(boolean finished, double elapsedSec) {
+        private DiagnosticsSummary finish(String autoName, boolean finished, double elapsedSec) {
             double p50 = percentile(movingAimErrorsDeg, 0.50);
             double p90 = percentile(movingAimErrorsDeg, 0.90);
             double max = movingAimErrorsDeg.stream().mapToDouble(Double::doubleValue).max().orElse(Double.NaN);
@@ -639,6 +682,7 @@ class AlongAllianceMovingShotAutoSimTest {
                     ? 0.0
                     : (double) descentWithinIdealSamples / descentMissDistancesMeters.size();
             return new DiagnosticsSummary(
+                    autoName,
                     finished,
                     elapsedSec,
                     distanceTraveledMeters,
@@ -707,6 +751,7 @@ class AlongAllianceMovingShotAutoSimTest {
     }
 
     private record DiagnosticsSummary(
+            String autoName,
             boolean finished,
             double elapsedSec,
             double distanceTraveledMeters,
@@ -760,7 +805,8 @@ class AlongAllianceMovingShotAutoSimTest {
         private String toSingleLineSummary(Path summaryFile) {
             return String.format(
                     Locale.US,
-                    "[AutoAimDiagnostics] finished=%s elapsed=%.2fs distance=%.2fm movingFeedSamples=%d p90Aim=%.3fdeg p90DescentMiss=%.3fm(%.2fin) maxDescentMiss=%.3fm(%.2fin) summary=%s",
+                    "[AutoAimDiagnostics] auto=%s finished=%s elapsed=%.2fs distance=%.2fm movingFeedSamples=%d p90Aim=%.3fdeg p90DescentMiss=%.3fm(%.2fin) maxDescentMiss=%.3fm(%.2fin) summary=%s",
+                    autoName,
                     finished,
                     elapsedSec,
                     distanceTraveledMeters,
@@ -826,8 +872,10 @@ class AlongAllianceMovingShotAutoSimTest {
                     threshold_max_deg=%.5f
                     threshold_min_descent_crossing_samples=%d
                     threshold_max_p90_descent_m=%.5f
+                    threshold_max_descent_m=%.5f
+                    threshold_min_descent_within_ideal_fraction=%.5f
                     """,
-                    AUTO_NAME,
+                    autoName,
                     finished,
                     elapsedSec,
                     distanceTraveledMeters,
@@ -875,7 +923,9 @@ class AlongAllianceMovingShotAutoSimTest {
                     config.maxP90MovingAimErrorDeg(),
                     config.maxMovingAimErrorDeg(),
                     config.minDescentCrossingSamples(),
-                    config.maxP90DescentMissDistanceMeters());
+                    config.maxP90DescentMissDistanceMeters(),
+                    config.maxDescentMissDistanceMeters(),
+                    config.minDescentWithinIdealFraction());
         }
     }
 }
