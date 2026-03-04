@@ -59,19 +59,15 @@ public final class IntakeConstants {
 
     // Smart-retract will only drive intake as far as this value (unless regular retract is used).
     public static final double SMART_RETRACT_RETRACTED_POSITION_ROT = 2.0;
+    public static final double SMART_RETRACT_HALF_RETRACT_POSITION_ROT =
+            (RETRACTED_POSITION_ROT + EXTENDED_POSITION_ROT) / 2.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
-    public static final int SMART_RETRACT_FEED_RELEASE_CYCLES = 4;
+    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 1.0;
 
     public static final double SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS = 2.0;
     public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 3;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.40;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 5.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
-
-    public static final double SMART_RETRACT_HOLD_TARGET_CURRENT_AMPS = 20.0;
-    public static final double SMART_RETRACT_HOLD_DEADBAND_AMPS = 2.0;
-    public static final double SMART_RETRACT_HOLD_FAST_STEP_ROT = 0.24;
-    public static final double SMART_RETRACT_HOLD_SLOW_STEP_ROT = 0.10;
-    public static final double SMART_RETRACT_HOLD_BACKOFF_STEP_ROT = 0.06;
 }

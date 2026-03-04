@@ -18,7 +18,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.runCycles(50);
 
             SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableCurrentHold", false);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
             SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
             SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
@@ -35,7 +35,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                             String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
 
             context.driverControllerSim.setRightTriggerAxis(1.0);
-            context.runCycles(40);
+            context.runCycles(100);
 
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(100);
@@ -56,14 +56,14 @@ final class FullFunctionalitySmartRetractDuringShoot {
     }
 
     @Test
-    void currentHoldModeRestoresExtendedIfShootReleasedEarly() {
+    void halfRetractReturnModeRestoresExtendedIfShootReleasedEarly() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(50);
 
             SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", false);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableCurrentHold", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", true);
             SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
             SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
@@ -80,7 +80,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                             String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
 
             context.driverControllerSim.setRightTriggerAxis(1.0);
-            context.runCycles(40);
+            context.runCycles(100);
 
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(100);
@@ -101,14 +101,14 @@ final class FullFunctionalitySmartRetractDuringShoot {
     }
 
     @Test
-    void doesNotReextendIfFullyRetractedBeforeShootRelease() {
+    void doesNotReextendIfInwardBeforeShootRelease() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(50);
 
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", false);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableCurrentHold", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
             SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
             SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
@@ -122,19 +122,19 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(40);
 
-            double leftRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            double afterReleaseRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
             assertTrue(
                     !context.intake.isExtended(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "If shoot is released after full retract, intake should stay retracted",
+                            "If shoot is released after smart retract has moved inward, intake should stay retracted",
                             "intake.isExtended()=false",
                             context.intake.isExtended()));
             assertTrue(
-                    Math.abs(leftRot - IntakeConstants.RETRACTED_POSITION_ROT) <= 0.80,
+                    Math.abs(afterReleaseRot - IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT) <= 1.20,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "After full retract, intake should stay near retracted setpoint",
-                            IntakeConstants.RETRACTED_POSITION_ROT + "±0.80 rot",
-                            String.format(Locale.US, "leftRot=%.3f", leftRot)));
+                            "After release post-full smart retract, intake should stay near smart retract limit",
+                            IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT + "±1.20 rot",
+                            String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
         }
     }
 }

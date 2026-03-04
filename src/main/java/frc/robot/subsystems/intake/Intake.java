@@ -42,7 +42,8 @@ public class Intake extends SubsystemBase {
     }
 
     private static final String DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY = "Intake/SmartRetract/EnableNibble";
-    private static final String DASHBOARD_SMART_RETRACT_ENABLE_CURRENT_HOLD_KEY = "Intake/SmartRetract/EnableCurrentHold";
+    private static final String DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY =
+            "Intake/SmartRetract/EnableHalfRetractReturn";
     private static final String DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY = "Intake/SmartRetract/StatusMode";
 
     private final IntakeIO io;
@@ -55,7 +56,7 @@ public class Intake extends SubsystemBase {
     private MotionState preHomeMotionState = MotionState.RETRACTED;
     private GoalState preHomeGoalState = GoalState.RETRACTED;
     private boolean cachedSmartRetractNibbleEnabled = false;
-    private boolean cachedSmartRetractCurrentHoldEnabled = false;
+    private boolean cachedSmartRetractHalfRetractReturnEnabled = false;
     private SmartRetractController.Mode cachedSmartRetractMode = SmartRetractController.Mode.DISABLED;
 
     public Intake(IntakeIO io) {
@@ -80,9 +81,11 @@ public class Intake extends SubsystemBase {
         Logger.recordOutput("Intake/GoalState", goalState.name());
         Logger.recordOutput("Intake/MotionState", motionState.name());
         Logger.recordOutput("Intake/SmartRetract/EnableNibble", cachedSmartRetractNibbleEnabled);
-        Logger.recordOutput("Intake/SmartRetract/EnableCurrentHold", cachedSmartRetractCurrentHoldEnabled);
+        Logger.recordOutput(
+                "Intake/SmartRetract/EnableHalfRetractReturn",
+                cachedSmartRetractHalfRetractReturnEnabled);
         Logger.recordOutput("Intake/SmartRetract/BothModesEnabled",
-                cachedSmartRetractNibbleEnabled && cachedSmartRetractCurrentHoldEnabled);
+                cachedSmartRetractNibbleEnabled && cachedSmartRetractHalfRetractReturnEnabled);
         Logger.recordOutput("Intake/SmartRetract/SelectedMode", cachedSmartRetractMode.name());
     }
 
@@ -280,10 +283,12 @@ public class Intake extends SubsystemBase {
     private void endSmartRetractSession(SmartRetractController.Session session) {
         io.stopRoller();
 
+        boolean atSmartRetractTarget = getLeftPositionRotations()
+                <= IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT + IntakeConstants.POSITION_TOLERANCE_ROT;
         boolean restoreExtended = smartRetractController.shouldRestoreExtendedOnExit(
                 session,
                 DriverStation.isDisabled(),
-                isAtRetractedTarget());
+                isAtRetractedTarget() || atSmartRetractTarget);
         Logger.recordOutput("Intake/SmartRetract/RestoreExtendedOnExit", restoreExtended);
         if (restoreExtended) {
             requestGoal(GoalState.EXTENDED, standardMotionProfile());
@@ -305,13 +310,16 @@ public class Intake extends SubsystemBase {
     }
 
     private void commandSmartRetractTarget(double leftTargetRot) {
-        goalState = GoalState.RETRACTED;
-        motionState = isAtRetractedTarget()
-                ? MotionState.RETRACTED
-                : MotionState.MOVING_TO_RETRACTED;
+        double clampedTargetRot = clampSmartRetractTargetRot(leftTargetRot);
+        goalState = clampedTargetRot >= IntakeConstants.EXTENDED_POSITION_ROT - IntakeConstants.POSITION_TOLERANCE_ROT
+                ? GoalState.EXTENDED
+                : GoalState.RETRACTED;
+        motionState = isAtTargetPosition(clampedTargetRot)
+                ? atGoalState(goalState)
+                : movingToGoalState(goalState);
         MotionProfile profile = slowRetractMotionProfile();
         requestIntakePosition(
-                clampSmartRetractTargetRot(leftTargetRot),
+                clampedTargetRot,
                 profile.velocityRotPerSec,
                 profile.accelerationRotPerSecSq,
                 profile.maxVolts);
@@ -319,29 +327,29 @@ public class Intake extends SubsystemBase {
 
     private void refreshDashboardSmartRetractMode() {
         cachedSmartRetractNibbleEnabled = SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, false);
-        cachedSmartRetractCurrentHoldEnabled =
-                SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_CURRENT_HOLD_KEY, false);
+        cachedSmartRetractHalfRetractReturnEnabled =
+                SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
         cachedSmartRetractMode = selectSmartRetractMode(
                 cachedSmartRetractNibbleEnabled,
-                cachedSmartRetractCurrentHoldEnabled);
+                cachedSmartRetractHalfRetractReturnEnabled);
         SmartDashboard.putString(DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY, cachedSmartRetractMode.name());
     }
 
     private static SmartRetractController.Mode selectSmartRetractMode(
             boolean nibbleEnabled,
-            boolean currentHoldEnabled) {
+            boolean halfRetractReturnEnabled) {
         if (nibbleEnabled) {
             return SmartRetractController.Mode.NIBBLE;
         }
-        if (currentHoldEnabled) {
-            return SmartRetractController.Mode.CURRENT_HOLD;
+        if (halfRetractReturnEnabled) {
+            return SmartRetractController.Mode.HALF_RETRACT_RETURN;
         }
         return SmartRetractController.Mode.DISABLED;
     }
 
     private static void initDashboardSmartRetractEntries() {
         SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, false);
-        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_CURRENT_HOLD_KEY, false);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
         SmartDashboard.putString(
                 DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY,
                 SmartRetractController.Mode.DISABLED.name());

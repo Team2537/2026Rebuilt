@@ -9,7 +9,7 @@ public final class SmartRetractController {
     public enum Mode {
         DISABLED,
         NIBBLE,
-        CURRENT_HOLD
+        HALF_RETRACT_RETURN
     }
 
     public static final class Session {
@@ -25,6 +25,7 @@ public final class SmartRetractController {
         private boolean feedLatched = false;
         private int feedTrueCycles = 0;
         private int feedFalseCycles = 0;
+        private boolean halfRetractReached = false;
 
         public Mode mode() {
             return mode;
@@ -91,6 +92,7 @@ public final class SmartRetractController {
         session.feedLatched = false;
         session.feedTrueCycles = 0;
         session.feedFalseCycles = 0;
+        session.halfRetractReached = false;
     }
 
     public Update update(
@@ -114,14 +116,19 @@ public final class SmartRetractController {
             return new Update(shouldSpinRoller, false, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
-        if (atRetractedTarget) {
+        if (!activelyFeeding) {
+            session.commandedLeftTargetRot = clampSmartRetractTargetRot(leftPositionRot);
+            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+        }
+
+        if (session.mode == Mode.NIBBLE && atRetractedTarget) {
             session.commandedLeftTargetRot = IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT;
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
         switch (session.mode) {
             case NIBBLE -> runNibbleSmartRetract(session, leftPositionRot);
-            case CURRENT_HOLD -> runCurrentHoldSmartRetract(session);
+            case HALF_RETRACT_RETURN -> runHalfRetractReturnSmartRetract(session, leftPositionRot);
             case DISABLED -> {
                 // Session is marked active only for non-disabled modes.
             }
@@ -177,24 +184,18 @@ public final class SmartRetractController {
                 session.commandedLeftTargetRot - IntakeConstants.SMART_RETRACT_NIBBLE_STEP_ROT);
     }
 
-    private static void runCurrentHoldSmartRetract(Session session) {
-        double targetCurrent = IntakeConstants.SMART_RETRACT_HOLD_TARGET_CURRENT_AMPS;
-        double deadband = IntakeConstants.SMART_RETRACT_HOLD_DEADBAND_AMPS;
-
-        if (session.filteredSignalCurrentAmps > targetCurrent + deadband) {
-            session.commandedLeftTargetRot = clampSmartRetractTargetRot(
-                    session.commandedLeftTargetRot + IntakeConstants.SMART_RETRACT_HOLD_BACKOFF_STEP_ROT);
+    private static void runHalfRetractReturnSmartRetract(Session session, double leftPositionRot) {
+        if (!session.halfRetractReached) {
+            session.commandedLeftTargetRot =
+                    clampSmartRetractTargetRot(IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT);
+            if (leftPositionRot <= IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT
+                    + IntakeConstants.POSITION_TOLERANCE_ROT) {
+                session.halfRetractReached = true;
+            }
             return;
         }
 
-        if (session.filteredSignalCurrentAmps < targetCurrent - deadband) {
-            session.commandedLeftTargetRot = clampSmartRetractTargetRot(
-                    session.commandedLeftTargetRot - IntakeConstants.SMART_RETRACT_HOLD_FAST_STEP_ROT);
-            return;
-        }
-
-        session.commandedLeftTargetRot = clampSmartRetractTargetRot(
-                session.commandedLeftTargetRot - IntakeConstants.SMART_RETRACT_HOLD_SLOW_STEP_ROT);
+        session.commandedLeftTargetRot = IntakeConstants.EXTENDED_POSITION_ROT;
     }
 
     private static boolean updateFeedLatch(Session session, boolean activelyFeeding) {
@@ -202,18 +203,22 @@ public final class SmartRetractController {
             session.feedTrueCycles++;
             session.feedFalseCycles = 0;
         } else {
-            session.feedTrueCycles = 0;
             session.feedFalseCycles++;
         }
 
-        if (!session.feedLatched
-                && session.feedTrueCycles >= IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES) {
+        if (!session.feedLatched && activelyFeeding
+                && session.feedTrueCycles >= feedStartDelayCycles()) {
             session.feedLatched = true;
-        } else if (session.feedLatched
-                && session.feedFalseCycles >= IntakeConstants.SMART_RETRACT_FEED_RELEASE_CYCLES) {
-            session.feedLatched = false;
+        } else if (!session.feedLatched && !activelyFeeding) {
+            session.feedTrueCycles = 0;
         }
         return session.feedLatched;
+    }
+
+    private static int feedStartDelayCycles() {
+        int configuredDelayCycles = (int) Math.ceil(
+                IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC * IntakeConstants.STATUS_UPDATE_HZ);
+        return Math.max(IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES, Math.max(1, configuredDelayCycles));
     }
 
     private static double filteredCurrent(double previous, double current, double alpha) {

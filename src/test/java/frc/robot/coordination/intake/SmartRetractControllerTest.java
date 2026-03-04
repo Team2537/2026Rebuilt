@@ -50,101 +50,134 @@ class SmartRetractControllerTest {
     }
 
     @Test
-    void feedLatchEngagesAfterConfiguredTrueCycles() {
+    void feedLatchEngagesAfterConfiguredStartDelay() {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 5.0);
-        int engageCycles = IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES;
+        int startDelayCycles = feedStartDelayCycles();
 
-        for (int i = 0; i < engageCycles - 1; i++) {
+        for (int i = 0; i < startDelayCycles - 1; i++) {
             SmartRetractController.Update update =
                     controller.update(session, true, MID_POSITION, 5.0, true, false);
-            assertFalse(update.commandRetractTarget(), "Should not latch before engage cycles");
+            assertFalse(update.commandRetractTarget(), "Should not start smart retract before delay elapses");
         }
 
         SmartRetractController.Update update =
                 controller.update(session, true, MID_POSITION, 5.0, true, false);
-        assertTrue(update.commandRetractTarget(), "Should latch after enough true cycles");
+        assertTrue(update.commandRetractTarget(), "Should start smart retract after configured feed delay");
         assertTrue(session.feedLatched());
     }
 
     @Test
-    void feedLatchReleasesAfterConfiguredFalseCycles() {
-        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 5.0);
-        int engageCycles = IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES;
-        int releaseCycles = IntakeConstants.SMART_RETRACT_FEED_RELEASE_CYCLES;
-
-        // Engage the latch
-        for (int i = 0; i < engageCycles; i++) {
-            controller.update(session, true, MID_POSITION, 5.0, true, false);
-        }
-        assertTrue(session.feedLatched());
-
-        // Release: need releaseCycles false cycles
-        for (int i = 0; i < releaseCycles - 1; i++) {
-            controller.update(session, false, MID_POSITION, 5.0, true, false);
-            assertTrue(session.feedLatched(), "Should not release before enough false cycles");
-        }
-        controller.update(session, false, MID_POSITION, 5.0, true, false);
-        assertFalse(session.feedLatched(), "Should release after enough false cycles");
-    }
-
-    @Test
-    void currentHoldStepsTowardTargetCurrent() {
-        controller.initialize(session, SmartRetractController.Mode.CURRENT_HOLD, true, MID_POSITION, 5.0);
-
-        // Engage feed latch
-        for (int i = 0; i < IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES; i++) {
-            controller.update(session, true, MID_POSITION, 5.0, true, false);
-        }
-
-        double initialTarget = session.commandedLeftTargetRot();
-        // Low current → should step inward (decrease position)
-        SmartRetractController.Update update =
-                controller.update(session, true, MID_POSITION, 5.0, true, false);
-        assertTrue(update.commandRetractTarget());
-        assertTrue(
-                session.commandedLeftTargetRot() < initialTarget,
-                "Should step inward (retract) when below target current");
-    }
-
-    @Test
-    void currentHoldBacksOffWhenCurrentTooHigh() {
-        double highCurrent =
-                IntakeConstants.SMART_RETRACT_HOLD_TARGET_CURRENT_AMPS
-                        + IntakeConstants.SMART_RETRACT_HOLD_DEADBAND_AMPS
-                        + 5.0;
-
+    void smartRetractPausesMovementWhenFeedDropsAndResumesWithoutReset() {
         controller.initialize(
-                session, SmartRetractController.Mode.CURRENT_HOLD, true, MID_POSITION, highCurrent);
+                session,
+                SmartRetractController.Mode.HALF_RETRACT_RETURN,
+                true,
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                5.0);
 
-        // Engage feed latch
-        for (int i = 0; i < IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES; i++) {
-            controller.update(session, true, MID_POSITION, highCurrent, true, false);
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 5.0, true, false);
         }
 
-        double beforeBackoff = session.commandedLeftTargetRot();
-        controller.update(session, true, MID_POSITION, highCurrent, true, false);
-        assertTrue(
-                session.commandedLeftTargetRot() > beforeBackoff,
-                "Should back off (extend) when current too high");
+        SmartRetractController.Update startUpdate =
+                controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 5.0, true, false);
+        assertTrue(startUpdate.commandRetractTarget());
+        assertEquals(
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                startUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "Half-retract mode should command the midway target once started");
+
+        double pausedPosition =
+                (IntakeConstants.EXTENDED_POSITION_ROT + IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT)
+                        / 2.0;
+        SmartRetractController.Update pausedUpdate =
+                controller.update(session, false, pausedPosition, 5.0, true, false);
+        assertTrue(pausedUpdate.commandRetractTarget());
+        assertEquals(
+                pausedPosition,
+                pausedUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "When feed is inactive, smart retract should hold at current position");
+
+        SmartRetractController.Update resumedUpdate =
+                controller.update(session, true, pausedPosition, 5.0, true, false);
+        assertTrue(resumedUpdate.commandRetractTarget());
+        assertEquals(
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                resumedUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "When feed resumes, smart retract should continue the existing profile without reset");
+    }
+
+    @Test
+    void halfRetractReturnCommandsExtendedAfterHalfwayReached() {
+        controller.initialize(
+                session,
+                SmartRetractController.Mode.HALF_RETRACT_RETURN,
+                true,
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                5.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 5.0, true, false);
+        }
+
+        controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 5.0, true, false);
+        SmartRetractController.Update atHalfwayUpdate = controller.update(
+                session,
+                true,
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                5.0,
+                true,
+                false);
+        assertEquals(
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                atHalfwayUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "First halfway hit cycle still commands halfway target");
+
+        SmartRetractController.Update returnUpdate = controller.update(
+                session,
+                true,
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                5.0,
+                true,
+                false);
+        assertEquals(
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                returnUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "After halfway is reached, mode should command extension back out");
     }
 
     @Test
     void positionClampedToRetractedAndExtended() {
         controller.initialize(
-                session, SmartRetractController.Mode.CURRENT_HOLD, true, MID_POSITION, 5.0);
+                session, SmartRetractController.Mode.NIBBLE, true, IntakeConstants.RETRACTED_POSITION_ROT, 5.0);
 
-        // Engage feed latch
-        for (int i = 0; i < IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES; i++) {
-            controller.update(session, true, MID_POSITION, 5.0, true, false);
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(
+                    session,
+                    true,
+                    IntakeConstants.RETRACTED_POSITION_ROT,
+                    5.0,
+                    true,
+                    false);
         }
 
-        // Repeatedly step inward to hit retracted limit
         for (int i = 0; i < 500; i++) {
-            controller.update(session, true, MID_POSITION, 5.0, true, false);
+            controller.update(
+                    session,
+                    true,
+                    IntakeConstants.RETRACTED_POSITION_ROT,
+                    5.0,
+                    true,
+                    false);
         }
         assertTrue(
-                session.commandedLeftTargetRot() >= IntakeConstants.RETRACTED_POSITION_ROT,
-                "Position should not go below retracted limit");
+                session.commandedLeftTargetRot() >= IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT,
+                "Position should not go below smart-retract retracted limit");
     }
 
     @Test
@@ -169,15 +202,18 @@ class SmartRetractControllerTest {
     void currentFilteringAppliesExponentialSmoothing() {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
 
-        // Engage feed latch
-        for (int i = 0; i < IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES; i++) {
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
             controller.update(session, true, MID_POSITION, 50.0, true, false);
         }
 
         double filtered = session.filteredSignalCurrentAmps();
-        // With alpha=0.20, after several cycles of 50A from 0A baseline, filtered should
-        // be less than raw but greater than initial (0)
         assertTrue(filtered > 0.0, "Filtered current should be positive after high-current inputs");
         assertTrue(filtered < 50.0, "Filtered current should lag behind raw current");
+    }
+
+    private static int feedStartDelayCycles() {
+        int configuredDelayCycles =
+                (int) Math.ceil(IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC * IntakeConstants.STATUS_UPDATE_HZ);
+        return Math.max(IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES, Math.max(1, configuredDelayCycles));
     }
 }
