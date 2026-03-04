@@ -178,12 +178,27 @@ public final class ShootingTeleopController {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> targetHeadingSupplier) {
+        return createAutoAlignCommand(
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                targetHeadingSupplier,
+                () -> false);
+    }
+
+    private Command createAutoAlignCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier xLockConditionSupplier) {
         return DriveCommands.autoAlignToHubPose(
                 drive,
                 xSupplier,
                 ySupplier,
                 omegaFallbackSupplier,
-                targetHeadingSupplier);
+                targetHeadingSupplier,
+                xLockConditionSupplier);
     }
 
     private Command createShootCommand(
@@ -193,13 +208,20 @@ public final class ShootingTeleopController {
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
             BooleanSupplier aimReadySupplier) {
+        CycleCache<Boolean> aimReadyCycleCache = new CycleCache<>();
+        BooleanSupplier cachedAimReadySupplier =
+                () -> aimReadyCycleCache.get(commandTelemetry.getCycle(), aimReadySupplier::getAsBoolean);
+        BooleanSupplier readyToFeedSupplier =
+                () -> shooter.getReadinessDiagnosticsNow().atSetpoint() && cachedAimReadySupplier.getAsBoolean();
+
         return Commands.parallel(
                 createAutoAlignCommand(
                         xSupplier,
                         ySupplier,
                         omegaFallbackSupplier,
-                        targetHeadingSupplier),
-                shootCoordinator.shootForDistance(distanceMetersSupplier, aimReadySupplier),
+                        targetHeadingSupplier,
+                        readyToFeedSupplier),
+                shootCoordinator.shootForDistance(distanceMetersSupplier, cachedAimReadySupplier),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerAimAndShoot");
     }

@@ -24,6 +24,7 @@ import frc.robot.subsystems.drive.Drive;
 import frc.robot.util.FieldConstants;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
@@ -205,6 +206,28 @@ public final class DriveCommands {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> headingSupplier) {
+        return autoAlignToHubPose(
+                drive,
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                headingSupplier,
+                () -> false);
+    }
+
+    /**
+     * Drive command that keeps translational joystick control and auto-rotates to
+     * a supplied field heading.
+     * Optionally turns the modules to an X arrangement when the robot is idle and
+     * the supplied lock condition is true.
+     */
+    public static Command autoAlignToHubPose(
+            Drive drive,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<Rotation2d> headingSupplier,
+            BooleanSupplier xLockConditionSupplier) {
         HubAlignController alignController = new HubAlignController();
 
         return Commands.run(
@@ -214,13 +237,22 @@ public final class DriveCommands {
 
                     Rotation2d targetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
 
-                    double fallbackOmega = MathUtil.applyDeadband(
+                    double fallbackOmegaInput = MathUtil.applyDeadband(
                             omegaFallbackSupplier.getAsDouble(), DEADBAND);
-                    fallbackOmega = Math.copySign(fallbackOmega * fallbackOmega, fallbackOmega);
+                    double fallbackOmega = Math.copySign(
+                            fallbackOmegaInput * fallbackOmegaInput,
+                            fallbackOmegaInput);
                     fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
 
                     double omega = alignController.calculate(
                             RobotState.getInstance().getRotation().getRadians(), targetHeading, fallbackOmega);
+
+                    boolean noDriverInput = linearVelocity.getNorm() <= 1e-6
+                            && Math.abs(fallbackOmegaInput) <= 1e-6;
+                    if (noDriverInput && xLockConditionSupplier.getAsBoolean()) {
+                        drive.stopWithX();
+                        return;
+                    }
 
                     ChassisSpeeds speeds = new ChassisSpeeds(
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
