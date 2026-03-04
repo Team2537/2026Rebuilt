@@ -31,8 +31,8 @@ public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(1.2);
-    private static final double WHEEL_RADIUS_MAX_VELOCITY = 0.25; // Rad/Sec
-    private static final double WHEEL_RADIUS_RAMP_RATE = 0.05; // Rad/Sec^2
+    private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
+    private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
 
     private DriveCommands() {
     }

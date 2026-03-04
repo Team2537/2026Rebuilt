@@ -115,7 +115,7 @@ public final class SmartRetractController {
         }
 
         if (atRetractedTarget) {
-            session.commandedLeftTargetRot = IntakeConstants.RETRACTED_POSITION_ROT;
+            session.commandedLeftTargetRot = IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT;
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
@@ -224,7 +224,7 @@ public final class SmartRetractController {
     private static double clampSmartRetractTargetRot(double targetRot) {
         return MathUtil.clamp(
                 targetRot,
-                IntakeConstants.RETRACTED_POSITION_ROT,
+                IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT,
                 IntakeConstants.EXTENDED_POSITION_ROT);
     }
 }

@@ -428,7 +428,7 @@ public class Intake extends SubsystemBase {
     private static double clampSmartRetractTargetRot(double targetRot) {
         return MathUtil.clamp(
                 targetRot,
-                IntakeConstants.RETRACTED_POSITION_ROT,
+                IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT,
                 IntakeConstants.EXTENDED_POSITION_ROT);
     }
 

@@ -18,7 +18,9 @@ import frc.robot.util.ElasticNotifications;
 import frc.robot.util.FieldConstants;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -26,6 +28,8 @@ import org.littletonrobotics.junction.Logger;
 
 /** Vision subsystem responsible for pose updates from PhotonVision. */
 public final class Vision extends SubsystemBase {
+    private static final double VISIBLE_TAG_HOLD_SECONDS = 0.25;
+
     private final RobotState robotState;
     private final Supplier<Pose2d> robotPoseSupplier;
     private final List<VisionIO> ios;
@@ -45,6 +49,8 @@ public final class Vision extends SubsystemBase {
     private int visionJumpEventCount = 0;
     private boolean lastAllCamerasConnected = true;
     private boolean dashboardDisabled = false;
+    private int[] latestVisibleTagIds = new int[0];
+    private final HashMap<Integer, Double> lastSeenTagTimestampsSec = new HashMap<>();
 
     public Vision(RobotState robotState) {
         super("Vision");
@@ -99,6 +105,11 @@ public final class Vision extends SubsystemBase {
         return unifiedRobotPoseRaw;
     }
 
+    /** Returns AprilTag IDs currently visible from active camera results. */
+    public int[] getVisibleAprilTagIds() {
+        return Arrays.copyOf(latestVisibleTagIds, latestVisibleTagIds.length);
+    }
+
     /** Allows the dashboard to disable vision pose updates at runtime. */
     public void setDashboardDisabled(boolean disabled) {
         this.dashboardDisabled = disabled;
@@ -118,6 +129,7 @@ public final class Vision extends SubsystemBase {
         }
 
         VisionCycleResult cycleResult = processVisionCycle(currentPose, candidateDiagnostics);
+        updateLatestVisibleAprilTagIds();
         updateUnifiedRawPose(cycleResult.bestRawObservation());
         updateUnifiedPose(
                 cycleResult.bestConsistentMeasuredPose(),
@@ -270,6 +282,35 @@ public final class Vision extends SubsystemBase {
                                     .map(transform -> new Pose3d(currentPose).transformBy(transform))
                                     .toArray(Pose3d[]::new));
         }
+    }
+
+    private void updateLatestVisibleAprilTagIds() {
+        double nowSec = Timer.getFPGATimestamp();
+        for (VisionIOInputsAutoLogged input : inputs) {
+            for (TargetTransform targetTransform : input.targetTransforms) {
+                int tagId = targetTransform.fiducialId();
+                if (tagId > 0) {
+                    lastSeenTagTimestampsSec.put(tagId, nowSec);
+                }
+            }
+            for (int tagId : input.tagIds) {
+                if (tagId > 0) {
+                    lastSeenTagTimestampsSec.put(tagId, nowSec);
+                }
+            }
+        }
+
+        lastSeenTagTimestampsSec.entrySet().removeIf(entry -> nowSec - entry.getValue() > VISIBLE_TAG_HOLD_SECONDS);
+
+        int[] tagIds = new int[lastSeenTagTimestampsSec.size()];
+        int index = 0;
+        for (Map.Entry<Integer, Double> entry : lastSeenTagTimestampsSec.entrySet()) {
+            Integer tagId = entry.getKey();
+            tagIds[index++] = tagId;
+        }
+        Arrays.sort(tagIds);
+        latestVisibleTagIds = tagIds;
+        Logger.recordOutput("Vision/visibleTagIds", latestVisibleTagIds);
     }
 
     private List<VisionIO> createIOs() {

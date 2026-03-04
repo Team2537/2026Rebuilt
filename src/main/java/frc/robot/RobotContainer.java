@@ -4,6 +4,8 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.apriltag.AprilTag;
+import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -17,6 +19,7 @@ import frc.robot.autos.AutoSelector;
 import frc.robot.commands.DriveCommands;
 import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.coordination.shooting.ShootingTeleopController;
+import frc.robot.util.FieldConstants;
 import frc.robot.generated.TunerConstants;
 import frc.robot.sim.FuelSim;
 import frc.robot.subsystems.drive.Drive;
@@ -39,6 +42,8 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
@@ -47,6 +52,9 @@ import org.littletonrobotics.junction.Logger;
 public final class RobotContainer {
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
+    private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
+    private static final String APRIL_TAG_OBJECT_PREFIX = "Tag ";
+    private static final String APRIL_TAG_TRAJECTORY_OBJECT_PREFIX = "trajTag";
 
     private final Drive drive;
     private final Vision vision;
@@ -56,6 +64,7 @@ public final class RobotContainer {
     private final ShootCoordinator shootCoordinator;
     private final ShootingTeleopController shootingTeleopController;
     private final AutoSelector autoSelector;
+    private final Field2d dashboardField = new Field2d();
 
     private final CommandXboxController driverController = new CommandXboxController(0);
     private final CommandXboxController godController;
@@ -88,6 +97,8 @@ public final class RobotContainer {
                 dashboardOverrides,
                 commandTelemetry);
         Logger.recordOutput("Mechanism/Poses", new Pose3d[0]);
+        SmartDashboard.putData(DASHBOARD_FIELD_TOPIC, dashboardField);
+        publishAprilTagPosesAndTrajectories();
 
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
         autoSelector = new AutoSelector(AutoRoutines.create(drive));
@@ -105,8 +116,41 @@ public final class RobotContainer {
     }
 
     public void robotPeriodic() {
+        dashboardField.setRobotPose(RobotState.getInstance().getPose());
+        publishAprilTagPosesAndTrajectories();
         commandTelemetry.periodic();
         dashboardOverrides.periodic(vision);
+    }
+
+    private void publishAprilTagPosesAndTrajectories() {
+        Set<Integer> visibleTagIds = getVisibleAprilTagIds();
+        Pose2d robotPose = RobotState.getInstance().getPose();
+        for (AprilTag tag : FieldConstants.TAG_LAYOUT.getTags()) {
+            Pose2d tagPose = tag.pose.toPose2d();
+            dashboardField.getObject(APRIL_TAG_OBJECT_PREFIX + tag.ID).setPose(tagPose);
+            if (robotPose != null && visibleTagIds.contains(tag.ID)) {
+                dashboardField
+                        .getObject(APRIL_TAG_TRAJECTORY_OBJECT_PREFIX + tag.ID)
+                        .setPoses(
+                                robotPose,
+                                robotPose.interpolate(tagPose, 0.5),
+                                tagPose);
+            } else {
+                dashboardField.getObject(APRIL_TAG_TRAJECTORY_OBJECT_PREFIX + tag.ID).setPoses();
+            }
+        }
+    }
+
+    private Set<Integer> getVisibleAprilTagIds() {
+        HashSet<Integer> visibleTagIds = new HashSet<>();
+        if (vision == null) {
+            return visibleTagIds;
+        }
+
+        for (int tagId : vision.getVisibleAprilTagIds()) {
+            visibleTagIds.add(tagId);
+        }
+        return visibleTagIds;
     }
 
     public void disabledInit() {

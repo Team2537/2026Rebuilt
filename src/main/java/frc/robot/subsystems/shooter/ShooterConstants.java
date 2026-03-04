@@ -25,7 +25,7 @@ public final class ShooterConstants {
 
     public static final double SHOOTER_MAX_RPM = 6200.0;
     public static final double SLOW_SHOOTER_RPM = isReal ? 2000.0 : 500.0;
-    public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 70.0;
+    public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 100.0;
     public static final double MAX_OUTPUT_VOLTS = 12.0;
     public static final double SHOOTER_SYSID_STEP_VOLTAGE_VOLTS = 6.0;
     public static final double SHOOTER_SYSID_TIMEOUT_SEC = 10.0;
@@ -37,7 +37,7 @@ public final class ShooterConstants {
 
     public static final double SHOOTER_RPM_TOLERANCE = 200.0;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
-    public static final double DEFAULT_KICKER_TORQUE_AMPS = 65.0;
+    public static final double DEFAULT_KICKER_TORQUE_AMPS = 85.0;
     public static final double MOTION_COMP_TIME_SCALE =
             simOverrideDouble("shooter.sim.motionCompTimeScale", 1.0);
     public static final double MOTION_COMP_DISTANCE_TIME_SCALE =
@@ -108,8 +108,8 @@ public final class ShooterConstants {
     public static final double SHOOTER_SUPPLY_CURRENT_LIMIT_AMPS = 70.0;
     public static final double HOOD_STATOR_CURRENT_LIMIT_AMPS = 60.0;
     public static final double HOOD_SUPPLY_CURRENT_LIMIT_AMPS = 40.0;
-    public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 70.0;
-    public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 45.0;
+    public static final double KICKER_STATOR_CURRENT_LIMIT_AMPS = 120.0;
+    public static final double KICKER_SUPPLY_CURRENT_LIMIT_AMPS = 70.0;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 12.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 5.0;

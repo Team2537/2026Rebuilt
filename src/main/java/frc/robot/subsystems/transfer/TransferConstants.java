@@ -8,7 +8,7 @@ public final class TransferConstants {
     public static final boolean TRANSFER_INVERTED = true;
     public static final double SENSOR_TO_MECHANISM_RATIO = 1.333;
 
-    public static final double RUN_TRANSFER_PERCENT = 0.35;
+    public static final double RUN_TRANSFER_PERCENT = 0.80;
 
     public static final double STATUS_UPDATE_HZ = 50.0;
     public static final double STATOR_CURRENT_LIMIT_AMPS = 80.0;
