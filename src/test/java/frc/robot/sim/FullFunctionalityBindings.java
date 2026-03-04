@@ -11,6 +11,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.subsystems.intake.IntakeConstants;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -276,12 +277,12 @@ final class FullFunctionalityBindings {
                     "Expected DriveJoystickDefault to start as default command in teleop.");
             assertTrue(
                     context.recorder.getCounts("ShooterBackground").starts() >= 1
-                            || context.recorder.getCounts("ShooterHomeThenBackground").starts() >= 1,
-                    "Expected either ShooterBackground or ShooterHomeThenBackground to start in teleop.");
+                            || context.recorder.getCounts("ShooterHome").starts() >= 1,
+                    "Expected either ShooterBackground or ShooterHome to start in teleop.");
             assertTrue(
                     context.recorder.getCounts("IntakeBackground").starts() >= 1
-                            || context.recorder.getCounts("IntakeHomeThenBackground").starts() >= 1,
-                    "Expected either IntakeBackground or IntakeHomeThenBackground to start in teleop.");
+                            || context.recorder.getCounts("IntakeHome").starts() >= 1,
+                    "Expected either IntakeBackground or IntakeHome to start in teleop.");
 
             FullFunctionalityHarness.CommandCounts slowModeBefore = context.recorder.getCounts("DriveToggleSlowMode");
             context.tapDriverButton(context.driverControllerSim::setLeftBumperButton);
@@ -454,15 +455,15 @@ final class FullFunctionalityBindings {
                             leftAfterSlowRetract));
 
             FullFunctionalityHarness.CommandCounts scheduleBackgroundBefore =
-                    context.recorder.getCounts("ScheduleShooterBackground");
+                    context.recorder.getCounts("DriverShooterHome");
             context.tapDriverPov(0);
             FullFunctionalityHarness.CommandCounts scheduleBackgroundDelta =
-                    context.recorder.getCounts("ScheduleShooterBackground").minus(scheduleBackgroundBefore);
+                    context.recorder.getCounts("DriverShooterHome").minus(scheduleBackgroundBefore);
             assertEquals(
                     1,
                     scheduleBackgroundDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "POV up should schedule ScheduleShooterBackground once",
+                            "POV up should schedule DriverShooterHome once",
                             "starts=1",
                             scheduleBackgroundDelta));
 
@@ -495,6 +496,22 @@ final class FullFunctionalityBindings {
                             "Releasing right trigger should interrupt ShooterTriggerSelectedMode",
                             "interrupts>=1",
                             shootDelta));
+            assertTrue(
+                    context.recorder.runningCount("ShooterBackground") >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Shooter background should resume automatically after shoot trigger is released",
+                            "ShooterBackground running>=1",
+                            "ShooterBackground running=" + context.recorder.runningCount("ShooterBackground")));
+            assertTrue(
+                    Math.abs(context.shooter.getTargetAverageShooterRpm() - ShooterConstants.SLOW_SHOOTER_RPM) <= 1e-6,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Shooter background should restore slow shooter target RPM after shoot release",
+                            "targetAverageRpm=SLOW_SHOOTER_RPM",
+                            String.format(
+                                    Locale.US,
+                                    "targetAverageRpm=%.3f slowRpm=%.3f",
+                                    context.shooter.getTargetAverageShooterRpm(),
+                                    ShooterConstants.SLOW_SHOOTER_RPM)));
 
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
             context.runCycles(4);
@@ -636,7 +653,7 @@ final class FullFunctionalityBindings {
                     "IntakeToggleExtended",
                     "IntakeSlowRetract",
                     "IntakeSpinRoller",
-                    "ScheduleShooterBackground",
+                    "DriverShooterHome",
                     "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
                     "ShooterTriggerSelectedMode",

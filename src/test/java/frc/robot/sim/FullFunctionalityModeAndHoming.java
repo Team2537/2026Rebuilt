@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.subsystems.intake.IntakeConstants;
 import frc.robot.subsystems.shooter.ShooterConstants;
@@ -20,35 +21,35 @@ final class FullFunctionalityModeAndHoming {
             context.runCycles(4);
 
             FullFunctionalityHarness.CommandCounts intakeHomeBefore =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
+                    context.recorder.getCounts("IntakeHome");
             FullFunctionalityHarness.CommandCounts shooterHomeBefore =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+                    context.recorder.getCounts("ShooterHome");
 
             context.container.autonomousInit();
 
             FullFunctionalityHarness.CommandCounts intakeImmediateDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeHomeBefore);
+                    context.recorder.getCounts("IntakeHome").minus(intakeHomeBefore);
             FullFunctionalityHarness.CommandCounts shooterImmediateDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterHomeBefore);
+                    context.recorder.getCounts("ShooterHome").minus(shooterHomeBefore);
 
             assertTrue(
                     intakeImmediateDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit should start IntakeHomeThenBackground immediately (without waiting for scheduler cycles)",
+                            "autonomousInit should start IntakeHome immediately (without waiting for scheduler cycles)",
                             "starts>=1 immediately",
                             intakeImmediateDelta));
             assertTrue(
                     shooterImmediateDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit should start ShooterHomeThenBackground immediately (without waiting for scheduler cycles)",
+                            "autonomousInit should start ShooterHome immediately (without waiting for scheduler cycles)",
                             "starts>=1 immediately",
                             shooterImmediateDelta));
             assertTrue(
-                    context.recorder.runningCount("IntakeHomeThenBackground") >= 1,
-                    "Expected IntakeHomeThenBackground to be running immediately after autonomousInit.");
+                    context.recorder.runningCount("IntakeHome") >= 1,
+                    "Expected IntakeHome to be running immediately after autonomousInit.");
             assertTrue(
-                    context.recorder.runningCount("ShooterHomeThenBackground") >= 1,
-                    "Expected ShooterHomeThenBackground to be running immediately after autonomousInit.");
+                    context.recorder.runningCount("ShooterHome") >= 1,
+                    "Expected ShooterHome to be running immediately after autonomousInit.");
         }
     }
 
@@ -110,73 +111,91 @@ final class FullFunctionalityModeAndHoming {
 
             context.setTeleopEnabled();
             FullFunctionalityHarness.CommandCounts intakeHomeBefore =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
+                    context.recorder.getCounts("IntakeHome");
             FullFunctionalityHarness.CommandCounts shooterHomeBefore =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+                    context.recorder.getCounts("ShooterHome");
             context.container.teleopInit();
             context.runCycles(80);
             FullFunctionalityHarness.CommandCounts intakeHomeDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeHomeBefore);
+                    context.recorder.getCounts("IntakeHome").minus(intakeHomeBefore);
             FullFunctionalityHarness.CommandCounts shooterHomeDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterHomeBefore);
+                    context.recorder.getCounts("ShooterHome").minus(shooterHomeBefore);
 
             assertTrue(
                     intakeHomeDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "teleopInit should schedule IntakeHomeThenBackground",
+                            "teleopInit should schedule IntakeHome",
                             "starts>=1",
                             intakeHomeDelta));
             assertTrue(
                     shooterHomeDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "teleopInit should schedule ShooterHomeThenBackground",
+                            "teleopInit should schedule ShooterHome",
                             "starts>=1",
                             shooterHomeDelta));
             assertTrue(
-                    context.recorder.runningCount("IntakeHomeThenBackground") >= 1,
-                    "Expected IntakeHomeThenBackground to remain active as background command in teleop.");
+                    context.recorder.runningCount("IntakeHome") >= 1
+                            || context.recorder.runningCount("IntakeBackground") >= 1,
+                    "Expected intake to be owned by IntakeHome or IntakeBackground in teleop.");
             assertTrue(
-                    context.recorder.runningCount("ShooterHomeThenBackground") >= 1,
-                    "Expected ShooterHomeThenBackground to remain active as background command in teleop.");
+                    context.recorder.runningCount("ShooterHome") >= 1
+                            || context.recorder.runningCount("ShooterBackground") >= 1,
+                    "Expected shooter to be owned by ShooterHome or ShooterBackground in teleop.");
 
-            FullFunctionalityHarness.CommandCounts intakeHomeBeforeCancel =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
-            FullFunctionalityHarness.CommandCounts shooterHomeBeforeCancel =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+            FullFunctionalityHarness.CommandCounts intakeHomeBeforeCancel = context.recorder.getCounts("IntakeHome");
+            FullFunctionalityHarness.CommandCounts intakeBackgroundBeforeCancel =
+                    context.recorder.getCounts("IntakeBackground");
+            FullFunctionalityHarness.CommandCounts shooterHomeBeforeCancel = context.recorder.getCounts("ShooterHome");
+            FullFunctionalityHarness.CommandCounts shooterBackgroundBeforeCancel =
+                    context.recorder.getCounts("ShooterBackground");
             context.container.testInit();
             context.runCycles(6);
-            FullFunctionalityHarness.CommandCounts intakeHomeCancelDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeHomeBeforeCancel);
-            FullFunctionalityHarness.CommandCounts shooterHomeCancelDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterHomeBeforeCancel);
+            FullFunctionalityHarness.CommandCounts intakeHomeCancelDelta = context.recorder
+                    .getCounts("IntakeHome")
+                    .minus(intakeHomeBeforeCancel);
+            FullFunctionalityHarness.CommandCounts intakeBackgroundCancelDelta = context.recorder
+                    .getCounts("IntakeBackground")
+                    .minus(intakeBackgroundBeforeCancel);
+            FullFunctionalityHarness.CommandCounts shooterHomeCancelDelta = context.recorder
+                    .getCounts("ShooterHome")
+                    .minus(shooterHomeBeforeCancel);
+            FullFunctionalityHarness.CommandCounts shooterBackgroundCancelDelta = context.recorder
+                    .getCounts("ShooterBackground")
+                    .minus(shooterBackgroundBeforeCancel);
 
             assertTrue(
-                    intakeHomeCancelDelta.interrupts() >= 1,
+                    intakeHomeCancelDelta.interrupts() + intakeBackgroundCancelDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "testInit should interrupt active IntakeHomeThenBackground",
+                            "testInit should interrupt active intake owner command",
                             "interrupts>=1",
-                            intakeHomeCancelDelta));
+                            "IntakeHome="
+                                    + intakeHomeCancelDelta
+                                    + ", IntakeBackground="
+                                    + intakeBackgroundCancelDelta));
             assertTrue(
-                    shooterHomeCancelDelta.interrupts() >= 1,
+                    shooterHomeCancelDelta.interrupts() + shooterBackgroundCancelDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "testInit should interrupt active ShooterHomeThenBackground",
+                            "testInit should interrupt active shooter owner command",
                             "interrupts>=1",
-                            shooterHomeCancelDelta));
+                            "ShooterHome="
+                                    + shooterHomeCancelDelta
+                                    + ", ShooterBackground="
+                                    + shooterBackgroundCancelDelta));
 
             context.setAutonomousEnabled();
             FullFunctionalityHarness.CommandCounts autoNoneBefore = context.recorder.getCounts("AutoNone");
             FullFunctionalityHarness.CommandCounts intakeAutoBefore =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
+                    context.recorder.getCounts("IntakeHome");
             FullFunctionalityHarness.CommandCounts shooterAutoBefore =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+                    context.recorder.getCounts("ShooterHome");
             context.container.autonomousInit();
             context.runCycles(20);
             FullFunctionalityHarness.CommandCounts autoNoneDelta =
                     context.recorder.getCounts("AutoNone").minus(autoNoneBefore);
             FullFunctionalityHarness.CommandCounts intakeAutoDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeAutoBefore);
+                    context.recorder.getCounts("IntakeHome").minus(intakeAutoBefore);
             FullFunctionalityHarness.CommandCounts shooterAutoDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterAutoBefore);
+                    context.recorder.getCounts("ShooterHome").minus(shooterAutoBefore);
 
             assertTrue(
                     autoNoneDelta.starts() >= 1,
@@ -193,13 +212,13 @@ final class FullFunctionalityModeAndHoming {
             assertTrue(
                     intakeAutoDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit should schedule IntakeHomeThenBackground when selected auto does not require intake/shooter",
+                            "autonomousInit should schedule IntakeHome when selected auto does not require intake/shooter",
                             "starts>=1",
                             intakeAutoDelta));
             assertTrue(
                     shooterAutoDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit should schedule ShooterHomeThenBackground when selected auto does not require intake/shooter",
+                            "autonomousInit should schedule ShooterHome when selected auto does not require intake/shooter",
                             "starts>=1",
                             shooterAutoDelta));
         }
@@ -317,7 +336,11 @@ final class FullFunctionalityModeAndHoming {
                             rightRotSettled));
             assertTrue(!context.intake.isExtended(), "Intake home should end with intake not extended.");
 
-            context.shooter.setTargets(2200.0, 2200.0, Units.degreesToRadians(70.0));
+            Command prepShooterTargets = Commands.run(
+                            () -> context.shooter.setTargets(2200.0, 2200.0, Units.degreesToRadians(70.0)),
+                            context.shooter)
+                    .withName("FF_PrepShooterTargets");
+            CommandScheduler.getInstance().schedule(prepShooterTargets);
             context.runCycles(120);
             assertTrue(
                     context.shooterInputs.hoodPositionRad > Units.degreesToRadians(40.0),

@@ -291,9 +291,9 @@ final class FullFunctionalityDriveAndAutoStress {
                     context.recorder.getCounts(activeAuto.lifecycleName());
             FullFunctionalityHarness.CommandCounts driveBefore = context.recorder.getCounts("DriveJoystickDefault");
             FullFunctionalityHarness.CommandCounts intakeHomeBefore =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
+                    context.recorder.getCounts("IntakeHome");
             FullFunctionalityHarness.CommandCounts shooterHomeBefore =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+                    context.recorder.getCounts("ShooterHome");
 
             context.setTeleopEnabled();
             context.container.teleopInit();
@@ -304,9 +304,9 @@ final class FullFunctionalityDriveAndAutoStress {
             FullFunctionalityHarness.CommandCounts driveDelta =
                     context.recorder.getCounts("DriveJoystickDefault").minus(driveBefore);
             FullFunctionalityHarness.CommandCounts intakeHomeDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeHomeBefore);
+                    context.recorder.getCounts("IntakeHome").minus(intakeHomeBefore);
             FullFunctionalityHarness.CommandCounts shooterHomeDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterHomeBefore);
+                    context.recorder.getCounts("ShooterHome").minus(shooterHomeBefore);
 
             assertTrue(
                     autoDelta.interrupts() >= 1,
@@ -336,21 +336,23 @@ final class FullFunctionalityDriveAndAutoStress {
             assertTrue(
                     intakeHomeDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "teleopInit should schedule IntakeHomeThenBackground while transitioning from auto",
+                            "teleopInit should schedule IntakeHome while transitioning from auto",
                             "starts>=1",
                             intakeHomeDelta));
             assertTrue(
                     shooterHomeDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "teleopInit should schedule ShooterHomeThenBackground while transitioning from auto",
+                            "teleopInit should schedule ShooterHome while transitioning from auto",
                             "starts>=1",
                             shooterHomeDelta));
             assertTrue(
-                    context.recorder.runningCount("IntakeHomeThenBackground") >= 1,
-                    "Expected IntakeHomeThenBackground to be active after teleop transition.");
+                    context.recorder.runningCount("IntakeHome") >= 1
+                            || context.recorder.runningCount("IntakeBackground") >= 1,
+                    "Expected intake to be active via IntakeHome or IntakeBackground after teleop transition.");
             assertTrue(
-                    context.recorder.runningCount("ShooterHomeThenBackground") >= 1,
-                    "Expected ShooterHomeThenBackground to be active after teleop transition.");
+                    context.recorder.runningCount("ShooterHome") >= 1
+                            || context.recorder.runningCount("ShooterBackground") >= 1,
+                    "Expected shooter to be active via ShooterHome or ShooterBackground after teleop transition.");
         }
     }
 
@@ -441,11 +443,13 @@ final class FullFunctionalityDriveAndAutoStress {
                         context.recorder.runningCount("DriveJoystickDefault") >= 1,
                         "Expected DriveJoystickDefault to be running after each re-enable.");
                 assertTrue(
-                        context.recorder.runningCount("IntakeHomeThenBackground") >= 1,
-                        "Expected IntakeHomeThenBackground to be running after each re-enable.");
+                        context.recorder.runningCount("IntakeHome") >= 1
+                                || context.recorder.runningCount("IntakeBackground") >= 1,
+                        "Expected intake to be running via IntakeHome or IntakeBackground after each re-enable.");
                 assertTrue(
-                        context.recorder.runningCount("ShooterHomeThenBackground") >= 1,
-                        "Expected ShooterHomeThenBackground to be running after each re-enable.");
+                        context.recorder.runningCount("ShooterHome") >= 1
+                                || context.recorder.runningCount("ShooterBackground") >= 1,
+                        "Expected shooter to be running via ShooterHome or ShooterBackground after each re-enable.");
             }
 
             FullFunctionalityHarness.CommandCounts fieldToggleDelta =

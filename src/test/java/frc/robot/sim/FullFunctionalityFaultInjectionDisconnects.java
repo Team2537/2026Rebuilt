@@ -112,7 +112,7 @@ final class FullFunctionalityFaultInjectionDisconnects {
 
         boolean finished = runUntil(
                 () -> !CommandScheduler.getInstance().isScheduled(home),
-                secondsToCycles(2.2));
+                secondsToCycles(IntakeConstants.HOMING_WAIT_TIMEOUT_SEC + 0.5));
         assertTrue(
                 finished,
                 FullFunctionalityHarness.formatExpectedVsActual(

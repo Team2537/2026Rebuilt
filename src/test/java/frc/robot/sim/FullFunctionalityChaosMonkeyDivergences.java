@@ -30,7 +30,7 @@ final class FullFunctionalityChaosMonkeyDivergences {
             "TransferReverse",
             "DriveToggleFieldOriented",
             "DriveResetOdometryAndHeading",
-            "ScheduleShooterBackground",
+            "DriverShooterHome",
             "StopManipulators",
             "DriveSetOdometryFromUnifiedVision",
             "ShooterTriggerSelectedMode",

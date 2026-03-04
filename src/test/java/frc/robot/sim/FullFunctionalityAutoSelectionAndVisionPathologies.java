@@ -49,9 +49,9 @@ final class FullFunctionalityAutoSelectionAndVisionPathologies {
             FullFunctionalityHarness.CommandCounts selectedAutoBefore =
                     context.recorder.getCounts(selectedAutoLifecycleName);
             FullFunctionalityHarness.CommandCounts intakeHomeBefore =
-                    context.recorder.getCounts("IntakeHomeThenBackground");
+                    context.recorder.getCounts("IntakeHome");
             FullFunctionalityHarness.CommandCounts shooterHomeBefore =
-                    context.recorder.getCounts("ShooterHomeThenBackground");
+                    context.recorder.getCounts("ShooterHome");
 
             context.container.autonomousInit();
             context.runCycles(40);
@@ -59,9 +59,9 @@ final class FullFunctionalityAutoSelectionAndVisionPathologies {
             FullFunctionalityHarness.CommandCounts selectedAutoDelta =
                     context.recorder.getCounts(selectedAutoLifecycleName).minus(selectedAutoBefore);
             FullFunctionalityHarness.CommandCounts intakeHomeDelta =
-                    context.recorder.getCounts("IntakeHomeThenBackground").minus(intakeHomeBefore);
+                    context.recorder.getCounts("IntakeHome").minus(intakeHomeBefore);
             FullFunctionalityHarness.CommandCounts shooterHomeDelta =
-                    context.recorder.getCounts("ShooterHomeThenBackground").minus(shooterHomeBefore);
+                    context.recorder.getCounts("ShooterHome").minus(shooterHomeBefore);
 
             assertTrue(
                     selectedAutoDelta.starts() >= 1,
@@ -73,14 +73,14 @@ final class FullFunctionalityAutoSelectionAndVisionPathologies {
                     0,
                     intakeHomeDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit SHOULD NOT schedule IntakeHomeThenBackground when selected auto itself uses intake/shooter",
+                            "autonomousInit SHOULD NOT schedule IntakeHome when selected auto itself uses intake/shooter",
                             "starts=0",
                             intakeHomeDelta));
             assertEquals(
                     0,
                     shooterHomeDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "autonomousInit SHOULD NOT schedule ShooterHomeThenBackground when selected auto itself uses intake/shooter",
+                            "autonomousInit SHOULD NOT schedule ShooterHome when selected auto itself uses intake/shooter",
                             "starts=0",
                             shooterHomeDelta));
         }

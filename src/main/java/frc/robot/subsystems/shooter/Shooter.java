@@ -436,7 +436,6 @@ public class Shooter extends SubsystemBase {
 
     private static boolean isBackgroundLikeShooterCommand(String commandName) {
         return "ShooterBackground".equals(commandName)
-                || "ShooterHomeThenBackground".equals(commandName)
                 || "ShooterSlowShooterMotors".equals(commandName);
     }
 
@@ -668,7 +667,7 @@ public class Shooter extends SubsystemBase {
                         io.stop();
                     }
                 })
-                .withName("HoodHome");
+                .withName("ShooterHome");
     }
 
     private static double homingVoltage() {

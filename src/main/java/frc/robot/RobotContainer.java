@@ -161,13 +161,13 @@ public final class RobotContainer {
         Command selectedAuto = getAutonomousCommand();
         commandTelemetry.schedule("mode.autonomousInit.selectedAuto", selectedAuto);
         if (!commandUsesIntakeOrShooter(selectedAuto)) {
-            scheduleHomingAndBackground("mode.autonomousInit");
+            scheduleHoming("mode.autonomousInit");
         }
     }
 
     public void teleopInit() {
         commandTelemetry.cancelAllCommands("mode.teleopInit");
-        scheduleHomingAndBackground("mode.teleopInit");
+        scheduleHoming("mode.teleopInit");
     }
 
     public void teleopExit() {
@@ -190,13 +190,13 @@ public final class RobotContainer {
                 0.02);
     }
 
-    private void scheduleHomingAndBackground(String source) {
+    private void scheduleHoming(String source) {
         commandTelemetry.schedule(
-                source + ".intakeHomeThenBackground",
-                intake.homeCommand().andThen(intake.backgroundCommand()).withName("IntakeHomeThenBackground"));
+                source + ".intakeHome",
+                intake.homeCommand().withName("IntakeHome"));
         commandTelemetry.schedule(
-                source + ".shooterHomeThenBackground",
-                shooter.homeCommand().andThen(shooter.backgroundCommand()).withName("ShooterHomeThenBackground"));
+                source + ".shooterHome",
+                shooter.homeCommand().withName("ShooterHome"));
     }
 
     private boolean commandUsesIntakeOrShooter(Command command) {
@@ -285,6 +285,8 @@ public final class RobotContainer {
                                 .withName("DriveJoystickDefault")));
         intake.setDefaultCommand(
                 commandTelemetry.withCommandSource("default.intakeBackground", intake.backgroundCommand()));
+        shooter.setDefaultCommand(
+                commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
 
         bindOnTrue(
                 driverController.leftBumper(),
@@ -315,11 +317,7 @@ public final class RobotContainer {
         bindOnTrue(
                 driverController.povUp(),
                 "driver.povUp.onTrue",
-                Commands.runOnce(
-                                () -> commandTelemetry.schedule(
-                                        "driver.povUp.shooterBackground",
-                                        shooter.backgroundCommand()))
-                        .withName("ScheduleShooterBackground"));
+                shooter.homeCommand().withName("DriverShooterHome"));
         bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
         bindOnTrue(
                 driverController.povLeft(),
