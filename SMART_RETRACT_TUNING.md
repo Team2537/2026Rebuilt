@@ -5,7 +5,9 @@ This is a quick field guide for tuning the new intake smart retract behavior on 
 ## What Exists
 
 - Smart retract only moves while **shoot feed is active** (feed gate open).
-- If shoot is released early and intake is not fully retracted, it commands back to extended.
+- Smart retract starts only after feed has been continuously active for `SMART_RETRACT_FEED_START_DELAY_SEC`.
+- If feed drops during shoot, smart retract pauses at current position and resumes from there when feed returns.
+- On shoot release, intake restores to extended unless it has already reached the smart-retract inward limit.
 - Two modes are available from dashboard:
   - `Intake/SmartRetract/EnableNibble`
   - `Intake/SmartRetract/EnableHalfRetractReturn`
@@ -103,9 +105,10 @@ Adjustments:
 ## Pass/Fail Checklist
 
 - No visible retract flicker while holding shoot at marginal readiness.
+- Smart retract does not move before the configured feed start delay expires.
 - Smart retract pauses cleanly when feed is not active.
-- Early shoot release returns intake to extended (unless already fully retracted).
-- Full retract before release stays retracted.
+- Early shoot release returns intake to extended (unless already at smart retract inward limit).
+- If inward limit is reached before release, intake stays retracted after release.
 - Driver reports predictable behavior for at least 10 repeated cycles.
 
 ## Practical Tips
