@@ -4,8 +4,8 @@ import edu.wpi.first.math.trajectory.TrapezoidProfile;
 
 /** Shared heading-alignment tuning used by teleop auto-align and autonomous path overrides. */
 public final class AutoAimHeadingConfig {
-    private static final double DEFAULT_AIM_TOLERANCE_DEG = 3.0;
-    private static final double DEFAULT_AIM_RELEASE_TOLERANCE_DEG = 4.0;
+    private static final double DEFAULT_AIM_TOLERANCE_DEG = 1.5;
+    private static final double DEFAULT_AIM_RELEASE_TOLERANCE_DEG = 2.5;
     private static final double DEFAULT_TARGET_HOLD_SEC = 0.12;
 
     public static final double HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC = Math.toRadians(

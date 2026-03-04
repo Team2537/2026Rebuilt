@@ -55,6 +55,7 @@ public final class RobotContainer {
     private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
     private static final String APRIL_TAG_OBJECT_PREFIX = "Tag ";
     private static final String APRIL_TAG_TRAJECTORY_OBJECT_PREFIX = "trajTag";
+    private static final int APRIL_TAG_TRAJECTORY_SEGMENTS = 10;
 
     private final Drive drive;
     private final Vision vision;
@@ -131,14 +132,30 @@ public final class RobotContainer {
             if (robotPose != null && visibleTagIds.contains(tag.ID)) {
                 dashboardField
                         .getObject(APRIL_TAG_TRAJECTORY_OBJECT_PREFIX + tag.ID)
-                        .setPoses(
-                                robotPose,
-                                robotPose.interpolate(tagPose, 0.5),
-                                tagPose);
+                        .setPoses(buildTrajectoryPoses(robotPose, tagPose));
             } else {
                 dashboardField.getObject(APRIL_TAG_TRAJECTORY_OBJECT_PREFIX + tag.ID).setPoses();
             }
         }
+    }
+
+    private static Pose2d[] buildTrajectoryPoses(Pose2d start, Pose2d end) {
+        Pose2d[] poses = new Pose2d[APRIL_TAG_TRAJECTORY_SEGMENTS + 1];
+        double startX = start.getX();
+        double startY = start.getY();
+        double deltaX = end.getX() - startX;
+        double deltaY = end.getY() - startY;
+        Rotation2d lineHeading = new Rotation2d(deltaX, deltaY);
+        if (Math.abs(deltaX) < 1e-9 && Math.abs(deltaY) < 1e-9) {
+            lineHeading = start.getRotation();
+        }
+        for (int i = 0; i <= APRIL_TAG_TRAJECTORY_SEGMENTS; i++) {
+            double t = i / (double) APRIL_TAG_TRAJECTORY_SEGMENTS;
+            double x = startX + (deltaX * t);
+            double y = startY + (deltaY * t);
+            poses[i] = new Pose2d(x, y, lineHeading);
+        }
+        return poses;
     }
 
     private Set<Integer> getVisibleAprilTagIds() {
