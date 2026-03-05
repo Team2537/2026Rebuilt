@@ -466,7 +466,7 @@ public class Intake extends SubsystemBase {
     }
 
     private void updateMotionStateFromSensors() {
-        if (motionState == MotionState.HOMING || motionState == MotionState.UNKNOWN) {
+        if (motionState == MotionState.HOMING) {
             return;
         }
         if (goalState == GoalState.EXTENDED && motionState == MotionState.EXTENDED) {

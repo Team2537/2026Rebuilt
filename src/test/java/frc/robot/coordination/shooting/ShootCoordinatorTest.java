@@ -230,6 +230,26 @@ class ShootCoordinatorTest {
     }
 
     @Test
+    void aimForDistanceClearsTargetsWhenDistanceBecomesInvalid() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(new TestTransferIO());
+        ShootCoordinator coordinator = new ShootCoordinator(shooter, transfer);
+        AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
+
+        Command command = coordinator.aimForDistance(distanceMeters::get);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(2);
+        assertTrue(shooter.getTargetAverageShooterRpm() > 0.0);
+
+        distanceMeters.set(Double.NaN);
+        runSchedulerCycles(2);
+
+        assertEquals(0.0, shooter.getTargetAverageShooterRpm(), EPSILON);
+    }
+
+    @Test
     void cancelStopsShooterAndTransferOutputs() {
         TestShooterIO shooterIO = new TestShooterIO();
         TestTransferIO transferIO = new TestTransferIO();

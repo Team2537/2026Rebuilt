@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.littletonrobotics.junction.Logger;
 
 /** Vision subsystem responsible for pose updates from PhotonVision. */
@@ -315,33 +316,27 @@ public final class Vision extends SubsystemBase {
 
     private List<VisionIO> createIOs() {
         return switch (RobotType.MODE) {
-            case REAL ->
-                    List.of(
-                            new VisionIOPhotonVision(
-                                    VisionConstants.CAMERA_CONFIGS.get(0).name(),
-                                    VisionConstants.CAMERA_CONFIGS.get(0).robotToCamera(),
-                                    0),
-                            new VisionIOPhotonVision(
-                                    VisionConstants.CAMERA_CONFIGS.get(1).name(),
-                                    VisionConstants.CAMERA_CONFIGS.get(1).robotToCamera(),
-                                    1));
+            case REAL -> IntStream.range(0, VisionConstants.CAMERA_CONFIGS.size())
+                    .mapToObj(index -> (VisionIO) new VisionIOPhotonVision(
+                            VisionConstants.CAMERA_CONFIGS.get(index).name(),
+                            VisionConstants.CAMERA_CONFIGS.get(index).robotToCamera(),
+                            index))
+                    .toList();
             case SIMULATION -> {
                 // Use the ground truth pose (pure odometry, no vision corrections) so the
                 // sim cameras see the real robot position and can correct estimator drift.
                 Supplier<Pose2d> simTruthPoseSupplier = robotState::getSimGroundTruthPose;
-                yield List.of(
-                        new VisionIOPhotonVisionSim(
-                                VisionConstants.CAMERA_CONFIGS.get(0).name(),
-                                VisionConstants.CAMERA_CONFIGS.get(0).robotToCamera(),
-                                0,
-                                simTruthPoseSupplier),
-                        new VisionIOPhotonVisionSim(
-                                VisionConstants.CAMERA_CONFIGS.get(1).name(),
-                                VisionConstants.CAMERA_CONFIGS.get(1).robotToCamera(),
-                                1,
-                                simTruthPoseSupplier));
+                yield IntStream.range(0, VisionConstants.CAMERA_CONFIGS.size())
+                        .mapToObj(index -> (VisionIO) new VisionIOPhotonVisionSim(
+                                VisionConstants.CAMERA_CONFIGS.get(index).name(),
+                                VisionConstants.CAMERA_CONFIGS.get(index).robotToCamera(),
+                                index,
+                                simTruthPoseSupplier))
+                        .toList();
             }
-            case REPLAY -> List.of(new NullVisionIO(), new NullVisionIO());
+            case REPLAY -> IntStream.range(0, VisionConstants.CAMERA_CONFIGS.size())
+                    .mapToObj(index -> (VisionIO) new NullVisionIO())
+                    .toList();
         };
     }
 

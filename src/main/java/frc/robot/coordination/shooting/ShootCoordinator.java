@@ -34,11 +34,7 @@ public class ShootCoordinator {
     }
 
     public Command aimForDistance(DoubleSupplier distanceMetersSupplier) {
-        return Commands.runEnd(
-                        () -> shooter.setTargetsForDistance(distanceMetersSupplier.getAsDouble()),
-                        shooter::stopAll,
-                        shooter)
-                .withName("ShootCoordinatorAim");
+        return shooter.aimForDistance(distanceMetersSupplier).withName("ShootCoordinatorAim");
     }
 
     public Command shootForDistance(DoubleSupplier distanceMetersSupplier) {

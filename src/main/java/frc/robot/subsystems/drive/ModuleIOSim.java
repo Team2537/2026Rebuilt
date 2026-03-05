@@ -29,7 +29,6 @@ public class ModuleIOSim implements ModuleIO {
     // locally
     private static final double DRIVE_KP = 0.05;
     private static final double DRIVE_KD = 0.0;
-    private static final double DRIVE_KS = 0.0;
     private static final double DRIVE_KV_ROT = 0.91035; // Same units as TunerConstants: (volt * secs) / rotation
     private static final double DRIVE_KV = 1.0 / Units.rotationsToRadians(1.0 / DRIVE_KV_ROT);
     private static final double TURN_KP = 8.0;
@@ -44,7 +43,12 @@ public class ModuleIOSim implements ModuleIO {
     private boolean turnClosedLoop = false;
     private PIDController driveController = new PIDController(DRIVE_KP, 0, DRIVE_KD);
     private PIDController turnController = new PIDController(TURN_KP, 0, TURN_KD);
-    private double driveFFVolts = 0.0;
+    private final double driveKSVolts;
+    private final double driveKVVoltsPerRadPerSec;
+    private final double driveKAVoltsPerRadPerSecSq;
+    private double driveTargetVelocityRadPerSec = 0.0;
+    private double driveTargetAccelerationRadPerSecSq = 0.0;
+    private double driveArbitraryFeedforwardVolts = 0.0;
     private double driveAppliedVolts = 0.0;
     private double turnAppliedVolts = 0.0;
 
@@ -60,6 +64,10 @@ public class ModuleIOSim implements ModuleIO {
                         TURN_GEARBOX, constants.SteerInertia, constants.SteerMotorGearRatio),
                 TURN_GEARBOX);
 
+        driveKSVolts = constants.DriveMotorGains.kS;
+        driveKVVoltsPerRadPerSec = DRIVE_KV;
+        driveKAVoltsPerRadPerSecSq = constants.DriveMotorGains.kA / Units.rotationsToRadians(1.0);
+
         // Enable wrapping for turn PID
         turnController.enableContinuousInput(-Math.PI, Math.PI);
     }
@@ -68,7 +76,18 @@ public class ModuleIOSim implements ModuleIO {
     public void updateInputs(ModuleIOInputs inputs) {
         // Run closed-loop control
         if (driveClosedLoop) {
-            driveAppliedVolts = driveFFVolts + driveController.calculate(driveSim.getAngularVelocityRadPerSec());
+            double feedforwardVolts =
+                    (Math.abs(driveTargetVelocityRadPerSec) > 1e-6
+                            ? driveKSVolts * Math.signum(driveTargetVelocityRadPerSec)
+                            : 0.0)
+                            + (driveKVVoltsPerRadPerSec * driveTargetVelocityRadPerSec)
+                            + (driveKAVoltsPerRadPerSecSq * driveTargetAccelerationRadPerSecSq)
+                            + driveArbitraryFeedforwardVolts;
+            driveAppliedVolts =
+                    feedforwardVolts
+                            + driveController.calculate(
+                                    driveSim.getAngularVelocityRadPerSec(),
+                                    driveTargetVelocityRadPerSec);
         } else {
             driveController.reset();
         }
@@ -111,6 +130,9 @@ public class ModuleIOSim implements ModuleIO {
     public void setDriveOpenLoop(double output) {
         driveClosedLoop = false;
         driveAppliedVolts = output;
+        driveTargetVelocityRadPerSec = 0.0;
+        driveTargetAccelerationRadPerSecSq = 0.0;
+        driveArbitraryFeedforwardVolts = 0.0;
     }
 
     @Override
@@ -120,10 +142,14 @@ public class ModuleIOSim implements ModuleIO {
     }
 
     @Override
-    public void setDriveVelocity(double velocityRadPerSec) {
+    public void setDriveVelocity(
+            double velocityRadPerSec,
+            double accelerationRadPerSecSq,
+            double arbitraryFeedforward) {
         driveClosedLoop = true;
-        driveFFVolts = DRIVE_KS * Math.signum(velocityRadPerSec) + DRIVE_KV * velocityRadPerSec;
-        driveController.setSetpoint(velocityRadPerSec);
+        driveTargetVelocityRadPerSec = velocityRadPerSec;
+        driveTargetAccelerationRadPerSecSq = accelerationRadPerSecSq;
+        driveArbitraryFeedforwardVolts = arbitraryFeedforward;
     }
 
     @Override

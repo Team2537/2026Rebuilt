@@ -10,6 +10,7 @@ package frc.robot.subsystems.drive;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
+import com.ctre.phoenix6.swerve.SwerveModuleConstants.ClosedLoopOutputType;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
@@ -71,7 +72,7 @@ public class Module {
 
     /** Runs the module with the specified setpoint state and optimizes it by default. */
     public void runSetpoint(SwerveModuleState state) {
-        runSetpoint(state, true);
+        runSetpoint(state, true, 0.0, 0.0);
     }
 
     /**
@@ -81,12 +82,38 @@ public class Module {
      * @param optimizeState If true, optimize/cosine-scale before applying
      */
     public void runSetpoint(SwerveModuleState state, boolean optimizeState) {
+        runSetpoint(state, optimizeState, 0.0, 0.0);
+    }
+
+    /**
+     * Runs the module with the specified setpoint state and drive feedforward.
+     *
+     * @param state Setpoint to apply
+     * @param optimizeState If true, optimize/cosine-scale before applying
+     * @param driveAccelerationMetersPerSecSq Requested wheel acceleration in meters/sec^2
+     * @param driveArbitraryFeedforward Arbitrary drive feedforward in closed-loop output units
+     */
+    public void runSetpoint(
+            SwerveModuleState state,
+            boolean optimizeState,
+            double driveAccelerationMetersPerSecSq,
+            double driveArbitraryFeedforward) {
+        double adjustedAccelerationMetersPerSecSq = driveAccelerationMetersPerSecSq;
+        double adjustedArbitraryFeedforward = driveArbitraryFeedforward;
         if (optimizeState) {
+            double preOptimizeSpeedMetersPerSec = state.speedMetersPerSecond;
             state.optimize(getAngle());
             state.cosineScale(inputs.turnPosition);
+            if (Math.signum(preOptimizeSpeedMetersPerSec) != Math.signum(state.speedMetersPerSecond)) {
+                adjustedAccelerationMetersPerSecSq = -adjustedAccelerationMetersPerSecSq;
+                adjustedArbitraryFeedforward = -adjustedArbitraryFeedforward;
+            }
         }
 
-        io.setDriveVelocity(state.speedMetersPerSecond / constants.WheelRadius);
+        io.setDriveVelocity(
+                state.speedMetersPerSecond / constants.WheelRadius,
+                adjustedAccelerationMetersPerSecSq / constants.WheelRadius,
+                adjustedArbitraryFeedforward);
         io.setTurnPosition(state.angle);
     }
 
@@ -147,5 +174,10 @@ public class Module {
     /** Returns the module velocity in rotations/sec (Phoenix native units). */
     public double getFFCharacterizationVelocity() {
         return Units.radiansToRotations(inputs.driveVelocityRadPerSec);
+    }
+
+    /** Returns the configured drive motor closed-loop output type. */
+    public ClosedLoopOutputType getDriveClosedLoopOutput() {
+        return constants.DriveMotorClosedLoopOutput;
     }
 }

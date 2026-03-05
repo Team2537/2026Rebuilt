@@ -48,6 +48,20 @@ public interface ModuleIO {
     public default void setDriveVelocity(double velocityRadPerSec) {
     }
 
+    /**
+     * Run the drive motor at the specified velocity with feedforward terms.
+     *
+     * <p>The arbitrary feedforward units match the configured closed-loop output
+     * type for the drive motor: volts for voltage control, amps for torque-current
+     * control.
+     */
+    public default void setDriveVelocity(
+            double velocityRadPerSec,
+            double accelerationRadPerSecSq,
+            double arbitraryFeedforward) {
+        setDriveVelocity(velocityRadPerSec);
+    }
+
     /** Run the turn motor to the specified rotation. */
     public default void setTurnPosition(Rotation2d rotation) {
     }

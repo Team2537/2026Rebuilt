@@ -100,31 +100,13 @@ public class VisionIOPhotonVision implements VisionIO {
                                                     : totalTagDistance / targets.size()));
                         },
                         () -> {
-                            PhotonTrackedTarget target = targets.get(0);
-                            FieldConstants.TAG_LAYOUT
-                                    .getTagPose(target.getFiducialId())
-                                    .ifPresent(
-                                            tagPose -> {
-                                                Transform3d fieldToTarget =
-                                                        new Transform3d(tagPose.getTranslation(), tagPose.getRotation());
-                                                Transform3d cameraToTarget = target.getBestCameraToTarget();
-                                                Transform3d fieldToCamera =
-                                                        fieldToTarget.plus(cameraToTarget.inverse());
-                                                Transform3d fieldToRobot = fieldToCamera.plus(robotToCamera.inverse());
-                                                Pose3d robotPose =
-                                                        new Pose3d(fieldToRobot.getTranslation(), fieldToRobot.getRotation());
-
-                                                tagIds.add(target.getFiducialId());
-                                                poseObservations.add(
-                                                        new PoseObservation(
-                                                                resultTimestampSeconds,
-                                                                robotPose,
-                                                                target.getPoseAmbiguity(),
-                                                                1,
-                                                                cameraToTarget.getTranslation().getNorm()));
-                                            });
-                                            });
-
+                            addSingleTagObservations(
+                                    targets,
+                                    resultTimestampSeconds,
+                                    robotToCamera,
+                                    tagIds,
+                                    poseObservations);
+                        });
         inputs.poseObservations = poseObservations.toArray(new PoseObservation[0]);
         int[] tagIdArray = new int[tagIds.size()];
         int tagIdx = 0;
@@ -139,5 +121,33 @@ public class VisionIOPhotonVision implements VisionIO {
         inputs.poseObservations = EMPTY_POSE_OBSERVATIONS;
         inputs.tagIds = EMPTY_TAG_IDS;
         inputs.targetTransforms = EMPTY_TARGET_TRANSFORMS;
+    }
+
+    static void addSingleTagObservations(
+            List<PhotonTrackedTarget> targets,
+            double resultTimestampSeconds,
+            Transform3d robotToCamera,
+            Set<Integer> tagIds,
+            List<PoseObservation> poseObservations) {
+        for (PhotonTrackedTarget target : targets) {
+            FieldConstants.TAG_LAYOUT.getTagPose(target.getFiducialId()).ifPresent(tagPose -> {
+                Transform3d fieldToTarget =
+                        new Transform3d(tagPose.getTranslation(), tagPose.getRotation());
+                Transform3d cameraToTarget = target.getBestCameraToTarget();
+                Transform3d fieldToCamera = fieldToTarget.plus(cameraToTarget.inverse());
+                Transform3d fieldToRobot = fieldToCamera.plus(robotToCamera.inverse());
+                Pose3d robotPose =
+                        new Pose3d(fieldToRobot.getTranslation(), fieldToRobot.getRotation());
+
+                tagIds.add(target.getFiducialId());
+                poseObservations.add(
+                        new PoseObservation(
+                                resultTimestampSeconds,
+                                robotPose,
+                                target.getPoseAmbiguity(),
+                                1,
+                                cameraToTarget.getTranslation().getNorm()));
+            });
+        }
     }
 }

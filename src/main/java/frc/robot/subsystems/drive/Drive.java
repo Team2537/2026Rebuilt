@@ -53,6 +53,7 @@ import frc.robot.generated.TunerConstants;
 import frc.robot.util.ElasticNotifications;
 import frc.robot.util.LocalADStarAK;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
@@ -238,9 +239,33 @@ public class Drive extends SubsystemBase {
         }
 
         // Update odometry
-        double[] sampleTimestamps = modules[0].getOdometryTimestamps(); // All signals are sampled together
-        int sampleCount = sampleTimestamps.length;
-        for (int i = 0; i < sampleCount; i++) {
+        int[] moduleSampleCounts = new int[modules.length];
+        int sampleCount = Integer.MAX_VALUE;
+        for (int moduleIndex = 0; moduleIndex < modules.length; moduleIndex++) {
+            moduleSampleCounts[moduleIndex] = Math.min(
+                    modules[moduleIndex].getOdometryTimestamps().length,
+                    modules[moduleIndex].getOdometryPositions().length);
+            sampleCount = Math.min(sampleCount, moduleSampleCounts[moduleIndex]);
+        }
+        int gyroSampleCount = gyroInputs.connected
+                ? Math.min(gyroInputs.odometryYawTimestamps.length, gyroInputs.odometryYawPositions.length)
+                : 0;
+        if (gyroInputs.connected) {
+            sampleCount = Math.min(sampleCount, gyroSampleCount);
+        }
+        if (sampleCount == Integer.MAX_VALUE) {
+            sampleCount = 0;
+        }
+        final int sharedSampleCount = sampleCount;
+
+        Logger.recordOutput("Drive/Odometry/ModuleSampleCounts", moduleSampleCounts);
+        Logger.recordOutput("Drive/Odometry/GyroSampleCount", gyroSampleCount);
+        Logger.recordOutput("Drive/Odometry/SharedSampleCount", sharedSampleCount);
+        Logger.recordOutput(
+                "Drive/Odometry/SampleCountMismatch",
+                Arrays.stream(moduleSampleCounts).anyMatch(count -> count != sharedSampleCount)
+                        || (gyroInputs.connected && gyroSampleCount != sharedSampleCount));
+        for (int i = 0; i < sharedSampleCount; i++) {
             // Read wheel positions and deltas from each module (reuse pre-allocated arrays)
             for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
                 SwerveModulePosition pos = modules[moduleIndex].getOdometryPositions()[i];
@@ -262,7 +287,8 @@ public class Drive extends SubsystemBase {
             }
 
             // Apply update
-            poseEstimator.updateWithTime(sampleTimestamps[i], rawGyroRotation, odomModulePositions);
+            double sampleTimestamp = getOdometrySampleTimestamp(i);
+            poseEstimator.updateWithTime(sampleTimestamp, rawGyroRotation, odomModulePositions);
             if (simGroundTruthOdometry != null) {
                 simGroundTruthOdometry.update(rawGyroRotation, odomModulePositions);
             }
@@ -317,23 +343,33 @@ public class Drive extends SubsystemBase {
         SwerveModuleState[] appliedSetpointStates = copyModuleStates(rawSetpointStates);
         DriveFeedforwards selectedFeedforwards =
                 pathplannerFeedforwards != null ? pathplannerFeedforwards : generatedSetpoint.feedforwards();
+        if (selectedFeedforwards == null) {
+            selectedFeedforwards = DriveFeedforwards.zeros(modules.length);
+        }
 
         Logger.recordOutput("SwerveChassisSpeeds/Requested", desiredSpeeds);
         Logger.recordOutput("Drive/SetpointGenerator/UsingExternalFeedforwards", pathplannerFeedforwards != null);
+        Logger.recordOutput(
+                "Drive/SetpointGenerator/FeedforwardAccelerationsMpsSq",
+                selectedFeedforwards.accelerationsMPSSq());
         Logger.recordOutput("Drive/SetpointGenerator/FeedforwardTorqueCurrentsAmps",
                 selectedFeedforwards.torqueCurrentsAmps());
         Logger.recordOutput("Drive/SetpointGenerator/FeedforwardLinearForcesN",
                 selectedFeedforwards.linearForcesNewtons());
 
         for (int i = 0; i < 4; i++) {
-            modules[i].runSetpoint(appliedSetpointStates[i], false);
+            modules[i].runSetpoint(
+                    appliedSetpointStates[i],
+                    false,
+                    getFeedforwardValue(selectedFeedforwards.accelerationsMPSSq(), i),
+                    getModuleArbitraryFeedforward(selectedFeedforwards, i));
         }
 
         ChassisSpeeds appliedSpeeds = kinematics.toChassisSpeeds(appliedSetpointStates);
         previousSetpoint = new SwerveSetpoint(
                 appliedSpeeds,
                 copyModuleStates(appliedSetpointStates),
-                generatedSetpoint.feedforwards());
+                selectedFeedforwards);
 
         Logger.recordOutput("SwerveChassisSpeeds/Setpoints", appliedSpeeds);
         Logger.recordOutput("SwerveStates/Setpoints", rawSetpointStates);
@@ -605,20 +641,9 @@ public class Drive extends SubsystemBase {
 
     /** Resets odometry and sets current heading/yaw to zero. */
     public void resetOdometryAndHeadingToZero() {
-        odometryLock.lock();
-        try {
-            // Zero the gyro yaw (if supported) and synchronize estimator state
-            gyroIO.setYaw(Rotation2d.kZero);
-            rawGyroRotation = Rotation2d.kZero;
-
-            Pose2d current = getPose();
-            Pose2d zeroed = new Pose2d(current.getTranslation(), Rotation2d.kZero);
-            poseEstimator.resetPosition(Rotation2d.kZero, getModulePositions(), zeroed);
-
-            Logger.recordOutput("Drive/HeadingReset", true);
-        } finally {
-            odometryLock.unlock();
-        }
+        Pose2d current = getPose();
+        setPose(new Pose2d(current.getTranslation(), Rotation2d.kZero));
+        Logger.recordOutput("Drive/HeadingReset", true);
     }
 
     private static final Translation2d[] MODULE_TRANSLATIONS = new Translation2d[] {
@@ -639,5 +664,40 @@ public class Drive extends SubsystemBase {
             boolean enableSlowMode = !isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE);
             setConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE, enableSlowMode);
         }, this);
+    }
+
+    private double getOdometrySampleTimestamp(int sampleIndex) {
+        double timestampSum = 0.0;
+        int timestampCount = 0;
+
+        for (Module module : modules) {
+            double[] timestamps = module.getOdometryTimestamps();
+            if (sampleIndex < timestamps.length && Double.isFinite(timestamps[sampleIndex])) {
+                timestampSum += timestamps[sampleIndex];
+                timestampCount++;
+            }
+        }
+        if (gyroInputs.connected
+                && sampleIndex < gyroInputs.odometryYawTimestamps.length
+                && Double.isFinite(gyroInputs.odometryYawTimestamps[sampleIndex])) {
+            timestampSum += gyroInputs.odometryYawTimestamps[sampleIndex];
+            timestampCount++;
+        }
+
+        return timestampCount > 0 ? timestampSum / timestampCount : 0.0;
+    }
+
+    private double getModuleArbitraryFeedforward(DriveFeedforwards feedforwards, int moduleIndex) {
+        if (feedforwards == null) {
+            return 0.0;
+        }
+        return switch (modules[moduleIndex].getDriveClosedLoopOutput()) {
+            case Voltage -> 0.0;
+            case TorqueCurrentFOC -> getFeedforwardValue(feedforwards.torqueCurrentsAmps(), moduleIndex);
+        };
+    }
+
+    private static double getFeedforwardValue(double[] values, int index) {
+        return values != null && index < values.length ? values[index] : 0.0;
     }
 }

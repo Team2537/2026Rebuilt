@@ -25,6 +25,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.util.ElasticNotifications;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
@@ -393,6 +394,8 @@ public class Shooter extends SubsystemBase {
     private void setAimTargets(double distanceMeters) {
         if (isDashboardTuningEnabled()) {
             setTargets(getDashboardShotSetpoint());
+        } else if (!Double.isFinite(distanceMeters)) {
+            stopAll();
         } else {
             setTargetsForDistance(distanceMeters);
         }
@@ -403,7 +406,7 @@ public class Shooter extends SubsystemBase {
         return runCommandWithCleanup(
                         () -> {
                             setTargetsForDistance(distanceMetersSupplier.getAsDouble());
-                            if (atSetpoint()) {
+                            if (getReadinessDiagnosticsNow().atSetpoint()) {
                                 setKickerTorqueAmps(kickerTorqueAmpsSupplier.getAsDouble());
                             } else {
                                 stopKicker();
@@ -632,12 +635,23 @@ public class Shooter extends SubsystemBase {
     }
 
     public Command homeCommand() {
+        AtomicBoolean homingReached = new AtomicBoolean(false);
         BooleanSupplier atHomingStop =
                 () -> Math.abs(inputs.hoodStatorCurrentAmps) > ShooterConstants.HOMING_CURRENT_THRESHOLD_AMPS;
+        BooleanSupplier latchHomingStop = () -> {
+            boolean reached = atHomingStop.getAsBoolean();
+            if (reached) {
+                homingReached.set(true);
+            }
+            return reached;
+        };
         double preAimAngleRad = initialHoodPreAimAngleRad();
         return Commands.sequence(
-            Commands.runOnce(() -> io.setHoodVoltage(homingVoltage()), this),
-            Commands.waitUntil(atHomingStop)
+            Commands.runOnce(() -> {
+                        homingReached.set(false);
+                        io.setHoodVoltage(homingVoltage());
+                    }, this),
+            Commands.waitUntil(latchHomingStop)
                     .withTimeout(homingWaitTimeoutSec())
                     .withName("HoodHomeWaitUntil"),
             Commands.either(
@@ -661,7 +675,7 @@ public class Shooter extends SubsystemBase {
                                             "Shooter",
                                             "Hood homing timed out; using current hood position until re-homed."),
                                     this)),
-                    atHomingStop))
+                    homingReached::get))
                 .finallyDo(interrupted -> {
                     if (interrupted) {
                         io.stop();
