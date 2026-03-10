@@ -6,6 +6,7 @@ import static edu.wpi.first.units.Units.Seconds;
 import static edu.wpi.first.units.Units.Volts;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -31,6 +32,7 @@ import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Shooter extends SubsystemBase {
+    private static final double AT_SETPOINT_FALLING_DEBOUNCE_SECONDS = 0.2;
     private static final String DASHBOARD_ENABLE_KEY = "Shooter/Tuning/Enabled";
     private static final String DASHBOARD_LEFT_RPM_KEY = "Shooter/Tuning/LeftRPM";
     private static final String DASHBOARD_RIGHT_RPM_KEY = "Shooter/Tuning/RightRPM";
@@ -60,6 +62,8 @@ public class Shooter extends SubsystemBase {
     private final ShooterIOInputsAutoLogged inputs = new ShooterIOInputsAutoLogged();
     private final SysIdRoutine sysId;
     private StringLogEntry sysIdStateLogEntry;
+    private final Debouncer atSetpointDropDebouncer =
+            new Debouncer(AT_SETPOINT_FALLING_DEBOUNCE_SECONDS, Debouncer.DebounceType.kFalling);
 
     private final InterpolatingDoubleTreeMap leftRpmByDistance = new InterpolatingDoubleTreeMap();
     private final InterpolatingDoubleTreeMap rightRpmByDistance = new InterpolatingDoubleTreeMap();
@@ -268,7 +272,9 @@ public class Shooter extends SubsystemBase {
         boolean hoodAngleAtSetpoint =
                 Math.abs(hoodAngleErrorRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
 
-        boolean atSetpoint = leftVelocityAtSetpoint && rightVelocityAtSetpoint && hoodAngleAtSetpoint;
+        boolean shooterRpmAtSetpoint = leftVelocityAtSetpoint && rightVelocityAtSetpoint;
+        boolean debouncedShooterRpmAtSetpoint = atSetpointDropDebouncer.calculate(shooterRpmAtSetpoint);
+        boolean atSetpoint = debouncedShooterRpmAtSetpoint && hoodAngleAtSetpoint;
         boolean readyToFire = atSetpoint && shooterTargetRequested;
 
         return new ReadinessDiagnostics(

@@ -317,7 +317,7 @@ public class Intake extends SubsystemBase {
         motionState = isAtTargetPosition(clampedTargetRot)
                 ? atGoalState(goalState)
                 : movingToGoalState(goalState);
-        MotionProfile profile = slowRetractMotionProfile();
+        MotionProfile profile = standardMotionProfile();
         requestIntakePosition(
                 clampedTargetRot,
                 profile.velocityRotPerSec,

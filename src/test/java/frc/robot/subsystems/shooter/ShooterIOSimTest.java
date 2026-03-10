@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -196,6 +197,46 @@ class ShooterIOSimTest {
     }
 
     @Test
+    void atSetpointDebouncedForBriefShooterRpmDrop() {
+        TestInputsShooterIO shooterIO = new TestInputsShooterIO();
+        shooterIO.leftRpm = 2200.0;
+        shooterIO.rightRpm = 2200.0;
+        shooterIO.hoodPositionRad = 0.0;
+        Shooter shooter = new Shooter(shooterIO);
+        shooter.setTargets(2200.0, 2200.0, 0.0);
+
+        shooter.periodic();
+        assertTrue(shooter.atSetpoint());
+
+        shooterIO.leftRpm = 1000.0;
+        shooterIO.rightRpm = 1000.0;
+        shooter.periodic();
+        Timer.delay(0.10);
+        shooter.periodic();
+        assertTrue(shooter.atSetpoint(), "A shooter-RPM dip shorter than 0.2s should not clear atSetpoint.");
+    }
+
+    @Test
+    void atSetpointDropsAfterSustainedShooterRpmDrop() {
+        TestInputsShooterIO shooterIO = new TestInputsShooterIO();
+        shooterIO.leftRpm = 2200.0;
+        shooterIO.rightRpm = 2200.0;
+        shooterIO.hoodPositionRad = 0.0;
+        Shooter shooter = new Shooter(shooterIO);
+        shooter.setTargets(2200.0, 2200.0, 0.0);
+
+        shooter.periodic();
+        assertTrue(shooter.atSetpoint());
+
+        shooterIO.leftRpm = 1000.0;
+        shooterIO.rightRpm = 1000.0;
+        shooter.periodic();
+        Timer.delay(0.25);
+        shooter.periodic();
+        assertFalse(shooter.atSetpoint(), "A shooter-RPM dip longer than 0.2s should clear atSetpoint.");
+    }
+
+    @Test
     void stopClearsClosedLoopOutputs() {
         ShooterIOSim io = new ShooterIOSim();
         ShooterIO.ShooterIOInputs inputs = new ShooterIO.ShooterIOInputs();
@@ -215,5 +256,18 @@ class ShooterIOSimTest {
         assertEquals(0.0, inputs.shooterRightAppliedVolts, EPSILON);
         assertEquals(0.0, inputs.hoodAppliedVolts, EPSILON);
         assertEquals(0.0, inputs.kickerAppliedVolts, EPSILON);
+    }
+
+    private static final class TestInputsShooterIO implements ShooterIO {
+        private double leftRpm = 0.0;
+        private double rightRpm = 0.0;
+        private double hoodPositionRad = 0.0;
+
+        @Override
+        public void updateInputs(ShooterIOInputs inputs) {
+            inputs.shooterLeftVelocityRpm = leftRpm;
+            inputs.shooterRightVelocityRpm = rightRpm;
+            inputs.hoodPositionRad = hoodPositionRad;
+        }
     }
 }
