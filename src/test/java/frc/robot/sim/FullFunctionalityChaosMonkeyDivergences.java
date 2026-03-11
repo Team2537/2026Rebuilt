@@ -14,9 +14,8 @@ import org.junit.jupiter.api.Test;
 final class FullFunctionalityChaosMonkeyDivergences {
     private static final int CHAOS_PHASES = 20;
     private static final int TELEOP_CHAOS_CYCLES_PER_PHASE = 52;
-    private static final int FINAL_SLOW_RETRACT_HOLD_CYCLES = 220;
     private static final int POST_RELEASE_SETTLE_CYCLES = 80;
-    private static final int MANY_SLOW_RETRACT_STARTS = 12;
+    private static final int MANY_MANUAL_FEED_STARTS = 12;
 
     private static final double RETRACT_TOLERANCE_LEFT_ROT = 0.55;
     private static final double RETRACT_TOLERANCE_RIGHT_ROT = 0.60;
@@ -25,33 +24,32 @@ final class FullFunctionalityChaosMonkeyDivergences {
 
     private static final List<String> TRACKED_COMMANDS = List.of(
             "IntakeToggleExtended",
-            "IntakeSlowRetract",
+            "DriverIntakeTriggerPress",
+            "DriverManualFeed",
             "IntakeSpinRoller",
             "TransferReverse",
             "DriveToggleFieldOriented",
             "DriveResetOdometryAndHeading",
-            "DriverShooterHome",
+            "DriverIntakeHome",
             "StopManipulators",
             "DriveSetOdometryFromUnifiedVision",
             "ShooterTriggerSelectedMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot",
-            "ShooterAimOnlySelectedMode",
+            "ShooterHubShot",
             "DriveSysIdQuasistaticForward",
             "DriveSysIdQuasistaticReverse",
             "DriveSysIdDynamicForward",
             "DriveSysIdDynamicReverse");
 
     private static final List<String> HELD_COMMANDS = List.of(
-            "IntakeSlowRetract",
+            "DriverManualFeed",
             "IntakeSpinRoller",
             "TransferReverse",
             "ShooterTriggerSelectedMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot",
-            "ShooterAimOnlySelectedMode",
-            "ShooterAimOnly",
-            "ShooterAimOnlyOverrideDistance",
+            "ShooterHubShot",
             "DriveSysIdQuasistaticForward",
             "DriveSysIdQuasistaticReverse",
             "DriveSysIdDynamicForward",
@@ -105,14 +103,22 @@ final class FullFunctionalityChaosMonkeyDivergences {
             context.driverControllerSim.setYButton(false);
             context.runCycles(4);
             chaosCycles += 4;
-            // Force a clean whileTrue edge so IntakeSlowRetract is rescheduled for the final long hold.
             context.driverControllerSim.setXButton(false);
             context.runCycles(2);
             chaosCycles += 2;
-            context.driverControllerSim.setXButton(true);
-            context.runCycles(FINAL_SLOW_RETRACT_HOLD_CYCLES);
-            chaosCycles += FINAL_SLOW_RETRACT_HOLD_CYCLES;
-            context.driverControllerSim.setXButton(false);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            chaosCycles += 4;
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            context.runCycles(4);
+            chaosCycles += 4;
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            chaosCycles += 4;
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            boolean finalRetracted = context.runUntil(() -> !context.intake.isExtended(), 280);
+            assertTrue(finalRetracted, "Expected final left-trigger double press to retract intake after chaos.");
+            chaosCycles += 280;
 
             double chaosDurationSec = chaosCycles * FullFunctionalityHarness.LOOP_PERIOD_SEC;
             assertTrue(
@@ -132,7 +138,7 @@ final class FullFunctionalityChaosMonkeyDivergences {
             context.runCycles(POST_RELEASE_SETTLE_CYCLES);
 
             Map<String, FullFunctionalityHarness.CommandCounts> deltas = deltaCounts(context, before, TRACKED_COMMANDS);
-            FullFunctionalityHarness.CommandCounts slowRetractDelta = deltas.get("IntakeSlowRetract");
+            FullFunctionalityHarness.CommandCounts manualFeedDelta = deltas.get("DriverManualFeed");
             FullFunctionalityHarness.CommandCounts toggleDelta = deltas.get("IntakeToggleExtended");
             FullFunctionalityHarness.CommandCounts rollerDelta = deltas.get("IntakeSpinRoller");
             FullFunctionalityHarness.CommandCounts reverseDelta = deltas.get("TransferReverse");
@@ -146,11 +152,11 @@ final class FullFunctionalityChaosMonkeyDivergences {
                             "starts>=20",
                             toggleDelta));
             assertTrue(
-                    slowRetractDelta.starts() >= MANY_SLOW_RETRACT_STARTS,
+                    manualFeedDelta.starts() >= MANY_MANUAL_FEED_STARTS,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos X spam should trigger many slow retract starts",
-                            "starts>=" + MANY_SLOW_RETRACT_STARTS,
-                            slowRetractDelta));
+                            "Chaos X spam should trigger many manual-feed starts",
+                            "starts>=" + MANY_MANUAL_FEED_STARTS,
+                            manualFeedDelta));
             assertTrue(
                     rollerDelta.starts() >= 20,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -164,16 +170,16 @@ final class FullFunctionalityChaosMonkeyDivergences {
                             "starts>=20",
                             reverseDelta));
             assertTrue(
-                    fieldToggleDelta.starts() >= 12,
+                    fieldToggleDelta.starts() >= 8,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos back-button spam should toggle field mode frequently",
-                            "starts>=12",
+                            "Chaos POV-right spam should toggle field mode frequently",
+                            "starts>=8",
                             fieldToggleDelta));
             assertTrue(
-                    resetDelta.starts() >= 12,
+                    resetDelta.starts() >= 8,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos start-button spam should reset heading frequently",
-                            "starts>=12",
+                            "Chaos stick-combo spam should reset heading frequently",
+                            "starts>=8",
                             resetDelta));
 
             for (String commandName : TRACKED_COMMANDS) {
@@ -232,21 +238,15 @@ final class FullFunctionalityChaosMonkeyDivergences {
                             String.format(Locale.US, "rightRot=%.3f", rightRot)));
 
             assertTrue(
-                    slowRetractDelta.finishes() >= 1,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Slow retract should finish at least once during chaos and final hold",
-                            "finishes>=1",
-                            slowRetractDelta));
-            assertTrue(
                     Math.abs(leftRot - IntakeConstants.RETRACTED_POSITION_ROT) <= STRICT_FINAL_RETRACT_LEFT_ROT
                             && Math.abs(rightRot - expectedRightRetractRot) <= STRICT_FINAL_RETRACT_RIGHT_ROT,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "After many slow retract triggers, final retract should complete physically (not just logical flag)",
+                            "After the final left-trigger double press, final retract should complete physically (not just logical flag)",
                             "left/right within strict retract tolerance",
                             String.format(
                                     Locale.US,
-                                    "slowRetractDelta=%s leftRot=%.3f rightRot=%.3f intakeExtended=%s",
-                                    slowRetractDelta,
+                                    "manualFeedDelta=%s leftRot=%.3f rightRot=%.3f intakeExtended=%s",
+                                    manualFeedDelta,
                                     leftRot,
                                     rightRot,
                                     context.intake.isExtended())));
@@ -299,12 +299,14 @@ final class FullFunctionalityChaosMonkeyDivergences {
             context.driverControllerSim.setRightTriggerAxis(pattern >= 8 && pattern <= 14 ? 1.0 : 0.0);
             context.driverControllerSim.setRightBumperButton(pattern >= 15 && pattern <= 20);
             context.driverControllerSim.setYButton(pattern >= 10 && pattern <= 13);
-            context.driverControllerSim.setBackButton(pattern == 3 || pattern == 11 || pattern == 19);
             context.driverControllerSim.setStartButton(pattern == 5 || pattern == 17 || pattern == 23);
-            context.driverControllerSim.setPOV(switch (pattern % 4) {
+            context.driverControllerSim.setLeftStickButton(pattern == 3 || pattern == 11 || pattern == 19);
+            context.driverControllerSim.setRightStickButton(pattern == 3 || pattern == 11 || pattern == 19);
+            context.driverControllerSim.setPOV(switch (pattern % 5) {
                 case 0 -> 0;
-                case 1 -> 180;
-                case 2 -> 270;
+                case 1 -> 90;
+                case 2 -> 180;
+                case 3 -> 270;
                 default -> -1;
             });
 
@@ -328,9 +330,10 @@ final class FullFunctionalityChaosMonkeyDivergences {
         context.driverControllerSim.setRightTriggerAxis(1.0);
         context.driverControllerSim.setRightBumperButton((phase % 3) != 0);
         context.driverControllerSim.setYButton(true);
-        context.driverControllerSim.setBackButton((phase % 2) == 1);
         context.driverControllerSim.setStartButton((phase % 4) == 0);
-        context.driverControllerSim.setPOV((phase % 3) == 0 ? 0 : (phase % 3) == 1 ? 180 : 270);
+        context.driverControllerSim.setLeftStickButton((phase % 2) == 1);
+        context.driverControllerSim.setRightStickButton((phase % 2) == 1);
+        context.driverControllerSim.setPOV((phase % 4) == 0 ? 0 : (phase % 4) == 1 ? 90 : (phase % 4) == 2 ? 180 : 270);
 
         if (context.godControllerSim != null) {
             context.godControllerSim.setAButton((phase % 4) == 0);

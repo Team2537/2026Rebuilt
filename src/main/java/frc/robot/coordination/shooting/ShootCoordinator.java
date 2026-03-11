@@ -42,15 +42,49 @@ public class ShootCoordinator {
     }
 
     public Command shootForDistance(DoubleSupplier distanceMetersSupplier, BooleanSupplier aimReadySupplier) {
+        return shootForDistance(distanceMetersSupplier, aimReadySupplier, () -> false, () -> true)
+                .withName("ShootCoordinatorShootForDistance");
+    }
+
+    public Command shootForDistance(
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return shootForDistance(distanceMetersSupplier, aimReadySupplier, manualFeedOverrideSupplier, () -> true)
+                .withName("ShootCoordinatorShootForDistance");
+    }
+
+    public Command shootForDistance(
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
         return Commands.runEnd(
-                        () -> executeShoot(distanceMetersSupplier, aimReadySupplier),
+                        () -> executeShoot(
+                                distanceMetersSupplier,
+                                aimReadySupplier,
+                                manualFeedOverrideSupplier,
+                                automaticFeedEnabledSupplier),
                         this::stopAllOutputs,
                         shooter,
                         transfer)
                 .withName("ShootCoordinatorShootForDistance");
     }
 
-    private void executeShoot(DoubleSupplier distanceMetersSupplier, BooleanSupplier aimReadySupplier) {
+    public Command manualFeedCommand() {
+        return Commands.runEnd(
+                        this::applyManualFeedOutputs,
+                        this::stopFeedOutputs,
+                        shooter,
+                        transfer)
+                .withName("ShootCoordinatorManualFeed");
+    }
+
+    private void executeShoot(
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
         double distanceMeters = distanceMetersSupplier.getAsDouble();
         boolean distanceValid = Double.isFinite(distanceMeters);
         if (distanceValid) {
@@ -61,29 +95,47 @@ public class ShootCoordinator {
         // decisions at mode transitions / target changes.
         ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow();
         boolean aimReady = aimReadySupplier.getAsBoolean();
+        boolean manualFeedOverride = manualFeedOverrideSupplier.getAsBoolean();
+        boolean automaticFeedEnabled = automaticFeedEnabledSupplier.getAsBoolean();
         GateEvaluation gateEvaluation =
-                evaluateFeedGate(distanceValid, readiness.atSetpoint(), aimReady, readyStableCycles);
+                evaluateFeedGate(
+                        distanceValid,
+                        readiness.atSetpoint(),
+                        aimReady,
+                        manualFeedOverride,
+                        automaticFeedEnabled,
+                        readyStableCycles);
         readyStableCycles = gateEvaluation.nextReadyStableCycles();
 
-        applyFeedOutputs(gateEvaluation.gateDecision().gateOpen());
+        applyFeedOutputs(gateEvaluation.gateDecision().gateOpen(), manualFeedOverride);
 
         logShootingState(
                 distanceMeters,
                 distanceValid,
                 readiness.atSetpoint(),
                 aimReady,
+                manualFeedOverride,
+                automaticFeedEnabled,
                 gateEvaluation.gateDecision());
     }
 
-    private void applyFeedOutputs(boolean gateOpen) {
-        activelyFeeding = gateOpen;
-        if (!gateOpen) {
-            shooter.stopKicker();
-            transfer.stopAll();
+    private void applyManualFeedOutputs() {
+        applyFeedOutputs(false, true);
+    }
+
+    private void applyFeedOutputs(boolean gateOpen, boolean manualFeedOverride) {
+        activelyFeeding = gateOpen || manualFeedOverride;
+        if (!activelyFeeding) {
+            stopFeedOutputs();
             return;
         }
         shooter.setKickerTorqueAmps(ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
         transfer.setPercent(TransferConstants.RUN_TRANSFER_PERCENT);
+    }
+
+    private void stopFeedOutputs() {
+        shooter.stopKicker();
+        transfer.stopAll();
     }
 
     private void logShootingState(
@@ -91,6 +143,8 @@ public class ShootCoordinator {
             boolean distanceValid,
             boolean shooterAtSetpoint,
             boolean aimReady,
+            boolean manualFeedOverride,
+            boolean automaticFeedEnabled,
             GateDecision gateDecision) {
         Logger.recordOutput("Shooting/DistanceMeters", distanceMeters);
         Logger.recordOutput("Shooting/DistanceValid", distanceValid);
@@ -99,12 +153,18 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/AimToleranceRad", AutoAimHeadingConfig.AIM_TOLERANCE_RAD);
         Logger.recordOutput("Shooting/ShooterAtSetpoint", shooterAtSetpoint);
         Logger.recordOutput("Shooting/AimReady", aimReady);
+        Logger.recordOutput("Shooting/ManualFeedOverride", manualFeedOverride);
+        Logger.recordOutput("Shooting/AutomaticFeedEnabled", automaticFeedEnabled);
         Logger.recordOutput("Shooting/GateOpen", gateDecision.gateOpen());
         Logger.recordOutput("Shooting/BlockReason", gateDecision.blockReason());
         Logger.recordOutput("Shooting/ReadyStableCycles", readyStableCycles);
 
         String state;
-        if (!distanceValid) {
+        if (manualFeedOverride) {
+            state = "MANUAL_FEED_OVERRIDE";
+        } else if (!automaticFeedEnabled) {
+            state = "AIM_ONLY_OVERRIDE";
+        } else if (!distanceValid) {
             state = "NO_TARGET";
         } else if (gateDecision.gateOpen()) {
             state = "SHOOTING";
@@ -133,7 +193,15 @@ public class ShootCoordinator {
             boolean distanceValid,
             boolean shooterAtSetpoint,
             boolean aimReady,
+            boolean manualFeedOverride,
+            boolean automaticFeedEnabled,
             int previousReadyStableCycles) {
+        if (manualFeedOverride) {
+            return new GateEvaluation(new GateDecision(true, "ManualFeedOverride"), 0);
+        }
+        if (!automaticFeedEnabled) {
+            return new GateEvaluation(new GateDecision(false, "FeedingDisabledOverride"), 0);
+        }
         if (!distanceValid) {
             return new GateEvaluation(new GateDecision(false, "DistanceInvalid"), 0);
         }

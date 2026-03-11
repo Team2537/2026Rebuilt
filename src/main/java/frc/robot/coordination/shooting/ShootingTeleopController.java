@@ -15,6 +15,7 @@ import frc.robot.subsystems.drive.DriveConstants;
 import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.AimReadyLatch;
 import frc.robot.util.AutoAimHeadingConfig;
 import frc.robot.util.CycleCache;
@@ -73,39 +74,44 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier) {
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
                 Commands.either(
-                        createOverrideAutoAimShootCommand(xSupplier, ySupplier, omegaFallbackSupplier),
+                        createOverrideAutoAimShootCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                manualFeedOverrideSupplier),
                         createShootCommand(
                                 xSupplier,
                                 ySupplier,
                                 omegaFallbackSupplier,
                                 distanceMetersSupplier,
                                 targetHeadingSupplier,
-                                aimReadySupplier),
+                                aimReadySupplier,
+                                manualFeedOverrideSupplier),
                         dashboardOverrides::isAutoAimEnabled)
                         .withName("ShooterTriggerSelectedMode"));
     }
 
-    public Command createSelectedAimOnlyCommand(
+    public Command createHubShotCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
-            DoubleSupplier distanceMetersSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier) {
-        Command normalAimOnly = Commands.parallel(
-                createAutoAlignCommand(
+            Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return withShootingConstraintProfile(
+                createShootCommand(
                         xSupplier,
                         ySupplier,
                         omegaFallbackSupplier,
-                        targetHeadingSupplier),
-                shootCoordinator.aimForDistance(distanceMetersSupplier))
-                .withName("ShooterAimOnly");
-        Command overrideAimOnly = shootCoordinator.aimForDistance(dashboardOverrides::getAimDistanceMeters)
-                .withName("ShooterAimOnlyOverrideDistance");
-        return Commands.either(overrideAimOnly, normalAimOnly, dashboardOverrides::isAutoAimEnabled)
-                .withName("ShooterAimOnlySelectedMode");
+                        () -> ShooterConstants.HUB_SHOT_DISTANCE_METERS,
+                        targetHeadingSupplier,
+                        aimReadySupplier,
+                        manualFeedOverrideSupplier)
+                        .withName("ShooterHubShot"));
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
@@ -207,7 +213,8 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier) {
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
         CycleCache<Boolean> aimReadyCycleCache = new CycleCache<>();
         BooleanSupplier cachedAimReadySupplier =
                 () -> aimReadyCycleCache.get(commandTelemetry.getCycle(), aimReadySupplier::getAsBoolean);
@@ -221,7 +228,11 @@ public final class ShootingTeleopController {
                         omegaFallbackSupplier,
                         targetHeadingSupplier,
                         readyToFeedSupplier),
-                shootCoordinator.shootForDistance(distanceMetersSupplier, cachedAimReadySupplier),
+                shootCoordinator.shootForDistance(
+                        distanceMetersSupplier,
+                        cachedAimReadySupplier,
+                        manualFeedOverrideSupplier,
+                        () -> !dashboardOverrides.isFeedingDisabled()),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerAimAndShoot");
     }
@@ -229,7 +240,8 @@ public final class ShootingTeleopController {
     private Command createOverrideAutoAimShootCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
-            DoubleSupplier omegaSupplier) {
+            DoubleSupplier omegaSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
         return Commands.parallel(
                 DriveCommands.joystickDrive(
                         drive,
@@ -237,7 +249,11 @@ public final class ShootingTeleopController {
                         ySupplier,
                         omegaSupplier)
                         .withName("DriveJoystickOverrideAutoAim"),
-                shootCoordinator.shootForDistance(dashboardOverrides::getAimDistanceMeters, () -> true)
+                shootCoordinator.shootForDistance(
+                                dashboardOverrides::getAimDistanceMeters,
+                                () -> true,
+                                manualFeedOverrideSupplier,
+                                () -> !dashboardOverrides.isFeedingDisabled())
                         .withName("ShooterShootOverrideDistance"),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerOverrideAutoAimShoot");

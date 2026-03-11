@@ -284,65 +284,80 @@ final class FullFunctionalityBindings {
                             || context.recorder.getCounts("IntakeHome").starts() >= 1,
                     "Expected either IntakeBackground or IntakeHome to start in teleop.");
 
-            FullFunctionalityHarness.CommandCounts slowModeBefore = context.recorder.getCounts("DriveToggleSlowMode");
-            context.tapDriverButton(context.driverControllerSim::setLeftBumperButton);
+            FullFunctionalityHarness.CommandCounts slowModeBefore = context.recorder.getCounts("DriveHoldSlowMode");
+            context.driverControllerSim.setLeftStickButton(true);
+            context.runCycles(20);
             assertTrue(
                     context.drive.isConstraintProfileActive(frc.robot.subsystems.drive.DriveConstants.ConstraintProfile.SLOW_MODE),
-                    "Expected left bumper to enable slow mode on first press.");
-            context.tapDriverButton(context.driverControllerSim::setLeftBumperButton);
+                    "Expected left stick hold to enable slow mode while pressed.");
+            context.driverControllerSim.setLeftStickButton(false);
+            context.runCycles(10);
             assertTrue(
                     !context.drive.isConstraintProfileActive(frc.robot.subsystems.drive.DriveConstants.ConstraintProfile.SLOW_MODE),
-                    "Expected left bumper to disable slow mode on second press.");
+                    "Expected releasing left stick to disable slow mode.");
             FullFunctionalityHarness.CommandCounts slowModeDelta =
-                    context.recorder.getCounts("DriveToggleSlowMode").minus(slowModeBefore);
-            assertEquals(
-                    2,
-                    slowModeDelta.starts(),
+                    context.recorder.getCounts("DriveHoldSlowMode").minus(slowModeBefore);
+            assertTrue(
+                    slowModeDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Left bumper should toggle slow mode twice", "starts=2", slowModeDelta));
+                            "Left stick hold should schedule slow mode",
+                            "starts>=1",
+                            slowModeDelta));
+            assertTrue(
+                    slowModeDelta.interrupts() >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Releasing left stick should interrupt slow mode hold",
+                            "interrupts>=1",
+                            slowModeDelta));
 
             FullFunctionalityHarness.CommandCounts fieldModeBefore =
                     context.recorder.getCounts("DriveToggleFieldOriented");
-            context.tapDriverButton(context.driverControllerSim::setBackButton);
-            assertTrue(!context.drive.isFieldOriented(), "Expected back button to toggle field orientation off.");
-            context.tapDriverButton(context.driverControllerSim::setBackButton);
-            assertTrue(context.drive.isFieldOriented(), "Expected back button to toggle field orientation back on.");
+            context.tapDriverPov(90);
+            assertTrue(!context.drive.isFieldOriented(), "Expected POV right to toggle field orientation off.");
+            context.tapDriverPov(90);
+            assertTrue(context.drive.isFieldOriented(), "Expected POV right to toggle field orientation back on.");
             FullFunctionalityHarness.CommandCounts fieldModeDelta =
                     context.recorder.getCounts("DriveToggleFieldOriented").minus(fieldModeBefore);
             assertEquals(
                     2,
                     fieldModeDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Back button should toggle field-oriented mode twice", "starts=2", fieldModeDelta));
+                            "POV right should toggle field-oriented mode twice", "starts=2", fieldModeDelta));
 
             context.drive.setPose(new Pose2d(context.drive.getPose().getTranslation(), Rotation2d.fromRadians(0.9)));
             FullFunctionalityHarness.CommandCounts resetBefore =
                     context.recorder.getCounts("DriveResetOdometryAndHeading");
-            context.tapDriverButton(context.driverControllerSim::setStartButton);
+            context.driverControllerSim.setLeftStickButton(true);
+            context.runCycles(4);
+            context.driverControllerSim.setRightStickButton(true);
+            context.runCycles(4);
             assertTrue(
                     Math.abs(context.drive.getPose().getRotation().getRadians()) <= 1e-3,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Start button should reset heading to zero radians",
+                            "Left and right stick press combo should reset heading to zero radians",
                             "headingRad≈0",
                             String.format(Locale.US, "headingRad=%.6f", context.drive.getPose().getRotation().getRadians())));
+            context.driverControllerSim.setRightStickButton(false);
+            context.driverControllerSim.setLeftStickButton(false);
+            context.runCycles(4);
             FullFunctionalityHarness.CommandCounts resetDelta =
                     context.recorder.getCounts("DriveResetOdometryAndHeading").minus(resetBefore);
             assertEquals(
                     1,
                     resetDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Start button should schedule reset once", "starts=1", resetDelta));
+                            "Stick-press combo should schedule reset once", "starts=1", resetDelta));
 
             context.drive.setPose(new Pose2d(context.drive.getPose().getTranslation(), Rotation2d.fromRadians(0.75)));
             FullFunctionalityHarness.CommandCounts snapBefore = context.recorder.getCounts("DriveHeadingSnap");
-            context.tapDriverButton(context.driverControllerSim::setRightStickButton);
+            context.tapDriverPov(0);
             context.runCycles(250);
             FullFunctionalityHarness.CommandCounts snapDelta =
                     context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore);
             assertTrue(
                     snapDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right stick press should schedule heading snap", "starts>=1", snapDelta));
+                            "POV up should schedule heading snap", "starts>=1", snapDelta));
             assertTrue(
                     snapDelta.finishes() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -364,12 +379,15 @@ final class FullFunctionalityBindings {
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "B button should trigger intake toggle twice", "starts=2", intakeToggleDelta));
 
+            FullFunctionalityHarness.CommandCounts intakeTriggerBefore =
+                    context.recorder.getCounts("DriverIntakeTriggerPress");
             FullFunctionalityHarness.CommandCounts rollerBefore = context.recorder.getCounts("IntakeSpinRoller");
             context.driverControllerSim.setLeftTriggerAxis(1.0);
             context.runCycles(40);
             assertTrue(
                     context.recorder.runningCount("IntakeSpinRoller") >= 1,
                     "Expected left trigger hold to keep IntakeSpinRoller running.");
+            assertTrue(context.intake.isExtended(), "Expected left trigger press to deploy intake.");
             assertTrue(
                     Math.abs(context.intakeInputs.rollerAppliedVolts) > 0.5,
                     "Expected left trigger hold to command nonzero roller voltage.");
@@ -387,6 +405,24 @@ final class FullFunctionalityBindings {
                             "Releasing left trigger should interrupt IntakeSpinRoller",
                             "interrupts>=1",
                             rollerDelta));
+            FullFunctionalityHarness.CommandCounts intakeTriggerDelta =
+                    context.recorder.getCounts("DriverIntakeTriggerPress").minus(intakeTriggerBefore);
+            assertTrue(
+                    intakeTriggerDelta.starts() >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Left trigger press should schedule the intake deploy/double-press handler",
+                            "starts>=1",
+                            intakeTriggerDelta));
+
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            boolean leftTriggerDoubleTapRetracted = context.runUntil(() -> !context.intake.isExtended(), 260);
+            assertTrue(leftTriggerDoubleTapRetracted, "Expected left-trigger double press to retract the intake.");
 
             FullFunctionalityHarness.CommandCounts reverseBefore = context.recorder.getCounts("TransferReverse");
             context.driverControllerSim.setYButton(true);
@@ -416,54 +452,53 @@ final class FullFunctionalityBindings {
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Releasing Y should interrupt TransferReverse", "interrupts>=1", reverseDelta));
 
-            context.intake.setExtended(true);
-            context.runCycles(20);
-            FullFunctionalityHarness.CommandCounts slowRetractBefore = context.recorder.getCounts("IntakeSlowRetract");
+            FullFunctionalityHarness.CommandCounts manualFeedBefore =
+                    context.recorder.getCounts("DriverManualFeed");
             context.driverControllerSim.setXButton(true);
-            context.runCycles(220);
+            context.runCycles(40);
+            assertTrue(context.shooter.isKickerActive(), "Expected X hold to run the kicker as a manual feed backup.");
+            assertTrue(
+                    context.transferInputs.appliedVolts > 1.0,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Holding X should command transfer forward voltage",
+                            "appliedVolts>1.0",
+                            String.format(Locale.US, "appliedVolts=%.3f", context.transferInputs.appliedVolts)));
             context.driverControllerSim.setXButton(false);
             context.runCycles(20);
-            assertTrue(!context.intake.isExtended(), "Expected X hold to complete slow retract and clear extended state.");
-            FullFunctionalityHarness.CommandCounts slowRetractDelta =
-                    context.recorder.getCounts("IntakeSlowRetract").minus(slowRetractBefore);
             assertTrue(
-                    slowRetractDelta.starts() >= 1,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "X should schedule IntakeSlowRetract", "starts>=1", slowRetractDelta));
+                    !context.shooter.isKickerActive(),
+                    "Expected releasing X to stop the manual-feed kicker.");
             assertTrue(
-                    slowRetractDelta.finishes() >= 1,
+                    Math.abs(context.transferInputs.appliedVolts) < 1e-6,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Holding X should allow at least one IntakeSlowRetract run to finish",
-                            "finishes>=1",
-                            slowRetractDelta));
-            List<FullFunctionalityHarness.CommandRun> slowRetractRuns = context.recorder.getRuns("IntakeSlowRetract");
-            assertTrue(!slowRetractRuns.isEmpty(), "Expected to record IntakeSlowRetract run durations.");
-            double longestSlowRetractSec =
-                    slowRetractRuns.stream().mapToDouble(FullFunctionalityHarness.CommandRun::durationSec).max().orElse(0.0);
+                            "Releasing X should stop transfer",
+                            "appliedVolts=0",
+                            String.format(Locale.US, "appliedVolts=%.3f", context.transferInputs.appliedVolts)));
+            FullFunctionalityHarness.CommandCounts manualFeedDelta =
+                    context.recorder.getCounts("DriverManualFeed").minus(manualFeedBefore);
             assertTrue(
-                    longestSlowRetractSec >= 1.20,
+                    manualFeedDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "At least one slow retract run should persist long enough to hit its timeout or setpoint wait",
-                            "longestRun>=1.20s",
-                            String.format(Locale.US, "longestRun=%.3fs", longestSlowRetractSec)));
-            double leftAfterSlowRetract = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+                            "X should schedule standalone manual feed when no shoot command is active",
+                            "starts>=1",
+                            manualFeedDelta));
             assertTrue(
-                    leftAfterSlowRetract < IntakeConstants.EXTENDED_POSITION_ROT - 4.0,
+                    manualFeedDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Slow retract should make significant progress toward retracting left intake",
-                            "leftPosition < (extended-4.0) rot",
-                            leftAfterSlowRetract));
+                            "Releasing X should interrupt the manual-feed hold command",
+                            "interrupts>=1",
+                            manualFeedDelta));
 
             FullFunctionalityHarness.CommandCounts scheduleBackgroundBefore =
-                    context.recorder.getCounts("DriverShooterHome");
-            context.tapDriverPov(0);
+                    context.recorder.getCounts("DriverIntakeHome");
+            context.tapDriverButton(context.driverControllerSim::setStartButton);
             FullFunctionalityHarness.CommandCounts scheduleBackgroundDelta =
-                    context.recorder.getCounts("DriverShooterHome").minus(scheduleBackgroundBefore);
+                    context.recorder.getCounts("DriverIntakeHome").minus(scheduleBackgroundBefore);
             assertEquals(
                     1,
                     scheduleBackgroundDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "POV up should schedule DriverShooterHome once",
+                            "Start should schedule DriverIntakeHome once",
                             "starts=1",
                             scheduleBackgroundDelta));
 
@@ -513,47 +548,84 @@ final class FullFunctionalityBindings {
                                     context.shooter.getTargetAverageShooterRpm(),
                                     ShooterConstants.SLOW_SHOOTER_RPM)));
 
+            SmartDashboard.putBoolean("Overrides/DisableFeeding", true);
+            context.runCycles(6);
+            FullFunctionalityHarness.CommandCounts feedDisabledShootBefore =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.runCycles(140);
+            assertTrue(
+                    context.recorder.runningCount("ShooterTriggerSelectedMode") >= 1,
+                    "Expected right trigger to keep aiming/spinning while feed disable override is enabled.");
+            assertTrue(
+                    !context.shooter.isKickerActive(),
+                    "Expected feed disable override to block automatic kicker feed.");
+            assertTrue(
+                    Math.abs(context.transferInputs.appliedVolts) < 1e-6,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Feed disable override should keep transfer stopped until manual override is used",
+                            "transferAppliedVolts=0",
+                            String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
+            context.driverControllerSim.setXButton(true);
+            boolean manualFeedOverrideActivated = context.runUntil(context.shooter::isKickerActive, 120);
+            assertTrue(
+                    manualFeedOverrideActivated,
+                    "Expected X manual feed to still work while the feed disable override is enabled.");
+            context.driverControllerSim.setXButton(false);
+            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.runCycles(10);
+            FullFunctionalityHarness.CommandCounts feedDisabledShootDelta =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(feedDisabledShootBefore);
+            assertTrue(
+                    feedDisabledShootDelta.starts() >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Feed disable override should still run the normal shoot command wrapper",
+                            "starts>=1",
+                            feedDisabledShootDelta));
+            SmartDashboard.putBoolean("Overrides/DisableFeeding", false);
+            context.runCycles(4);
+
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
             context.runCycles(4);
-            FullFunctionalityHarness.CommandCounts aimOnlyBefore =
-                    context.recorder.getCounts("ShooterAimOnlySelectedMode");
+            FullFunctionalityHarness.CommandCounts hubShotBefore =
+                    context.recorder.getCounts("ShooterHubShot");
             context.driverControllerSim.setRightBumperButton(true);
-            context.runCycles(40);
+            boolean hubShotKickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
             assertTrue(
-                    context.recorder.runningCount("ShooterAimOnlySelectedMode") >= 1,
-                    "Expected right bumper alone to run aim-only mode.");
+                    hubShotKickerActivated,
+                    "Expected right bumper hub shot to eventually activate kicker.");
             context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
-            FullFunctionalityHarness.CommandCounts aimOnlyDelta =
-                    context.recorder.getCounts("ShooterAimOnlySelectedMode").minus(aimOnlyBefore);
+            FullFunctionalityHarness.CommandCounts hubShotDelta =
+                    context.recorder.getCounts("ShooterHubShot").minus(hubShotBefore);
             assertTrue(
-                    aimOnlyDelta.starts() >= 1,
+                    hubShotDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper should schedule aim-only mode", "starts>=1", aimOnlyDelta));
+                            "Right bumper should schedule hub-shot mode", "starts>=1", hubShotDelta));
             assertTrue(
-                    aimOnlyDelta.interrupts() >= 1,
+                    hubShotDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Releasing right bumper should interrupt aim-only mode",
+                            "Releasing right bumper should interrupt hub-shot mode",
                             "interrupts>=1",
-                            aimOnlyDelta));
+                            hubShotDelta));
 
-            FullFunctionalityHarness.CommandCounts aimOnlyBeforeCombined =
-                    context.recorder.getCounts("ShooterAimOnlySelectedMode");
+            FullFunctionalityHarness.CommandCounts hubShotBeforeCombined =
+                    context.recorder.getCounts("ShooterHubShot");
             context.driverControllerSim.setRightBumperButton(true);
             context.driverControllerSim.setRightTriggerAxis(1.0);
             context.runCycles(30);
             context.driverControllerSim.setRightBumperButton(false);
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(10);
-            FullFunctionalityHarness.CommandCounts aimOnlyCombinedDelta =
-                    context.recorder.getCounts("ShooterAimOnlySelectedMode").minus(aimOnlyBeforeCombined);
+            FullFunctionalityHarness.CommandCounts hubShotCombinedDelta =
+                    context.recorder.getCounts("ShooterHubShot").minus(hubShotBeforeCombined);
             assertEquals(
                     0,
-                    aimOnlyCombinedDelta.starts(),
+                    hubShotCombinedDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper + right trigger together should not enter aim-only mode",
+                            "Right bumper + right trigger together should keep right trigger priority over hub shot",
                             "starts=0",
-                            aimOnlyCombinedDelta));
+                            hubShotCombinedDelta));
 
             FullFunctionalityHarness.CommandCounts tuneBefore = context.recorder.getCounts("ShooterDashboardTune");
             FullFunctionalityHarness.CommandCounts tuneTransferBefore =
@@ -649,19 +721,20 @@ final class FullFunctionalityBindings {
                             String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
 
             Set<String> requiredDriverCommandNames = Set.of(
-                    "DriveToggleSlowMode",
+                    "DriveHoldSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
                     "TransferReverse",
                     "IntakeToggleExtended",
-                    "IntakeSlowRetract",
+                    "DriverIntakeTriggerPress",
                     "IntakeSpinRoller",
-                    "DriverShooterHome",
+                    "DriverIntakeHome",
+                    "DriverManualFeed",
                     "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
                     "ShooterTriggerSelectedMode",
-                    "ShooterAimOnlySelectedMode",
+                    "ShooterHubShot",
                     "ShooterDashboardTune",
                     "TransferDashboardTune");
             List<String> missing = new ArrayList<>();

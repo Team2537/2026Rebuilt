@@ -155,7 +155,7 @@ final class FullFunctionalityIntakeTransferStress {
             context.runCycles(12);
 
             FullFunctionalityHarness.CommandCounts toggleBefore = context.recorder.getCounts("IntakeToggleExtended");
-            FullFunctionalityHarness.CommandCounts slowRetractBefore = context.recorder.getCounts("IntakeSlowRetract");
+            FullFunctionalityHarness.CommandCounts manualFeedBefore = context.recorder.getCounts("DriverManualFeed");
             FullFunctionalityHarness.CommandCounts rollerBefore = context.recorder.getCounts("IntakeSpinRoller");
             FullFunctionalityHarness.CommandCounts reverseBefore = context.recorder.getCounts("TransferReverse");
 
@@ -174,16 +174,23 @@ final class FullFunctionalityIntakeTransferStress {
                 context.runCycles(2);
             }
 
-            context.driverControllerSim.setXButton(true);
-            context.runCycles(240);
-            context.driverControllerSim.setXButton(false);
+            context.runCycles(24);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            boolean finalRetracted = context.runUntil(() -> !context.intake.isExtended(), 240);
+            assertTrue(finalRetracted, "Expected final left-trigger double tap to retract the intake.");
             context.clearControllerState();
             context.runCycles(24);
 
             FullFunctionalityHarness.CommandCounts toggleDelta =
                     context.recorder.getCounts("IntakeToggleExtended").minus(toggleBefore);
-            FullFunctionalityHarness.CommandCounts slowRetractDelta =
-                    context.recorder.getCounts("IntakeSlowRetract").minus(slowRetractBefore);
+            FullFunctionalityHarness.CommandCounts manualFeedDelta =
+                    context.recorder.getCounts("DriverManualFeed").minus(manualFeedBefore);
             FullFunctionalityHarness.CommandCounts rollerDelta =
                     context.recorder.getCounts("IntakeSpinRoller").minus(rollerBefore);
             FullFunctionalityHarness.CommandCounts reverseDelta =
@@ -196,11 +203,11 @@ final class FullFunctionalityIntakeTransferStress {
                             "starts>=" + spamRounds,
                             toggleDelta));
             assertTrue(
-                    slowRetractDelta.starts() >= 1 && slowRetractDelta.finishes() >= 1,
+                    manualFeedDelta.starts() >= spamRounds && manualFeedDelta.interrupts() >= spamRounds,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "X spam plus final hold should produce at least one completed slow retract",
-                            "starts>=1 and finishes>=1",
-                            slowRetractDelta));
+                            "X spam should repeatedly start and interrupt standalone manual feed",
+                            "starts>=" + spamRounds + " and interrupts>=" + spamRounds,
+                            manualFeedDelta));
             assertTrue(
                     rollerDelta.starts() >= spamRounds && rollerDelta.interrupts() >= spamRounds,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -215,21 +222,21 @@ final class FullFunctionalityIntakeTransferStress {
                             reverseDelta));
 
             assertLifecycleClosed("IntakeToggleExtended", toggleDelta);
-            assertLifecycleClosed("IntakeSlowRetract", slowRetractDelta);
+            assertLifecycleClosed("DriverManualFeed", manualFeedDelta);
             assertLifecycleClosed("IntakeSpinRoller", rollerDelta);
             assertLifecycleClosed("TransferReverse", reverseDelta);
 
-            List<FullFunctionalityHarness.CommandRun> slowRuns = context.recorder.getRuns("IntakeSlowRetract");
+            List<FullFunctionalityHarness.CommandRun> manualFeedRuns = context.recorder.getRuns("DriverManualFeed");
             assertTrue(
-                    !slowRuns.isEmpty(),
+                    !manualFeedRuns.isEmpty(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Slow retract spam should record run windows",
+                            "Manual-feed spam should record run windows",
                             "runs.size()>0",
-                            "runs.size()=" + slowRuns.size()));
+                            "runs.size()=" + manualFeedRuns.size()));
 
             assertTrue(
                     context.recorder.runningCount("IntakeToggleExtended") == 0
-                            && context.recorder.runningCount("IntakeSlowRetract") == 0
+                            && context.recorder.runningCount("DriverManualFeed") == 0
                             && context.recorder.runningCount("IntakeSpinRoller") == 0
                             && context.recorder.runningCount("TransferReverse") == 0,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -237,15 +244,15 @@ final class FullFunctionalityIntakeTransferStress {
                             "runningCount=0 for all",
                             String.format(
                                     Locale.US,
-                                    "toggle=%d slow=%d roller=%d reverse=%d",
+                                    "toggle=%d manual=%d roller=%d reverse=%d",
                                     context.recorder.runningCount("IntakeToggleExtended"),
-                                    context.recorder.runningCount("IntakeSlowRetract"),
+                                    context.recorder.runningCount("DriverManualFeed"),
                                     context.recorder.runningCount("IntakeSpinRoller"),
                                     context.recorder.runningCount("TransferReverse"))));
             assertTrue(
                     !context.intake.isExtended(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Rapid B/X spam sequence should end retracted after final X hold",
+                            "Rapid B/X/LT spam sequence should end retracted after final left-trigger double tap",
                             "intake.isExtended()=false",
                             context.intake.isExtended()));
             assertTrue(

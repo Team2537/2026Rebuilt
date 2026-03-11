@@ -44,7 +44,7 @@ final class FullFunctionalityDriveAndAutoStress {
             FullFunctionalityHarness.CommandCounts snapBefore = context.recorder.getCounts("DriveHeadingSnap");
             FullFunctionalityHarness.CommandCounts driveBeforeSnap = context.recorder.getCounts("DriveJoystickDefault");
 
-            context.tapDriverButton(context.driverControllerSim::setRightStickButton);
+            context.tapDriverPov(0);
             boolean snapFinished = context.runUntil(
                     () -> context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore).finishes() >= 1,
                     360);
@@ -368,26 +368,25 @@ final class FullFunctionalityDriveAndAutoStress {
                     !context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
                     "Expected slow mode to start disabled.");
 
-            context.tapDriverButton(context.driverControllerSim::setBackButton);
-            context.tapDriverButton(context.driverControllerSim::setLeftBumperButton);
+            context.tapDriverPov(90);
+            context.driverControllerSim.setLeftStickButton(true);
+            context.runCycles(10);
             assertTrue(
                     !context.drive.isFieldOriented(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Back button precondition should set field-oriented mode false",
+                            "POV right precondition should set field-oriented mode false",
                             "fieldOriented=false",
                             "fieldOriented=" + context.drive.isFieldOriented()));
             assertTrue(
                     context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Left bumper precondition should set slow mode true",
+                            "Left stick hold precondition should set slow mode true",
                             "slowMode=true",
                             "slowMode=" + context.drive.isConstraintProfileActive(
                                     DriveConstants.ConstraintProfile.SLOW_MODE)));
 
             FullFunctionalityHarness.CommandCounts fieldToggleBefore =
                     context.recorder.getCounts("DriveToggleFieldOriented");
-            FullFunctionalityHarness.CommandCounts slowToggleBefore =
-                    context.recorder.getCounts("DriveToggleSlowMode");
 
             for (int i = 0; i < 8; i++) {
                 context.setDisabled();
@@ -403,18 +402,6 @@ final class FullFunctionalityDriveAndAutoStress {
                                         "cycle=%d fieldOriented=%s",
                                         i,
                                         context.drive.isFieldOriented())));
-                assertTrue(
-                        context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
-                        FullFunctionalityHarness.formatExpectedVsActual(
-                                "Slow-mode setting should persist through disabled cycle",
-                                "slowMode=true",
-                                String.format(
-                                        Locale.US,
-                                        "cycle=%d slowMode=%s",
-                                        i,
-                                        context.drive.isConstraintProfileActive(
-                                                DriveConstants.ConstraintProfile.SLOW_MODE))));
-
                 context.setTeleopEnabled();
                 context.container.teleopInit();
                 context.runCycles(10);
@@ -431,7 +418,7 @@ final class FullFunctionalityDriveAndAutoStress {
                 assertTrue(
                         context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
                         FullFunctionalityHarness.formatExpectedVsActual(
-                                "Slow-mode setting should persist through rapid re-enable",
+                                "Slow mode should restore on rapid re-enable while left stick remains held",
                                 "slowMode=true",
                                 String.format(
                                         Locale.US,
@@ -454,8 +441,6 @@ final class FullFunctionalityDriveAndAutoStress {
 
             FullFunctionalityHarness.CommandCounts fieldToggleDelta =
                     context.recorder.getCounts("DriveToggleFieldOriented").minus(fieldToggleBefore);
-            FullFunctionalityHarness.CommandCounts slowToggleDelta =
-                    context.recorder.getCounts("DriveToggleSlowMode").minus(slowToggleBefore);
 
             assertEquals(
                     0,
@@ -464,13 +449,11 @@ final class FullFunctionalityDriveAndAutoStress {
                             "Disable/enable cycling should not implicitly toggle field-oriented state",
                             "starts=0",
                             fieldToggleDelta));
-            assertEquals(
-                    0,
-                    slowToggleDelta.starts(),
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Disable/enable cycling should not implicitly toggle slow mode",
-                            "starts=0",
-                            slowToggleDelta));
+            context.driverControllerSim.setLeftStickButton(false);
+            context.runCycles(8);
+            assertTrue(
+                    !context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
+                    "Expected releasing left stick after the cycle stress test to disable slow mode.");
         }
     }
 

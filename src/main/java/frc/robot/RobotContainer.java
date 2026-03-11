@@ -5,6 +5,7 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.apriltag.AprilTag;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -23,6 +24,7 @@ import frc.robot.util.FieldConstants;
 import frc.robot.generated.TunerConstants;
 import frc.robot.sim.FuelSim;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.drive.DriveConstants;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
 import frc.robot.subsystems.drive.GyroIOSim;
@@ -56,6 +58,7 @@ public final class RobotContainer {
     private static final String APRIL_TAG_OBJECT_PREFIX = "Tag ";
     private static final String APRIL_TAG_TRAJECTORY_OBJECT_PREFIX = "trajTag";
     private static final int APRIL_TAG_TRAJECTORY_SEGMENTS = 10;
+    private static final double INTAKE_TRIGGER_DOUBLE_PRESS_WINDOW_SEC = 0.35;
 
     private final Drive drive;
     private final Vision vision;
@@ -72,6 +75,7 @@ public final class RobotContainer {
 
     private final CommandTelemetry commandTelemetry = new CommandTelemetry();
     private final DashboardOverrides dashboardOverrides = new DashboardOverrides();
+    private double lastIntakeTriggerPressSec = Double.NEGATIVE_INFINITY;
 
     private FuelSim fuelSim;
 
@@ -184,6 +188,9 @@ public final class RobotContainer {
 
     public void teleopInit() {
         commandTelemetry.cancelAllCommands("mode.teleopInit");
+        drive.setConstraintProfileActive(
+                DriveConstants.ConstraintProfile.SLOW_MODE,
+                driverController.getHID().getLeftStickButton());
         scheduleHoming("mode.teleopInit");
     }
 
@@ -229,6 +236,10 @@ public final class RobotContainer {
 
     private void bindWhileTrue(Trigger trigger, String source, Command command) {
         trigger.whileTrue(commandTelemetry.withCommandSource(source, command));
+    }
+
+    private void bindOnFalse(Trigger trigger, String source, Command command) {
+        trigger.onFalse(commandTelemetry.withCommandSource(source, command));
     }
 
     private static Drive createDrive() {
@@ -305,53 +316,77 @@ public final class RobotContainer {
         shooter.setDefaultCommand(
                 commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
 
+        bindWhileTrue(
+                driverController.leftStick(),
+                "driver.leftStick.whileTrue",
+                Commands.startEnd(
+                                () -> drive.setConstraintProfileActive(
+                                        DriveConstants.ConstraintProfile.SLOW_MODE,
+                                        true),
+                                () -> drive.setConstraintProfileActive(
+                                        DriveConstants.ConstraintProfile.SLOW_MODE,
+                                        false),
+                                drive)
+                        .withName("DriveHoldSlowMode"));
+        bindOnFalse(
+                driverController.leftStick(),
+                "driver.leftStick.onFalse",
+                Commands.runOnce(
+                                () -> drive.setConstraintProfileActive(
+                                        DriveConstants.ConstraintProfile.SLOW_MODE,
+                                        false),
+                                drive)
+                        .withName("DriveReleaseSlowMode"));
         bindOnTrue(
-                driverController.leftBumper(),
-                "driver.leftBumper.onTrue",
-                drive.toggleSlowMode().withName("DriveToggleSlowMode"));
-        bindOnTrue(
-                driverController.back(),
-                "driver.back.onTrue",
-                DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
-        bindOnTrue(
-                driverController.start(),
-                "driver.start.onTrue",
+                driverController.leftStick().and(driverController.rightStick()),
+                "driver.leftStick.rightStick.onTrue",
                 DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
-        bindOnTrue(
-                driverController.rightStick(),
-                "driver.rightStick.onTrue",
-                DriveCommands.headingSnap(drive).withName("DriveHeadingSnap"));
 
         Trigger reverseTransferTrigger = driverController.y();
         bindWhileTrue(reverseTransferTrigger, "driver.y.whileTrue", transfer.reverseCommand());
 
         bindOnTrue(driverController.b(), "driver.b.onTrue", intake.toggleExtendedCommand());
-        Trigger slowRetractTrigger = driverController.x();
-        bindWhileTrue(slowRetractTrigger, "driver.x.whileTrue", intake.slowRetractCommand());
         Trigger intakeRollerTrigger = driverController.leftTrigger();
+        bindOnTrue(
+                intakeRollerTrigger,
+                "driver.leftTrigger.onTrue",
+                createIntakeTriggerPressCommand());
         bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.spinRoller());
 
         bindOnTrue(
-                driverController.povUp(),
-                "driver.povUp.onTrue",
-                shooter.homeCommand().withName("DriverShooterHome"));
+                driverController.start(),
+                "driver.start.onTrue",
+                intake.homeCommand().withName("DriverIntakeHome"));
         bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
         bindOnTrue(
                 driverController.povLeft(),
                 "driver.povLeft.onTrue",
                 createSetOdometryFromUnifiedVisionCommand());
+        bindOnTrue(
+                driverController.povRight(),
+                "driver.povRight.onTrue",
+                DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
+        bindOnTrue(
+                driverController.povUp(),
+                "driver.povUp.onTrue",
+                DriveCommands.headingSnap(drive).withName("DriveHeadingSnap"));
 
         ShootingTeleopController.AimingContext aimingContext = shootingTeleopController.createAimingContext();
         DoubleSupplier hubDistanceSupplier = aimingContext.hubDistanceSupplier();
         Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = aimingContext.hubHeadingSupplier();
 
         Trigger rightTriggerPressed = driverController.rightTrigger();
+        Trigger manualFeedTrigger = driverController.x();
         Trigger dashboardTuneTrigger = rightTriggerPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
         Trigger dashboardTransferTuneTrigger =
                 dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
         Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
-        Trigger aimTrigger = driverController.rightBumper();
-        Trigger aimOnlyTrigger = aimTrigger.and(shootTrigger.negate());
+        Trigger hubShotTrigger = driverController.rightBumper().and(shootTrigger.negate());
+        Trigger manualFeedStandaloneTrigger =
+                manualFeedTrigger
+                        .and(shootTrigger.negate())
+                        .and(hubShotTrigger.negate())
+                        .and(dashboardTuneTrigger.negate());
 
         bindWhileTrue(
                 shootTrigger,
@@ -362,16 +397,18 @@ public final class RobotContainer {
                         () -> -driverController.getRightX(),
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
-                        aimingContext.aimReadySupplier()).withName("ShooterTriggerSelectedMode"));
+                        aimingContext.aimReadySupplier(),
+                        manualFeedTrigger::getAsBoolean).withName("ShooterTriggerSelectedMode"));
         bindWhileTrue(
-                aimOnlyTrigger,
-                "driver.aimOnly.whileTrue",
-                shootingTeleopController.createSelectedAimOnlyCommand(
+                hubShotTrigger,
+                "driver.hubShot.whileTrue",
+                shootingTeleopController.createHubShotCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
-                        hubDistanceSupplier,
-                        teleopAutoAlignHeadingSupplier));
+                        teleopAutoAlignHeadingSupplier,
+                        aimingContext.aimReadySupplier(),
+                        manualFeedTrigger::getAsBoolean).withName("ShooterHubShot"));
         bindWhileTrue(
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",
@@ -380,6 +417,10 @@ public final class RobotContainer {
                 dashboardTransferTuneTrigger,
                 "driver.dashboardTuneTransfer.whileTrue",
                 transfer.runCommand().withName("TransferDashboardTune"));
+        bindWhileTrue(
+                manualFeedStandaloneTrigger,
+                "driver.x.whileTrue",
+                shootCoordinator.manualFeedCommand().withName("DriverManualFeed"));
 
         if (godController != null) {
             bindOnTrue(
@@ -486,6 +527,17 @@ public final class RobotContainer {
 
     private void putDashboardCommand(String dashboardKey, String source, Command command) {
         SmartDashboard.putData(dashboardKey, commandTelemetry.withCommandSource(source, command));
+    }
+
+    private Command createIntakeTriggerPressCommand() {
+        return Commands.runOnce(this::handleIntakeTriggerPress, intake).withName("DriverIntakeTriggerPress");
+    }
+
+    private void handleIntakeTriggerPress() {
+        double nowSec = Timer.getFPGATimestamp();
+        boolean isDoublePress = nowSec - lastIntakeTriggerPressSec <= INTAKE_TRIGGER_DOUBLE_PRESS_WINDOW_SEC;
+        lastIntakeTriggerPressSec = isDoublePress ? Double.NEGATIVE_INFINITY : nowSec;
+        intake.setExtended(!isDoublePress);
     }
 
     private Command stopManipulatorsCommand() {

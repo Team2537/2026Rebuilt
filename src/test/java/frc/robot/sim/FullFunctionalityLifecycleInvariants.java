@@ -24,14 +24,16 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(24);
 
             List<String> keyCommands = List.of(
-                    "DriveToggleSlowMode",
+                    "DriveHoldSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
                     "IntakeToggleExtended",
+                    "DriverIntakeTriggerPress",
                     "IntakeSpinRoller",
+                    "DriverManualFeed",
                     "TransferReverse",
-                    "DriverShooterHome",
+                    "DriverIntakeHome",
                     "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
                     "DriveSysIdQuasistaticForward",
@@ -48,13 +50,23 @@ final class FullFunctionalityLifecycleInvariants {
 
             Map<String, FullFunctionalityHarness.CommandCounts> before = snapshotCounts(context, keyCommands);
 
-            context.tapDriverButton(context.driverControllerSim::setLeftBumperButton);
-            context.tapDriverButton(context.driverControllerSim::setBackButton);
+            context.driverControllerSim.setLeftStickButton(true);
+            context.runCycles(24);
+            context.driverControllerSim.setLeftStickButton(false);
+            context.runCycles(8);
+            context.tapDriverPov(90);
             context.tapDriverButton(context.driverControllerSim::setStartButton);
+            context.driverControllerSim.setLeftStickButton(true);
+            context.runCycles(4);
+            context.driverControllerSim.setRightStickButton(true);
+            context.runCycles(4);
+            context.driverControllerSim.setRightStickButton(false);
+            context.driverControllerSim.setLeftStickButton(false);
+            context.runCycles(4);
 
             context.drive.setPose(new Pose2d(context.drive.getPose().getTranslation(), Rotation2d.fromRadians(0.78)));
             FullFunctionalityHarness.CommandCounts snapBefore = before.get("DriveHeadingSnap");
-            context.tapDriverButton(context.driverControllerSim::setRightStickButton);
+            context.tapDriverPov(0);
             boolean headingSnapFinished = context.runUntil(
                     () -> context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore).finishes() >= 1,
                     420);
@@ -75,7 +87,7 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(120);
 
             context.driverControllerSim.setXButton(true);
-            context.runCycles(180);
+            context.runCycles(60);
             context.driverControllerSim.setXButton(false);
             context.runCycles(20);
 
@@ -83,13 +95,20 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(36);
             context.driverControllerSim.setLeftTriggerAxis(0.0);
             context.runCycles(10);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(1.0);
+            context.runCycles(4);
+            context.driverControllerSim.setLeftTriggerAxis(0.0);
+            context.runCycles(20);
 
             context.driverControllerSim.setYButton(true);
             context.runCycles(36);
             context.driverControllerSim.setYButton(false);
             context.runCycles(10);
 
-            context.tapDriverPov(0);
             context.tapDriverPov(180);
             context.tapDriverPov(270);
 
@@ -121,22 +140,21 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(20);
 
             List<String> finiteMustFinish = List.of(
-                    "DriveToggleSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
                     "IntakeToggleExtended",
-                    "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
                     "DashboardIntakeHome",
                     "DashboardShooterHome",
-                    "DashboardStopManipulators",
                     "DashboardDriveResetOdometryAndHeading",
                     "DashboardDriveSetOdometryFromUnifiedVision",
                     "AutoNone");
 
             List<String> heldMustInterrupt = List.of(
+                    "DriveHoldSlowMode",
                     "IntakeSpinRoller",
+                    "DriverManualFeed",
                     "TransferReverse",
                     "DriveSysIdQuasistaticForward",
                     "DriveSysIdQuasistaticReverse",

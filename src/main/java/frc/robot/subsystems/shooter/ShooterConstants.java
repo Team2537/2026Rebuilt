@@ -89,6 +89,7 @@ public final class ShooterConstants {
         isReal ? SHOT_MAP_HOOD_ANGLE_DEG_REAL : SHOT_MAP_HOOD_ANGLE_DEG_SIM;
     public static final double[] SHOT_TIME_IN_AIR_SECONDS =
         isReal ? SHOT_TIME_IN_AIR_SECONDS_REAL : SHOT_TIME_IN_AIR_SECONDS_SIM;
+    public static final double HUB_SHOT_DISTANCE_METERS = SHOT_MAP_DISTANCE_METERS[0];
 
     // Closed-loop gains (starting points, tune on robot).
     public static final double SHOOTER_KP = 10.0;

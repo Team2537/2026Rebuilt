@@ -206,7 +206,8 @@ class ShootingTeleopControllerXLockTest {
                     omegaSupplier,
                     () -> 4.0,
                     () -> Rotation2d.kZero,
-                    aimReadySupplier);
+                    aimReadySupplier,
+                    () -> false);
         }
 
         private void runSchedulerCycles(int cycles) {
