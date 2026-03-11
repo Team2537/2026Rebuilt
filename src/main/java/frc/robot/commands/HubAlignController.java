@@ -19,6 +19,9 @@ public class HubAlignController {
     private static final double KP = 4.5;
     private static final double KD = 0.3;
     private static final double TOLERANCE_RAD = Units.degreesToRadians(2.0);
+    private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(1.0);
+    private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(4.0);
+    private static final double LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(8.0);
     private static final double MIN_OMEGA_RAD_PER_SEC = 0.03;
     private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
     private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 18.0;
@@ -35,6 +38,7 @@ public class HubAlignController {
 
     private Rotation2d prevEffectiveTarget = null;
     private double prevEffectiveTargetTimeSec = Double.NaN;
+    private boolean reachedToleranceOnce = false;
 
     public HubAlignController() {
         pidController = new ProfiledPIDController(
@@ -62,6 +66,7 @@ public class HubAlignController {
         targetVelocityFilter.reset();
         prevEffectiveTarget = null;
         prevEffectiveTargetTimeSec = Double.NaN;
+        reachedToleranceOnce = false;
     }
 
     /**
@@ -125,6 +130,7 @@ public class HubAlignController {
             prevEffectiveTarget = null;
             prevEffectiveTargetTimeSec = Double.NaN;
             targetVelocityFilter.reset();
+            reachedToleranceOnce = false;
         }
         double feedforwardOmega = MathUtil.clamp(
                 targetVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN,
@@ -137,18 +143,37 @@ public class HubAlignController {
         if (effectiveTarget == null) {
             clearTargetTracking();
             pidController.reset(currentHeadingRad, 0.0);
+            reachedToleranceOnce = false;
             double fallbackLimited = omegaLimiter.calculate(fallbackOmega);
             Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Double.NaN);
             Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", 0.0);
+            Logger.recordOutput("Drive/AutoAlign/LowErrorFeedbackScale", Double.NaN);
             Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", fallbackLimited);
             return fallbackLimited;
         }
 
         double targetHeadingRad = effectiveTarget.getRadians();
         double headingErrorRad = MathUtil.angleModulus(targetHeadingRad - currentHeadingRad);
-        double feedbackOmega = pidController.calculate(currentHeadingRad, targetHeadingRad);
+        double rawFeedbackOmega = pidController.calculate(currentHeadingRad, targetHeadingRad);
+        double absHeadingErrorRad = Math.abs(headingErrorRad);
+        double absTargetVelocityRadPerSec = Math.abs(targetVelocityRadPerSec);
+        if (absHeadingErrorRad <= LOW_ERROR_FEEDBACK_ARM_RAD) {
+            reachedToleranceOnce = true;
+        }
+        double feedbackScale = 1.0;
+        if (reachedToleranceOnce
+                && absTargetVelocityRadPerSec <= LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC
+                && absHeadingErrorRad < LOW_ERROR_FEEDBACK_FADE_END_RAD) {
+            feedbackScale = MathUtil.clamp(
+                    (absHeadingErrorRad - TOLERANCE_RAD) / (LOW_ERROR_FEEDBACK_FADE_END_RAD - TOLERANCE_RAD),
+                    0.0,
+                    1.0);
+            feedbackScale *= feedbackScale;
+        }
+        double feedbackOmega = rawFeedbackOmega * feedbackScale;
+
         double commandedOmega;
-        if (Math.abs(headingErrorRad) <= TOLERANCE_RAD) {
+        if (absHeadingErrorRad <= TOLERANCE_RAD) {
             // Within tolerance: use only feedforward to maintain smooth tracking of a
             // moving target. Without this, the robot would stop, drift out of tolerance,
             // correct, and stop again — causing chatter.
@@ -157,7 +182,7 @@ public class HubAlignController {
             commandedOmega = MathUtil.clamp(
                     feedbackOmega + feedforwardOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
         }
-        if (Math.abs(headingErrorRad) > TOLERANCE_RAD
+        if (absHeadingErrorRad > TOLERANCE_RAD
                 && Math.abs(commandedOmega) > 0.0
                 && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
             commandedOmega = Math.copySign(MIN_OMEGA_RAD_PER_SEC, commandedOmega);
@@ -166,6 +191,7 @@ public class HubAlignController {
 
         Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Units.radiansToDegrees(headingErrorRad));
         Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", feedforwardOmega);
+        Logger.recordOutput("Drive/AutoAlign/LowErrorFeedbackScale", feedbackScale);
         Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", limitedOmega);
         return limitedOmega;
     }
