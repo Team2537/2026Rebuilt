@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class LaunchCalculatorTest {
     private static final double EPSILON = 0.01;
+    private static final double BLUE_HUB_Y_METERS = 4.0213534;
 
     private LaunchCalculator calculator;
 
@@ -52,8 +53,8 @@ class LaunchCalculatorTest {
 
     @Test
     void movingTowardHubReducesCompensatedDistance() {
-        // Robot directly below hub, facing hub (positive X toward hub at 4.6, 4.0)
-        Pose2d pose = new Pose2d(1.0, 4.0, Rotation2d.kZero);
+        // Robot directly below hub, facing hub (positive X toward hub at 4.6, 4.0213534)
+        Pose2d pose = new Pose2d(1.0, BLUE_HUB_Y_METERS, Rotation2d.kZero);
         ChassisSpeeds speeds = new ChassisSpeeds(3.0, 0, 0); // moving toward hub
 
         LaunchCalculator.MotionCompensation result = calculator.calculate(pose, speeds);
@@ -66,7 +67,7 @@ class LaunchCalculatorTest {
 
     @Test
     void movingAwayFromHubIncreasesCompensatedDistance() {
-        Pose2d pose = new Pose2d(1.0, 4.0, Rotation2d.kZero);
+        Pose2d pose = new Pose2d(1.0, BLUE_HUB_Y_METERS, Rotation2d.kZero);
         ChassisSpeeds speeds = new ChassisSpeeds(-3.0, 0, 0); // moving away from hub
 
         LaunchCalculator.MotionCompensation result = calculator.calculate(pose, speeds);
@@ -133,10 +134,10 @@ class LaunchCalculatorTest {
 
     @Test
     void staticGetHubDistanceMetersWithKnownPose() {
-        // Hub is at (4.6, 4.0) for blue alliance; shooter offset is (-0.1524, 0)
-        // Robot at (4.6, 4.0) facing 0 deg → shooter at (4.6 - 0.1524, 4.0) = (4.4476, 4.0)
-        // Distance from (4.4476, 4.0) to (4.6, 4.0) = 0.1524
-        Pose2d atHub = new Pose2d(4.6, 4.0, Rotation2d.kZero);
+        // Hub is at (4.6, 4.0213534) for blue alliance; shooter offset is (-0.1524, 0)
+        // Robot at (4.6, 4.0213534) facing 0 deg -> shooter at (4.4476, 4.0213534)
+        // Distance from (4.4476, 4.0213534) to (4.6, 4.0213534) = 0.1524
+        Pose2d atHub = new Pose2d(4.6, BLUE_HUB_Y_METERS, Rotation2d.kZero);
         double distance = LaunchCalculator.getHubDistanceMeters(atHub);
         assertTrue(Double.isFinite(distance));
         assertEquals(0.1524, distance, EPSILON);

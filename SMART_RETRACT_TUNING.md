@@ -11,6 +11,7 @@ This is a quick field guide for tuning the new intake smart retract behavior on 
 - Two modes are available from dashboard:
   - `Intake/SmartRetract/EnableNibble`
   - `Intake/SmartRetract/EnableHalfRetractReturn`
+- `EnableNibble` defaults to enabled on startup.
 - If both are enabled, `NIBBLE` wins (priority).
 - Status key:
   - `Intake/SmartRetract/StatusMode`
@@ -21,7 +22,7 @@ This is a quick field guide for tuning the new intake smart retract behavior on 
 
 ## Preflight (Do This First)
 
-1. Keep smart retract modes disabled.
+1. Disable smart retract modes manually if you want a baseline run without them.
 2. Verify intake homing and manual extend/retract work cleanly.
 3. Verify slow retract (`X`) feels materially gentler than normal retract.
 4. Verify shoot command works normally with intake extended.

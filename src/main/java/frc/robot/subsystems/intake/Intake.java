@@ -326,7 +326,7 @@ public class Intake extends SubsystemBase {
     }
 
     private void refreshDashboardSmartRetractMode() {
-        cachedSmartRetractNibbleEnabled = SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, false);
+        cachedSmartRetractNibbleEnabled = SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, true);
         cachedSmartRetractHalfRetractReturnEnabled =
                 SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
         cachedSmartRetractMode = selectSmartRetractMode(
@@ -348,7 +348,7 @@ public class Intake extends SubsystemBase {
     }
 
     private static void initDashboardSmartRetractEntries() {
-        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, false);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, true);
         SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
         SmartDashboard.putString(
                 DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY,

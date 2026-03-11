@@ -9,9 +9,9 @@ public final class AutoAimHeadingConfig {
     private static final double DEFAULT_TARGET_HOLD_SEC = 0.12;
 
     public static final double HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC = Math.toRadians(
-            readPositiveDouble("autoAim.headingProfile.maxVelocityDegPerSec", 540.0));
+            readPositiveDouble("autoAim.headingProfile.maxVelocityDegPerSec", 450.0));
     public static final double HEADING_PROFILE_MAX_ACCELERATION_RAD_PER_SEC2 = Math.toRadians(
-            readPositiveDouble("autoAim.headingProfile.maxAccelerationDegPerSec2", 2160.0));
+            readPositiveDouble("autoAim.headingProfile.maxAccelerationDegPerSec2", 1440.0));
 
     public static TrapezoidProfile.Constraints createHeadingProfileConstraints() {
         return new TrapezoidProfile.Constraints(

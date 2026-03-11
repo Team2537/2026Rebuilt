@@ -31,12 +31,14 @@ public final class FieldConstants {
   public static final AprilTagFieldLayout TAG_LAYOUT = loadRebuiltLayout();
   public static final double FIELD_LENGTH_METERS = TAG_LAYOUT.getFieldLength();
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
+  private static final double HUB_TARGET_X_METERS = 4.6;
+  private static final double HUB_TARGET_Y_METERS = getTagY(BLUE_HUB_TAG_ID, 4.0213534);
   private static final Translation2d BLUE_HUB_TARGET_TRANSLATION =
-      new Translation2d(4.6, 4.0);
+      new Translation2d(HUB_TARGET_X_METERS, HUB_TARGET_Y_METERS);
   private static final Translation2d RED_HUB_TARGET_TRANSLATION =
       new Translation2d(
-          FIELD_LENGTH_METERS - BLUE_HUB_TARGET_TRANSLATION.getX(),
-          BLUE_HUB_TARGET_TRANSLATION.getY());
+          FIELD_LENGTH_METERS - HUB_TARGET_X_METERS,
+          HUB_TARGET_Y_METERS);
 
   /** Returns the alliance-specific hub scoring target position on the field. */
   public static Translation2d getHubTargetTranslation() {
@@ -97,6 +99,12 @@ public final class FieldConstants {
     }
     String lower = path.getFileName().toString().toLowerCase(Locale.ROOT);
     return lower.endsWith(".json") && lower.contains(REBUILT_LAYOUT_TOKEN);
+  }
+
+  private static double getTagY(int tagId, double defaultY) {
+    return TAG_LAYOUT.getTagPose(tagId)
+        .map(tagPose -> tagPose.getY())
+        .orElse(defaultY);
   }
 
   private static boolean isRedAlliance() {

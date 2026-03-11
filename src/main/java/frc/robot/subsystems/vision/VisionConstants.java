@@ -34,7 +34,7 @@ public final class VisionConstants {
     public static final double LINEAR_STD_DEV_BASELINE = 0.08;
     public static final double ANGULAR_STD_DEV_BASELINE = 0.18;
     public static final double ESTIMATOR_ANGULAR_STD_DEV_RAD = 999.0;
-    public static final double HUB_TAG_CLUSTER_RADIUS_METERS = Units.inchesToMeters(30.0);
+    public static final double HUB_TAG_CLUSTER_RADIUS_METERS = Units.inchesToMeters(60.0);
     public static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
     public static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
     public static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
