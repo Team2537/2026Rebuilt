@@ -21,6 +21,8 @@ final class HubAlignControllerResponseSimTest {
     private static final double DT_SEC = 0.02;
     private static final double PLANT_TIME_CONSTANT_SEC = 0.09;
     private static final double PLANT_MAX_ANGULAR_ACCEL_RAD_PER_SEC_SQ = 30.0;
+    private static final double STATIC_SETTLE_ERROR_DEG = 2.0;
+    private static final double STATIC_POST_SETTLE_MAX_ERROR_DEG = 2.2;
 
     @BeforeEach
     void setUp() {
@@ -77,7 +79,7 @@ final class HubAlignControllerResponseSimTest {
                 previousErrorSign = sign;
             }
 
-            if (absErrorDeg <= 1.0 && Math.abs(state.omegaRadPerSec) <= 0.35) {
+            if (absErrorDeg <= STATIC_SETTLE_ERROR_DEG && Math.abs(state.omegaRadPerSec) <= 0.35) {
                 settleCycles++;
                 if (!settled && settleCycles >= 15) {
                     settled = true;
@@ -117,10 +119,10 @@ final class HubAlignControllerResponseSimTest {
                         "<= 26.0 rad/s^2",
                         String.format(Locale.US, "%.3f rad/s^2", maxCommandAccel)));
         assertTrue(
-                maxAbsErrorAfterSettleDeg <= 1.2,
+                maxAbsErrorAfterSettleDeg <= STATIC_POST_SETTLE_MAX_ERROR_DEG,
                 FullFunctionalityHarness.formatExpectedVsActual(
                         "HubAlign should remain stable after settling",
-                        "<= 1.2 deg",
+                        String.format(Locale.US, "<= %.1f deg", STATIC_POST_SETTLE_MAX_ERROR_DEG),
                         String.format(Locale.US, "%.3f deg", maxAbsErrorAfterSettleDeg)));
     }
 

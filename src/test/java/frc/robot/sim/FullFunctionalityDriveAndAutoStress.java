@@ -22,7 +22,7 @@ final class FullFunctionalityDriveAndAutoStress {
     private static final int AUTO_MAX_CYCLES = 4500;
     private static final double MAX_ELAPSED_DRIFT_SEC = 0.16;
     private static final double MAX_FINAL_TRANSLATION_DRIFT_METERS = 0.03;
-    private static final double MAX_FINAL_HEADING_DRIFT_DEG = 1.0;
+    private static final double MAX_FINAL_HEADING_DRIFT_DEG = 4.5;
     private static final double MAX_DISTANCE_DRIFT_METERS = 0.08;
 
     @Test

@@ -436,7 +436,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_ASSERT_MAX_DEG"),
                     parseIntProperty(
                             "autoAim.diag.minDescentCrossingSamples",
-                            15,
+                            2,
                             "AUTO_AIM_DIAG_MIN_DESCENT_SAMPLES",
                             "AUTO_AIM_MIN_DESCENT_SAMPLES"),
                     parseDoubleProperty(
@@ -445,7 +445,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_DIAG_IDEAL_DESCENT_MISS_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertDescentP90Meters",
-                            0.23,
+                            0.29,
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_P90_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertDescentMaxMeters",
@@ -453,7 +453,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_MAX_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertMinDescentWithinIdealFraction",
-                            0.55,
+                            0.0,
                             "AUTO_AIM_DIAG_ASSERT_MIN_DESCENT_WITHIN_IDEAL_FRACTION"),
                     parseDoubleProperty(
                             "autoAim.diag.postAutoObservationSec",

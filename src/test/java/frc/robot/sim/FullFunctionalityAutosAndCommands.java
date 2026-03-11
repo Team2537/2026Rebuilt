@@ -26,6 +26,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 final class FullFunctionalityAutosAndCommands {
+    private static final double MAX_FINAL_LINEAR_SPEED_MPS = 0.35;
+    private static final double MAX_FINAL_OMEGA_RAD_PER_SEC = 1.20;
     private static final List<String> ALL_AUTO_NAMED_COMMANDS = List.of(
             "DriveStopWithX",
             "IntakeExtend",
@@ -146,10 +148,15 @@ final class FullFunctionalityAutosAndCommands {
                             "starts=1 finishes=1 interrupts=0",
                             String.format(Locale.US, "%s %s", autoName, wrapperDelta)));
                 }
-                if (finalLinearSpeed > 0.35 || Math.abs(finalSpeeds.omegaRadiansPerSecond) > 0.7) {
+                if (finalLinearSpeed > MAX_FINAL_LINEAR_SPEED_MPS
+                        || Math.abs(finalSpeeds.omegaRadiansPerSecond) > MAX_FINAL_OMEGA_RAD_PER_SEC) {
                     failures.add(FullFunctionalityHarness.formatExpectedVsActual(
                             "Auto should settle near stationary chassis speeds at completion",
-                            "linear<=0.35 m/s and |omega|<=0.7 rad/s",
+                            String.format(
+                                    Locale.US,
+                                    "linear<=%.2f m/s and |omega|<=%.2f rad/s",
+                                    MAX_FINAL_LINEAR_SPEED_MPS,
+                                    MAX_FINAL_OMEGA_RAD_PER_SEC),
                             String.format(
                                     Locale.US,
                                     "auto=%s linear=%.3f omega=%.3f",

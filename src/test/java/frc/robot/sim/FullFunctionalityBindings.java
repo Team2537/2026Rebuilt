@@ -632,11 +632,15 @@ final class FullFunctionalityBindings {
                             "POV down should schedule StopManipulators", "starts>=1", stopDelta));
             assertTrue(!context.intake.isExtended(), "Expected StopManipulators to retract intake.");
             assertTrue(
-                    Math.abs(context.shooter.getTargetAverageShooterRpm()) < 1e-6,
+                    Math.abs(context.shooter.getTargetAverageShooterRpm() - ShooterConstants.SLOW_SHOOTER_RPM) <= 1e-6,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Expected StopManipulators to zero shooter target",
-                            "targetAverageRpm=0",
-                            String.format(Locale.US, "targetAverageRpm=%.3f", context.shooter.getTargetAverageShooterRpm())));
+                            "Expected StopManipulators to yield back to shooter background target",
+                            "targetAverageRpm=SLOW_SHOOTER_RPM",
+                            String.format(
+                                    Locale.US,
+                                    "targetAverageRpm=%.3f slowRpm=%.3f",
+                                    context.shooter.getTargetAverageShooterRpm(),
+                                    ShooterConstants.SLOW_SHOOTER_RPM)));
             assertTrue(
                     Math.abs(context.transferInputs.appliedVolts) < 1e-6,
                     FullFunctionalityHarness.formatExpectedVsActual(

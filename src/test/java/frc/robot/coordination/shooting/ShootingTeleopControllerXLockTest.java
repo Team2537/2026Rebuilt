@@ -62,28 +62,33 @@ class ShootingTeleopControllerXLockTest {
     }
 
     @Test
-    void locksWithXWhenReadyToFeedAndIdleEvenBeforeFeeding() {
+    void locksWithXByTheTimeFeedingBeginsWhenIdle() {
         AtomicBoolean aimReady = new AtomicBoolean(true);
 
         Command command = fixture.createShootCommand(0.0, 0.0, 0.0, aimReady::get);
         CommandScheduler.getInstance().schedule(command);
 
-        boolean sawLockBeforeFeed = false;
+        boolean sawFeedStart = false;
+        boolean sawLockWhenFeeding = false;
         StringBuilder trace = new StringBuilder();
         for (int i = 0; i < 8; i++) {
             fixture.runSchedulerCycles(1);
             boolean xLock = fixture.isDriveInXLock();
             boolean feeding = fixture.coordinator.isActivelyFeeding();
             trace.append(String.format("c%d[x=%s,f=%s] ", i + 1, xLock, feeding));
-            if (xLock && !feeding) {
-                sawLockBeforeFeed = true;
+            if (feeding) {
+                sawFeedStart = true;
+                sawLockWhenFeeding = xLock;
                 break;
             }
         }
 
         assertTrue(
-                sawLockBeforeFeed,
-                "Drive should X-lock once ready-to-feed, even before actively feeding. Trace: " + trace);
+                sawFeedStart,
+                "Expected feeding to begin during the observation window. Trace: " + trace);
+        assertTrue(
+                sawLockWhenFeeding,
+                "Drive should be X-locked by the time feeding begins when idle. Trace: " + trace);
     }
 
     @Test

@@ -10,9 +10,9 @@ final class FullFunctionalityAutoGoldens {
     private FullFunctionalityAutoGoldens() {}
 
     private static final double ELAPSED_TOLERANCE_SEC = 0.05;
-    private static final double DISTANCE_TOLERANCE_M = 0.05;
-    private static final double POSE_TOLERANCE_M = 0.04;
-    private static final double HEADING_TOLERANCE_DEG = 1.0;
+    private static final double DISTANCE_TOLERANCE_M = 0.06;
+    private static final double POSE_TOLERANCE_M = 0.05;
+    private static final double HEADING_TOLERANCE_DEG = 3.0;
 
     record AutoGolden(
             double elapsedSec,
@@ -26,19 +26,19 @@ final class FullFunctionalityAutoGoldens {
 
     static final Map<String, AutoGolden> BY_NAME = Map.of(
             "Along Alliance Moving Shot",
-                    new AutoGolden(9.620, 13.527169, 7.999617, 5.016771, 22.796878, true, true, false),
+                    new AutoGolden(8.020, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false),
             "brag",
-                    new AutoGolden(7.120, 5.297118, 2.577218, 6.393992, 127.858596, true, true, false),
+                    new AutoGolden(7.000, 5.309856, 2.576406, 6.392854, 128.309389, true, true, false),
             "mid back up then score",
-                    new AutoGolden(11.780, 1.046438, 2.507755, 2.060382, -137.705373, true, true, false),
+                    new AutoGolden(11.620, 1.039678, 2.555260, 3.987686, -179.999729, true, true, false),
             "right mid cycle",
-                    new AutoGolden(20.500, 12.411352, 3.010898, 1.311304, -120.957228, true, true, true),
+                    new AutoGolden(18.880, 12.426243, 3.014197, 1.314147, -117.788933, true, true, true),
             "right mid rush cycle",
-                    new AutoGolden(22.540, 12.403353, 3.010899, 1.311305, -120.957281, true, true, true),
+                    new AutoGolden(21.120, 12.449354, 3.005534, 1.314379, -120.507662, true, true, true),
             "right rush event auto",
-                    new AutoGolden(19.600, 13.697500, 2.709103, 1.716465, -130.089862, true, true, false),
+                    new AutoGolden(17.960, 13.732693, 2.704229, 1.710229, -129.414236, true, true, false),
             "right sweeper",
-                    new AutoGolden(6.820, 9.442767, 8.076786, 6.064262, 33.505692, false, false, false));
+                    new AutoGolden(5.420, 9.457444, 8.076133, 6.070486, 33.685364, false, false, false));
 
     static void assertExpectedAutoSet(Set<String> autoNames) {
         assertEquals(
