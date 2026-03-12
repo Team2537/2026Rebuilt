@@ -387,7 +387,6 @@ public final class RobotContainer {
                         () -> -driverController.getRightX(),
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
-                        aimingContext.aimReadySupplier(),
                         manualFeedTrigger::getAsBoolean).withName("ShooterTriggerSelectedMode"));
         bindWhileTrue(
                 hubShotTrigger,
@@ -397,7 +396,6 @@ public final class RobotContainer {
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
                         teleopAutoAlignHeadingSupplier,
-                        aimingContext.aimReadySupplier(),
                         manualFeedTrigger::getAsBoolean).withName("ShooterHubShot"));
         bindWhileTrue(
                 dashboardTuneTrigger,

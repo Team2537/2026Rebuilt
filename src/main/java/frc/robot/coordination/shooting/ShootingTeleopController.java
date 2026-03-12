@@ -102,7 +102,6 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
                 Commands.either(
@@ -117,7 +116,6 @@ public final class ShootingTeleopController {
                                 omegaFallbackSupplier,
                                 distanceMetersSupplier,
                                 targetHeadingSupplier,
-                                aimReadySupplier,
                                 manualFeedOverrideSupplier,
                                 () -> false),
                         () -> dashboardOverrides.isAutoAimEnabled()
@@ -130,7 +128,6 @@ public final class ShootingTeleopController {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
                 createShootCommand(
@@ -139,7 +136,6 @@ public final class ShootingTeleopController {
                         omegaFallbackSupplier,
                         () -> ShooterConstants.HUB_SHOT_DISTANCE_METERS,
                         targetHeadingSupplier,
-                        aimReadySupplier,
                         () -> ReadinessMode.STATIONARY,
                         manualFeedOverrideSupplier,
                         () -> !dashboardOverrides.isFeedingDisabled())
@@ -221,45 +217,51 @@ public final class ShootingTeleopController {
 
     private BooleanSupplier createTeleopAimReadySupplier(
             Supplier<Rotation2d> targetHeadingSupplier) {
-        return createTeleopAimReadySupplier(targetHeadingSupplier, () -> false);
+        return createTeleopAimReadySupplier(targetHeadingSupplier, () -> ReadinessMode.STATIONARY);
     }
 
     private BooleanSupplier createTeleopAimReadySupplier(
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier passModeSupplier) {
+            Supplier<ReadinessMode> readinessModeSupplier) {
         TargetHoldover<Rotation2d> targetHoldover =
                 new TargetHoldover<>(AutoAimHeadingConfig.TARGET_HOLD_SEC, Timer::getFPGATimestamp);
-        AimReadyLatch shootAimReadyLatch = new AimReadyLatch(
+        AimReadyLatch stationaryAimReadyLatch = new AimReadyLatch(
                 AutoAimHeadingConfig.AIM_TOLERANCE_RAD,
                 AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD);
+        AimReadyLatch shotOnMoveAimReadyLatch = new AimReadyLatch(
+                AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_TOLERANCE_RAD,
+                AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_RELEASE_TOLERANCE_RAD);
         AimReadyLatch passAimReadyLatch = new AimReadyLatch(
                 AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD,
                 AutoAimHeadingConfig.PASS_AIM_RELEASE_TOLERANCE_RAD);
-        final boolean[] lastPassMode = new boolean[] {passModeSupplier.getAsBoolean()};
+        final ReadinessMode[] lastReadinessMode =
+                new ReadinessMode[] {readinessModeSupplier.get()};
         return () -> {
-            boolean passMode = passModeSupplier.getAsBoolean();
-            if (passMode != lastPassMode[0]) {
-                shootAimReadyLatch.reset();
+            ReadinessMode readinessMode = readinessModeSupplier.get();
+            if (readinessMode != lastReadinessMode[0]) {
+                stationaryAimReadyLatch.reset();
+                shotOnMoveAimReadyLatch.reset();
                 passAimReadyLatch.reset();
-                lastPassMode[0] = passMode;
+                lastReadinessMode[0] = readinessMode;
             }
             TargetHoldover.HoldResult<Rotation2d> holdoverResult =
                     targetHoldover.apply(targetHeadingSupplier.get());
             Rotation2d targetHeading = holdoverResult.value();
             Rotation2d robotHeading = RobotState.getInstance().getRotation();
-            AimReadyLatch activeAimReadyLatch = passMode ? passAimReadyLatch : shootAimReadyLatch;
-            double activeAimToleranceRad = passMode
-                    ? AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD
-                    : AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
-            double activeAimReleaseToleranceRad = passMode
-                    ? AutoAimHeadingConfig.PASS_AIM_RELEASE_TOLERANCE_RAD
-                    : AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
+            AimReadyLatch activeAimReadyLatch = switch (readinessMode) {
+                case STATIONARY -> stationaryAimReadyLatch;
+                case SHOT_ON_MOVE -> shotOnMoveAimReadyLatch;
+                case PASSING -> passAimReadyLatch;
+            };
+            double activeAimToleranceRad = getAimToleranceRad(readinessMode);
+            double activeAimReleaseToleranceRad = getAimReleaseToleranceRad(readinessMode);
 
             Logger.recordOutput("Shooting/AimTargetAvailable", targetHeading != null);
             Logger.recordOutput("Shooting/TargetHeld", holdoverResult.held());
             Logger.recordOutput("Shooting/TargetAgeSec", holdoverResult.ageSec());
             Logger.recordOutput("Shooting/RobotHeadingDeg", robotHeading.getDegrees());
-            Logger.recordOutput("Shooting/PassAimMode", passMode);
+            Logger.recordOutput("Shooting/PassAimMode", readinessMode == ReadinessMode.PASSING);
+            Logger.recordOutput("Shooting/AimReadinessMode", readinessMode.name());
             Logger.recordOutput("Shooting/ActiveAimToleranceRad", activeAimToleranceRad);
             Logger.recordOutput("Shooting/ActiveAimReleaseToleranceRad", activeAimReleaseToleranceRad);
             if (targetHeading == null) {
@@ -319,28 +321,16 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier hubDistanceMetersSupplier,
             Supplier<Rotation2d> hubTargetHeadingSupplier,
-            BooleanSupplier shootAimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
         Supplier<TargetSelection> targetSelectionSupplier =
                 createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
-        BooleanSupplier passModeSupplier =
-                () -> targetSelectionSupplier.get().mode() == RightTriggerMode.PASS;
-        BooleanSupplier passAimReadySupplier =
-                createTeleopAimReadySupplier(
-                        () -> targetSelectionSupplier.get().targetHeading(),
-                        passModeSupplier);
-        BooleanSupplier aimReadySupplier =
-                () -> passModeSupplier.getAsBoolean()
-                        ? passAimReadySupplier.getAsBoolean()
-                        : shootAimReadySupplier.getAsBoolean();
         return createShootCommand(
                 xSupplier,
                 ySupplier,
                 omegaFallbackSupplier,
                 () -> targetSelectionSupplier.get().distanceMeters(),
                 () -> targetSelectionSupplier.get().targetHeading(),
-                aimReadySupplier,
                 () -> targetSelectionSupplier.get().readinessMode(),
                 manualFeedOverrideSupplier,
                 automaticFeedEnabledSupplier);
@@ -352,15 +342,11 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
-            BooleanSupplier aimReadySupplier,
             Supplier<ReadinessMode> readinessModeSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
-        CycleCache<Boolean> aimReadyCycleCache = new CycleCache<>();
         BooleanSupplier shotOnMoveSupplier = createTeleopShotOnMoveSupplier();
         CycleCache<ReadinessMode> readinessModeCycleCache = new CycleCache<>();
-        BooleanSupplier cachedAimReadySupplier =
-                () -> aimReadyCycleCache.get(commandTelemetry.getCycle(), aimReadySupplier::getAsBoolean);
         Supplier<ReadinessMode> cachedReadinessModeSupplier = () -> readinessModeCycleCache.get(
                 commandTelemetry.getCycle(), () -> {
                     ReadinessMode requestedMode = readinessModeSupplier.get();
@@ -371,6 +357,8 @@ public final class ShootingTeleopController {
                             ? ReadinessMode.SHOT_ON_MOVE
                             : ReadinessMode.STATIONARY;
                 });
+        BooleanSupplier cachedAimReadySupplier =
+                createTeleopAimReadySupplier(targetHeadingSupplier, cachedReadinessModeSupplier);
         BooleanSupplier readyToFeedSupplier =
                 () -> shooter.getReadinessDiagnosticsNow(cachedReadinessModeSupplier.get())
                         .atSetpoint()
@@ -452,6 +440,22 @@ public final class ShootingTeleopController {
                 selection.targetHeading() != null ? selection.targetHeading().getDegrees() : Double.NaN);
         Logger.recordOutput("Shooting/TargetReadinessMode", selection.readinessMode().name());
         Logger.recordOutput("Shooting/AllianceZoneBoundaryX", FieldConstants.getAllianceZoneBoundaryX());
+    }
+
+    private static double getAimToleranceRad(ReadinessMode readinessMode) {
+        return switch (readinessMode) {
+            case STATIONARY -> AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
+            case SHOT_ON_MOVE -> AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_TOLERANCE_RAD;
+            case PASSING -> AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD;
+        };
+    }
+
+    private static double getAimReleaseToleranceRad(ReadinessMode readinessMode) {
+        return switch (readinessMode) {
+            case STATIONARY -> AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD;
+            case SHOT_ON_MOVE -> AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_RELEASE_TOLERANCE_RAD;
+            case PASSING -> AutoAimHeadingConfig.PASS_AIM_RELEASE_TOLERANCE_RAD;
+        };
     }
 
     private static double getShooterDistanceToTarget(Pose2d robotPose, Translation2d targetTranslation) {

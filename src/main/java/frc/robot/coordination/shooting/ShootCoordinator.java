@@ -206,9 +206,11 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/FeedGatePolicy", "InlineModeSwitch");
         Logger.recordOutput(
                 "Shooting/AimToleranceRad",
-                readinessMode == ReadinessMode.PASSING
-                        ? AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD
-                        : AutoAimHeadingConfig.AIM_TOLERANCE_RAD);
+                switch (readinessMode) {
+                    case STATIONARY -> AutoAimHeadingConfig.AIM_TOLERANCE_RAD;
+                    case SHOT_ON_MOVE -> AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_TOLERANCE_RAD;
+                    case PASSING -> AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD;
+                });
         Logger.recordOutput("Shooting/ShooterAtSetpoint", shooterAtSetpoint);
         Logger.recordOutput("Shooting/AimReady", aimReady);
         Logger.recordOutput("Shooting/ReadinessMode", readinessMode.name());
