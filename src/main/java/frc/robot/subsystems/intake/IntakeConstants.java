@@ -62,7 +62,7 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_HALF_RETRACT_POSITION_ROT = 10.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
-    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 1.0;
+    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.2;
 
     public static final double SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS = 2.0;
     public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 3;

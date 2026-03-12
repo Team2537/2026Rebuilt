@@ -38,10 +38,10 @@ public final class VisionConstants {
     public static final double HUB_YAW_MAX_AMBIGUITY = MAX_AMBIGUITY;
     public static final double HUB_YAW_MAX_DISTANCE_METERS = 6.0;
     public static final double HUB_YAW_MAX_AGE_SECONDS = 0.25;
-    public static final double MAX_VISION_TRANSLATION_DELTA_METERS = 0.5;
-    public static final double MAX_VISION_HEADING_DELTA_DEGREES = 20.0;
-    public static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 0.5;
-    public static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 20.0;
+    public static final double MAX_VISION_TRANSLATION_DELTA_METERS = 2.0;
+    public static final double MAX_VISION_HEADING_DELTA_DEGREES = 35.0;
+    public static final double VISION_JUMP_TRANSLATION_THRESHOLD_METERS = 2.0;
+    public static final double VISION_JUMP_HEADING_THRESHOLD_DEGREES = 35.0;
     public static final double UNIFIED_RAW_POSE_MAX_AGE_SECONDS = 0.25;
     public static final double UNIFIED_POSE_MAX_AGE_SECONDS = 0.5;
     public static final boolean ENABLE_VISION_EVENT_LOGS = false;

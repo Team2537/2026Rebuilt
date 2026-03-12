@@ -21,18 +21,18 @@ public final class DriveConstants {
             DegreesPerSecondPerSecond.of(1000.0).in(RadiansPerSecondPerSecond);
 
     private static final double SLOW_MODE_MAX_LINEAR_VELOCITY_MPS = 2.0;
-    private static final double SLOW_MODE_MAX_LINEAR_ACCELERATION_MPSSQ = 7.0;
+    private static final double SLOW_MODE_MAX_LINEAR_ACCELERATION_MPSSQ = 35.0;
     private static final double SLOW_MODE_MAX_ANGULAR_VELOCITY_RAD_PER_SEC =
             SLOW_MODE_MAX_LINEAR_VELOCITY_MPS / DRIVEBASE_RADIUS_METERS;
     private static final double SLOW_MODE_MAX_ANGULAR_ACCELERATION_RAD_PER_SEC_SQ =
-            DegreesPerSecondPerSecond.of(450.0).in(RadiansPerSecondPerSecond);
+            DegreesPerSecondPerSecond.of(1000.0).in(RadiansPerSecondPerSecond);
 
     private static final double SHOOTING_MAX_LINEAR_VELOCITY_MPS = 2.0;
-    private static final double SHOOTING_MAX_LINEAR_ACCELERATION_MPSSQ = 5.0;
-    private static final double SHOOTING_MAX_ANGULAR_VELOCITY_RAD_PER_SEC =
-            DegreesPerSecond.of(300.0).in(RadiansPerSecond);
+    private static final double SHOOTING_MAX_LINEAR_ACCELERATION_MPSSQ = 35.0;
+    private static final double SHOOTING_MAX_ANGULAR_VELOCITY_RAD_PER_SEC = SLOW_MODE_MAX_LINEAR_VELOCITY_MPS
+                    / DRIVEBASE_RADIUS_METERS;
     private static final double SHOOTING_MAX_ANGULAR_ACCELERATION_RAD_PER_SEC_SQ =
-            DegreesPerSecondPerSecond.of(400.0).in(RadiansPerSecondPerSecond);
+            DegreesPerSecondPerSecond.of(1000.0).in(RadiansPerSecondPerSecond);
 
     public static final double MAX_STEER_VELOCITY_RAD_PER_SEC = DegreesPerSecond.of(1500.0).in(RadiansPerSecond);
 
