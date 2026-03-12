@@ -192,9 +192,7 @@ public final class RobotContainer {
 
     public void teleopInit() {
         commandTelemetry.cancelAllCommands("mode.teleopInit");
-        drive.setConstraintProfileActive(
-                DriveConstants.ConstraintProfile.SLOW_MODE,
-                driverController.getHID().getLeftStickButton());
+        drive.setConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE, false);
         scheduleHoming("mode.teleopInit");
     }
 
@@ -320,25 +318,10 @@ public final class RobotContainer {
         shooter.setDefaultCommand(
                 commandTelemetry.withCommandSource("default.shooterBackground", shooter.backgroundCommand()));
 
-        bindWhileTrue(
+        bindOnTrue(
                 driverController.leftStick(),
-                "driver.leftStick.whileTrue",
-                Commands.startEnd(
-                                () -> drive.setConstraintProfileActive(
-                                        DriveConstants.ConstraintProfile.SLOW_MODE,
-                                        true),
-                                () -> drive.setConstraintProfileActive(
-                                        DriveConstants.ConstraintProfile.SLOW_MODE,
-                                        false))
-                        .withName("DriveHoldSlowMode"));
-        bindOnFalse(
-                driverController.leftStick(),
-                "driver.leftStick.onFalse",
-                Commands.runOnce(
-                                () -> drive.setConstraintProfileActive(
-                                        DriveConstants.ConstraintProfile.SLOW_MODE,
-                                        false))
-                        .withName("DriveReleaseSlowMode"));
+                "driver.leftStick.onTrue",
+                drive.toggleSlowMode().withName("DriveToggleSlowMode"));
         bindOnTrue(
                 driverController.leftStick().and(driverController.rightStick()),
                 "driver.leftStick.rightStick.onTrue",

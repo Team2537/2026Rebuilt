@@ -55,6 +55,15 @@ public final class DriveCommands {
                 .getTranslation();
     }
 
+    private static double getAngularVelocityFromJoystick(double omegaInput) {
+        double omega = MathUtil.applyDeadband(omegaInput, DEADBAND);
+        return getCubicScaledOmega(omega);
+    }
+
+    private static double getCubicScaledOmega(double omega) {
+        return omega * omega * omega;
+    }
+
     private static Rotation2d getAllianceAdjustedFieldHeading() {
         Rotation2d rotation = RobotState.getInstance().getRotation();
         boolean isFlipped = DriverStation.getAlliance().isPresent()
@@ -77,11 +86,7 @@ public final class DriveCommands {
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
                             -ySupplier.getAsDouble());
 
-                    // Apply rotation deadband
-                    double omega = MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND);
-
-                    // Square rotation value for more precise control
-                    omega = Math.copySign(omega * omega, omega);
+                    double omega = getAngularVelocityFromJoystick(omegaSupplier.getAsDouble());
 
                     // Compute desired chassis speeds from joystick input
                     ChassisSpeeds speeds = new ChassisSpeeds(
@@ -257,9 +262,7 @@ public final class DriveCommands {
 
                     double fallbackOmegaInput = MathUtil.applyDeadband(
                             omegaFallbackSupplier.getAsDouble(), DEADBAND);
-                    double fallbackOmega = Math.copySign(
-                            fallbackOmegaInput * fallbackOmegaInput,
-                            fallbackOmegaInput);
+                    double fallbackOmega = getCubicScaledOmega(fallbackOmegaInput);
                     fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
 
                     double omega = alignController.calculate(

@@ -118,7 +118,8 @@ public final class ShootingTeleopController {
                                 distanceMetersSupplier,
                                 targetHeadingSupplier,
                                 aimReadySupplier,
-                                manualFeedOverrideSupplier),
+                                manualFeedOverrideSupplier,
+                                () -> false),
                         () -> dashboardOverrides.isAutoAimEnabled()
                                 && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
                         .withName("ShooterTriggerSelectedMode"));
@@ -140,7 +141,8 @@ public final class ShootingTeleopController {
                         targetHeadingSupplier,
                         aimReadySupplier,
                         () -> ReadinessMode.STATIONARY,
-                        manualFeedOverrideSupplier)
+                        manualFeedOverrideSupplier,
+                        () -> !dashboardOverrides.isFeedingDisabled())
                         .withName("ShooterHubShot"));
     }
 
@@ -318,7 +320,8 @@ public final class ShootingTeleopController {
             DoubleSupplier hubDistanceMetersSupplier,
             Supplier<Rotation2d> hubTargetHeadingSupplier,
             BooleanSupplier shootAimReadySupplier,
-            BooleanSupplier manualFeedOverrideSupplier) {
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
         Supplier<TargetSelection> targetSelectionSupplier =
                 createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
         BooleanSupplier passModeSupplier =
@@ -339,7 +342,8 @@ public final class ShootingTeleopController {
                 () -> targetSelectionSupplier.get().targetHeading(),
                 aimReadySupplier,
                 () -> targetSelectionSupplier.get().readinessMode(),
-                manualFeedOverrideSupplier);
+                manualFeedOverrideSupplier,
+                automaticFeedEnabledSupplier);
     }
 
     private Command createShootCommand(
@@ -350,14 +354,15 @@ public final class ShootingTeleopController {
             Supplier<Rotation2d> targetHeadingSupplier,
             BooleanSupplier aimReadySupplier,
             Supplier<ReadinessMode> readinessModeSupplier,
-            BooleanSupplier manualFeedOverrideSupplier) {
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
         CycleCache<Boolean> aimReadyCycleCache = new CycleCache<>();
         BooleanSupplier shotOnMoveSupplier = createTeleopShotOnMoveSupplier();
         CycleCache<ReadinessMode> readinessModeCycleCache = new CycleCache<>();
         BooleanSupplier cachedAimReadySupplier =
                 () -> aimReadyCycleCache.get(commandTelemetry.getCycle(), aimReadySupplier::getAsBoolean);
-        Supplier<ReadinessMode> cachedReadinessModeSupplier =
-                () -> readinessModeCycleCache.get(commandTelemetry.getCycle(), () -> {
+        Supplier<ReadinessMode> cachedReadinessModeSupplier = () -> readinessModeCycleCache.get(
+                commandTelemetry.getCycle(), () -> {
                     ReadinessMode requestedMode = readinessModeSupplier.get();
                     if (requestedMode == ReadinessMode.PASSING) {
                         return ReadinessMode.PASSING;
@@ -383,7 +388,7 @@ public final class ShootingTeleopController {
                         cachedAimReadySupplier,
                         cachedReadinessModeSupplier,
                         manualFeedOverrideSupplier,
-                        () -> !dashboardOverrides.isFeedingDisabled()),
+                        automaticFeedEnabledSupplier),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerAimAndShoot");
     }
@@ -404,7 +409,7 @@ public final class ShootingTeleopController {
                                 dashboardOverrides::getAimDistanceMeters,
                                 () -> true,
                                 manualFeedOverrideSupplier,
-                                () -> !dashboardOverrides.isFeedingDisabled())
+                                () -> false)
                         .withName("ShooterShootOverrideDistance"),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerOverrideAutoAimShoot");
