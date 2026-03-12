@@ -52,6 +52,19 @@ import org.littletonrobotics.junction.Logger;
 
 /** Owns subsystem lifecycle, command bindings, and autonomous orchestration wiring. */
 public final class RobotContainer {
+    private enum DriverRelativeHeading {
+        RIGHT(-90.0),
+        BACK(180.0),
+        LEFT(90.0),
+        FORWARD(0.0);
+
+        private final double blueAllianceHeadingDeg;
+
+        DriverRelativeHeading(double blueAllianceHeadingDeg) {
+            this.blueAllianceHeadingDeg = blueAllianceHeadingDeg;
+        }
+    }
+
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
     private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
@@ -327,11 +340,23 @@ public final class RobotContainer {
                 "driver.leftStick.rightStick.onTrue",
                 DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
 
-        Trigger reverseTransferTrigger = driverController.y();
-        bindWhileTrue(reverseTransferTrigger, "driver.y.whileTrue", transfer.reverseCommand());
-
-        bindOnTrue(driverController.b(), "driver.b.onTrue", intake.toggleExtendedCommand());
         Trigger intakeRollerTrigger = driverController.leftTrigger();
+        bindOnTrue(
+                driverController.a(),
+                "driver.a.onTrue",
+                createDriverHeadingSnapCommand(DriverRelativeHeading.BACK));
+        bindOnTrue(
+                driverController.b(),
+                "driver.b.onTrue",
+                createDriverHeadingSnapCommand(DriverRelativeHeading.RIGHT));
+        bindOnTrue(
+                driverController.x(),
+                "driver.x.onTrue",
+                createDriverHeadingSnapCommand(DriverRelativeHeading.LEFT));
+        bindOnTrue(
+                driverController.y(),
+                "driver.y.onTrue",
+                createDriverHeadingSnapCommand(DriverRelativeHeading.FORWARD));
         bindOnTrue(
                 intakeRollerTrigger,
                 "driver.leftTrigger.onTrue",
@@ -366,37 +391,32 @@ public final class RobotContainer {
         Supplier<Rotation2d> teleopAutoAlignHeadingSupplier = aimingContext.hubHeadingSupplier();
 
         Trigger rightTriggerPressed = driverController.rightTrigger();
-        Trigger manualFeedTrigger = driverController.x();
-        Trigger dashboardTuneTrigger = rightTriggerPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
+        Trigger rightBumperPressed = driverController.rightBumper();
+        Trigger dashboardTuneTrigger = rightBumperPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
         Trigger dashboardTransferTuneTrigger =
                 dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
-        Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
-        Trigger hubShotTrigger = driverController.rightBumper().and(shootTrigger.negate());
-        Trigger manualFeedStandaloneTrigger =
-                manualFeedTrigger
-                        .and(shootTrigger.negate())
-                        .and(hubShotTrigger.negate())
-                        .and(dashboardTuneTrigger.negate());
+        Trigger shootTrigger = rightBumperPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
+        Trigger aimTrigger = rightTriggerPressed.and(rightBumperPressed.negate());
 
+        bindWhileTrue(
+                aimTrigger,
+                "driver.aim.whileTrue",
+                shootingTeleopController.createSelectedAimCommand(
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        hubDistanceSupplier,
+                        teleopAutoAlignHeadingSupplier).withName("ShooterDriverAim"));
         bindWhileTrue(
                 shootTrigger,
                 "driver.shoot.whileTrue",
-                shootingTeleopController.createSelectedShootCommand(
+                shootingTeleopController.createSelectedShootWithoutAimCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier,
-                        manualFeedTrigger::getAsBoolean).withName("ShooterTriggerSelectedMode"));
-        bindWhileTrue(
-                hubShotTrigger,
-                "driver.hubShot.whileTrue",
-                shootingTeleopController.createHubShotCommand(
-                        () -> driverController.getLeftY(),
-                        () -> driverController.getLeftX(),
-                        () -> -driverController.getRightX(),
-                        teleopAutoAlignHeadingSupplier,
-                        manualFeedTrigger::getAsBoolean).withName("ShooterHubShot"));
+                        rightBumperPressed::getAsBoolean).withName("ShooterTriggerSelectedMode"));
         bindWhileTrue(
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",
@@ -405,10 +425,6 @@ public final class RobotContainer {
                 dashboardTransferTuneTrigger,
                 "driver.dashboardTuneTransfer.whileTrue",
                 transfer.runCommand().withName("TransferDashboardTune"));
-        bindWhileTrue(
-                manualFeedStandaloneTrigger,
-                "driver.x.whileTrue",
-                shootCoordinator.manualFeedCommand().withName("DriverManualFeed"));
 
         if (godController != null) {
             bindOnTrue(
@@ -519,6 +535,23 @@ public final class RobotContainer {
 
     private Command createIntakeTriggerPressCommand() {
         return Commands.runOnce(this::handleIntakeTriggerPress, intake).withName("DriverIntakeTriggerPress");
+    }
+
+    private Command createDriverHeadingSnapCommand(DriverRelativeHeading direction) {
+        return DriveCommands.headingSnap(
+                        drive,
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        () -> getDriverRelativeHeading(direction))
+                .withName("DriveHeadingSnap");
+    }
+
+    private Rotation2d getDriverRelativeHeading(DriverRelativeHeading direction) {
+        Rotation2d heading = Rotation2d.fromDegrees(direction.blueAllianceHeadingDeg);
+        return DriverStation.getAlliance().filter(alliance -> alliance == DriverStation.Alliance.Red).isPresent()
+                ? heading.plus(Rotation2d.kPi)
+                : heading;
     }
 
     private void handleIntakeTriggerPress() {

@@ -123,23 +123,53 @@ public final class ShootingTeleopController {
                         .withName("ShooterTriggerSelectedMode"));
     }
 
-    public Command createHubShotCommand(
+    public Command createSelectedAimCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
-            Supplier<Rotation2d> targetHeadingSupplier,
+            DoubleSupplier hubDistanceMetersSupplier,
+            Supplier<Rotation2d> hubTargetHeadingSupplier) {
+        return withShootingConstraintProfile(
+                Commands.either(
+                        createOverrideAutoAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier),
+                        createZoneAwareAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                hubDistanceMetersSupplier,
+                                hubTargetHeadingSupplier),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterDriverAim"));
+    }
+
+    public Command createSelectedShootWithoutAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
+            DoubleSupplier hubDistanceMetersSupplier,
+            Supplier<Rotation2d> hubTargetHeadingSupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
-                createShootCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        () -> ShooterConstants.HUB_SHOT_DISTANCE_METERS,
-                        targetHeadingSupplier,
-                        () -> ReadinessMode.STATIONARY,
-                        manualFeedOverrideSupplier,
-                        () -> !dashboardOverrides.isFeedingDisabled())
-                        .withName("ShooterHubShot"));
+                Commands.either(
+                        createOverrideAutoAimShootWithoutAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaSupplier,
+                                manualFeedOverrideSupplier),
+                        createZoneAwareShootWithoutAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaSupplier,
+                                hubDistanceMetersSupplier,
+                                hubTargetHeadingSupplier,
+                                manualFeedOverrideSupplier),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterTriggerSelectedMode"));
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
@@ -336,6 +366,78 @@ public final class ShootingTeleopController {
                 automaticFeedEnabledSupplier);
     }
 
+    private Command createZoneAwareAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier hubDistanceMetersSupplier,
+            Supplier<Rotation2d> hubTargetHeadingSupplier) {
+        Supplier<TargetSelection> targetSelectionSupplier =
+                createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
+        return createAimCommand(
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                () -> targetSelectionSupplier.get().distanceMeters(),
+                () -> targetSelectionSupplier.get().targetHeading());
+    }
+
+    private Command createAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier) {
+        return Commands.parallel(
+                createAutoAlignCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        targetHeadingSupplier),
+                shootCoordinator.aimForDistance(distanceMetersSupplier))
+                .withName("ShooterTriggerAimOnly");
+    }
+
+    private Command createZoneAwareShootWithoutAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
+            DoubleSupplier hubDistanceMetersSupplier,
+            Supplier<Rotation2d> hubTargetHeadingSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        Supplier<TargetSelection> targetSelectionSupplier =
+                createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
+        return createShootWithoutAimCommand(
+                xSupplier,
+                ySupplier,
+                omegaSupplier,
+                () -> targetSelectionSupplier.get().distanceMeters(),
+                manualFeedOverrideSupplier);
+    }
+
+    private Command createShootWithoutAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return Commands.parallel(
+                DriveCommands.joystickDrive(
+                        drive,
+                        xSupplier,
+                        ySupplier,
+                        omegaSupplier)
+                        .withName("DriveJoystickShootNoAim"),
+                shootCoordinator.shootForDistance(
+                                distanceMetersSupplier,
+                                () -> true,
+                                manualFeedOverrideSupplier,
+                                () -> !dashboardOverrides.isFeedingDisabled())
+                        .withName("ShooterShootWithoutAim"),
+                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
+                .withName("ShooterTriggerFeedAndShootNoAim");
+    }
+
     private Command createShootCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
@@ -398,6 +500,44 @@ public final class ShootingTeleopController {
                                 () -> true,
                                 manualFeedOverrideSupplier,
                                 () -> false)
+                        .withName("ShooterShootOverrideDistance"),
+                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
+                .withName("ShooterTriggerOverrideAutoAimShoot");
+    }
+
+    private Command createOverrideAutoAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier) {
+        return Commands.parallel(
+                DriveCommands.joystickDrive(
+                        drive,
+                        xSupplier,
+                        ySupplier,
+                        omegaSupplier)
+                        .withName("DriveJoystickOverrideAutoAim"),
+                shootCoordinator.aimForDistance(dashboardOverrides::getAimDistanceMeters)
+                        .withName("ShooterAimOverrideDistance"))
+                .withName("ShooterTriggerOverrideAutoAim");
+    }
+
+    private Command createOverrideAutoAimShootWithoutAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return Commands.parallel(
+                DriveCommands.joystickDrive(
+                        drive,
+                        xSupplier,
+                        ySupplier,
+                        omegaSupplier)
+                        .withName("DriveJoystickOverrideAutoAim"),
+                shootCoordinator.shootForDistance(
+                                dashboardOverrides::getAimDistanceMeters,
+                                () -> true,
+                                manualFeedOverrideSupplier,
+                                () -> !dashboardOverrides.isFeedingDisabled())
                         .withName("ShooterShootOverrideDistance"),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerOverrideAutoAimShoot");

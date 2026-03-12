@@ -108,14 +108,6 @@ public final class Robot extends LoggedRobot {
         boolean batteryLow = voltage < LOW_BATTERY_VOLTAGE;
         Logger.recordOutput("RobotState/BatteryVoltage", voltage);
         Logger.recordOutput("RobotState/BatteryLow", batteryLow);
-        if (batteryLow && !lowBatteryNotified) {
-            lowBatteryNotified = true;
-            ElasticNotifications.sendWarning(
-                    "Low Battery",
-                    String.format(Locale.US, "Battery at %.1fV", voltage));
-        } else if (!batteryLow) {
-            lowBatteryNotified = false;
-        }
     }
 
     private void logRobotState() {

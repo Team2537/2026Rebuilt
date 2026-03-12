@@ -119,6 +119,21 @@ public final class DriveCommands {
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
             DoubleSupplier omegaSupplier) {
+        return headingSnap(
+                drive,
+                xSupplier,
+                ySupplier,
+                omegaSupplier,
+                () -> snapToNearestCardinal(RobotState.getInstance().getRotation()));
+    }
+
+    /** Returns a command that snaps heading to a supplied target heading. */
+    public static Command headingSnap(
+            Drive drive,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier) {
         HubAlignController alignController = new HubAlignController();
         HeadingSnapState state = new HeadingSnapState();
         BooleanSupplier turningStickActiveSupplier =
@@ -143,7 +158,10 @@ public final class DriveCommands {
                 },
                 drive)
                 .beforeStarting(() -> {
-                    Rotation2d snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
+                    Rotation2d snappedHeading = targetHeadingSupplier.get();
+                    if (snappedHeading == null) {
+                        snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
+                    }
                     state.targetHeading = snappedHeading;
                     alignController.reset(RobotState.getInstance().getRotation().getRadians(), snappedHeading);
                 })
