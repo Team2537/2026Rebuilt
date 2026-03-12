@@ -169,6 +169,39 @@ final class FullFunctionalityDriveAndAutoStress {
     }
 
     @Test
+    void headingSnapFinishesWhenAlreadyInsideControllerToleranceBand() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setTeleopEnabled();
+            context.container.teleopInit();
+            context.runCycles(20);
+
+            context.drive.setPose(new Pose2d(
+                    context.drive.getPose().getTranslation(),
+                    Rotation2d.fromDegrees(1.5)));
+            FullFunctionalityHarness.CommandCounts snapBefore = context.recorder.getCounts("DriveHeadingSnap");
+
+            context.tapDriverPov(0);
+            boolean snapFinished = context.runUntil(
+                    () -> context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore).finishes() >= 1,
+                    20);
+
+            assertTrue(
+                    snapFinished,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "DriveHeadingSnap should finish when already within controller tolerance",
+                            "finished=true",
+                            String.format(
+                                    Locale.US,
+                                    "finished=%s delta=%s",
+                                    snapFinished,
+                                    context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore))));
+            assertTrue(
+                    context.recorder.runningCount("DriveJoystickDefault") >= 1,
+                    "Expected DriveJoystickDefault to be running after a near-cardinal heading snap.");
+        }
+    }
+
+    @Test
     void pathPlannerAutoRepeatabilityIsStableAcrossTwoRunsPerAuto() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();

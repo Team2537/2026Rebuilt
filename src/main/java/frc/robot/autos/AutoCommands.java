@@ -105,7 +105,12 @@ public final class AutoCommands {
                 createAimReadySupplier(profiledDesiredRobotHeadingSupplier);
 
         return withPathRotationOverride(
-                        shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
+                        shootCoordinator.shootForDistance(
+                                distanceSupplier,
+                                aimReadySupplier,
+                                () -> true,
+                                () -> false,
+                                () -> true),
                         rawDesiredRobotHeadingSupplier,
                         profiledDesiredRobotHeadingSupplier,
                         profiledHeadingTarget)

@@ -3,6 +3,7 @@ package frc.robot.coordination.shooting;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -15,6 +16,7 @@ import frc.robot.subsystems.drive.DriveConstants;
 import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.Shooter.ReadinessMode;
 import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.AimReadyLatch;
 import frc.robot.util.AutoAimHeadingConfig;
@@ -27,6 +29,11 @@ import org.littletonrobotics.junction.Logger;
 
 /** Encapsulates teleop shooting/aim logic and per-loop cached suppliers. */
 public final class ShootingTeleopController {
+    private static final double SHOT_ON_MOVE_LINEAR_ENGAGE_MPS = 0.35;
+    private static final double SHOT_ON_MOVE_LINEAR_RELEASE_MPS = 0.20;
+    private static final double SHOT_ON_MOVE_ANGULAR_ENGAGE_RAD_PER_SEC = Math.toRadians(35.0);
+    private static final double SHOT_ON_MOVE_ANGULAR_RELEASE_RAD_PER_SEC = Math.toRadians(20.0);
+
     private final Drive drive;
     private final Shooter shooter;
     private final Intake intake;
@@ -216,10 +223,19 @@ public final class ShootingTeleopController {
             BooleanSupplier aimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
         CycleCache<Boolean> aimReadyCycleCache = new CycleCache<>();
+        BooleanSupplier shotOnMoveSupplier = createTeleopShotOnMoveSupplier();
+        CycleCache<Boolean> shotOnMoveCycleCache = new CycleCache<>();
         BooleanSupplier cachedAimReadySupplier =
                 () -> aimReadyCycleCache.get(commandTelemetry.getCycle(), aimReadySupplier::getAsBoolean);
+        BooleanSupplier cachedShotOnMoveSupplier =
+                () -> shotOnMoveCycleCache.get(commandTelemetry.getCycle(), shotOnMoveSupplier::getAsBoolean);
         BooleanSupplier readyToFeedSupplier =
-                () -> shooter.getReadinessDiagnosticsNow().atSetpoint() && cachedAimReadySupplier.getAsBoolean();
+                () -> shooter.getReadinessDiagnosticsNow(
+                                cachedShotOnMoveSupplier.getAsBoolean()
+                                        ? ReadinessMode.SHOT_ON_MOVE
+                                        : ReadinessMode.STATIONARY)
+                        .atSetpoint()
+                        && cachedAimReadySupplier.getAsBoolean();
 
         return Commands.parallel(
                 createAutoAlignCommand(
@@ -231,6 +247,7 @@ public final class ShootingTeleopController {
                 shootCoordinator.shootForDistance(
                         distanceMetersSupplier,
                         cachedAimReadySupplier,
+                        cachedShotOnMoveSupplier,
                         manualFeedOverrideSupplier,
                         () -> !dashboardOverrides.isFeedingDisabled()),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
@@ -263,5 +280,52 @@ public final class ShootingTeleopController {
         return command
                 .beforeStarting(() -> drive.setConstraintProfileActive(DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE, true))
                 .finallyDo(interrupted -> drive.setConstraintProfileActive(DriveConstants.ConstraintProfile.SHOOTING_ON_MOVE, false));
+    }
+
+    private BooleanSupplier createTeleopShotOnMoveSupplier() {
+        MotionModeLatch shotOnMoveLatch = new MotionModeLatch(
+                SHOT_ON_MOVE_LINEAR_ENGAGE_MPS,
+                SHOT_ON_MOVE_LINEAR_RELEASE_MPS,
+                SHOT_ON_MOVE_ANGULAR_ENGAGE_RAD_PER_SEC,
+                SHOT_ON_MOVE_ANGULAR_RELEASE_RAD_PER_SEC);
+        return () -> {
+            ChassisSpeeds speeds = RobotState.getInstance().getMeasuredChassisSpeeds();
+            double linearSpeedMps = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+            double angularSpeedRadPerSec = Math.abs(speeds.omegaRadiansPerSecond);
+            boolean shotOnMove = shotOnMoveLatch.update(linearSpeedMps, angularSpeedRadPerSec);
+
+            Logger.recordOutput("Shooting/TeleopLinearSpeedMps", linearSpeedMps);
+            Logger.recordOutput("Shooting/TeleopAngularSpeedRadPerSec", angularSpeedRadPerSec);
+            Logger.recordOutput("Shooting/TeleopShotOnMoveLatched", shotOnMove);
+            return shotOnMove;
+        };
+    }
+
+    private static final class MotionModeLatch {
+        private final double linearEngageMps;
+        private final double linearReleaseMps;
+        private final double angularEngageRadPerSec;
+        private final double angularReleaseRadPerSec;
+        private boolean latched = false;
+
+        private MotionModeLatch(
+                double linearEngageMps,
+                double linearReleaseMps,
+                double angularEngageRadPerSec,
+                double angularReleaseRadPerSec) {
+            this.linearEngageMps = linearEngageMps;
+            this.linearReleaseMps = linearReleaseMps;
+            this.angularEngageRadPerSec = angularEngageRadPerSec;
+            this.angularReleaseRadPerSec = angularReleaseRadPerSec;
+        }
+
+        private boolean update(double linearSpeedMps, double angularSpeedRadPerSec) {
+            if (latched) {
+                latched = linearSpeedMps >= linearReleaseMps || angularSpeedRadPerSec >= angularReleaseRadPerSec;
+            } else {
+                latched = linearSpeedMps >= linearEngageMps || angularSpeedRadPerSec >= angularEngageRadPerSec;
+            }
+            return latched;
+        }
     }
 }

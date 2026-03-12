@@ -52,6 +52,11 @@ public class Shooter extends SubsystemBase {
             boolean atSetpoint,
             boolean readyToFire) {}
 
+    public enum ReadinessMode {
+        STATIONARY,
+        SHOT_ON_MOVE
+    }
+
     private enum KickerControlMode {
         OFF,
         TORQUE,
@@ -139,8 +144,8 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/TargetHoodDeg", Units.radiansToDegrees(targetHoodAngleRad));
         Logger.recordOutput("Shooter/KickerTorqueAmps", kickerControlMode == KickerControlMode.TORQUE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
-        cachedReadiness = computeReadinessDiagnostics();
-        logReadinessOutputs(cachedReadiness);
+        cachedReadiness = computeReadinessDiagnostics(ReadinessMode.STATIONARY);
+        logReadinessOutputs(cachedReadiness, ReadinessMode.STATIONARY);
         // Cache SmartDashboard reads once per cycle to avoid repeated NT lookups
         cachedDashboardTuningEnabled = SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
         cachedDashboardFeedKickerEnabled = SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
@@ -149,7 +154,7 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/SysIdEnabled", cachedDashboardSysIdEnabled);
     }
 
-    private static void logReadinessOutputs(ReadinessDiagnostics readiness) {
+    private static void logReadinessOutputs(ReadinessDiagnostics readiness, ReadinessMode readinessMode) {
         Logger.recordOutput("Shooter/Readiness/LeftVelocityErrorRpm", readiness.leftVelocityErrorRpm());
         Logger.recordOutput("Shooter/Readiness/RightVelocityErrorRpm", readiness.rightVelocityErrorRpm());
         Logger.recordOutput("Shooter/Readiness/HoodAngleErrorDeg", Units.radiansToDegrees(readiness.hoodAngleErrorRad()));
@@ -158,6 +163,12 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/Readiness/HoodAngleAtSetpoint", readiness.hoodAngleAtSetpoint());
         Logger.recordOutput("Shooter/AtSetpoint", readiness.atSetpoint());
         Logger.recordOutput("Shooter/ReadyToFire", readiness.readyToFire());
+        Logger.recordOutput("Shooter/Readiness/Mode", readinessMode.name());
+        Logger.recordOutput(
+                "Shooter/Readiness/RpmTolerance",
+                readinessMode == ReadinessMode.SHOT_ON_MOVE
+                        ? ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
+                        : ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE);
     }
 
     private void applyKickerOutput() {
@@ -257,18 +268,25 @@ public class Shooter extends SubsystemBase {
      * Use this when command logic changes targets and needs same-cycle gate decisions.
      */
     public ReadinessDiagnostics getReadinessDiagnosticsNow() {
-        return computeReadinessDiagnostics();
+        return getReadinessDiagnosticsNow(ReadinessMode.STATIONARY);
     }
 
-    private ReadinessDiagnostics computeReadinessDiagnostics() {
+    public ReadinessDiagnostics getReadinessDiagnosticsNow(ReadinessMode readinessMode) {
+        return computeReadinessDiagnostics(readinessMode);
+    }
+
+    private ReadinessDiagnostics computeReadinessDiagnostics(ReadinessMode readinessMode) {
         double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
         double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
         double hoodAngleErrorRad = targetHoodAngleRad - inputs.hoodPositionRad;
+        double shooterRpmTolerance = readinessMode == ReadinessMode.SHOT_ON_MOVE
+                ? ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
+                : ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE;
 
         boolean leftVelocityAtSetpoint =
-                Math.abs(leftVelocityErrorRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE;
+                Math.abs(leftVelocityErrorRpm) <= shooterRpmTolerance;
         boolean rightVelocityAtSetpoint =
-                Math.abs(rightVelocityErrorRpm) <= ShooterConstants.SHOOTER_RPM_TOLERANCE;
+                Math.abs(rightVelocityErrorRpm) <= shooterRpmTolerance;
         boolean hoodAngleAtSetpoint =
                 Math.abs(hoodAngleErrorRad) <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD;
 

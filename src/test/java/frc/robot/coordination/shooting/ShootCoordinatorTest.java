@@ -9,7 +9,9 @@ import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.Shooter.ReadinessMode;
 import frc.robot.subsystems.shooter.ShooterIO;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferConstants;
 import frc.robot.subsystems.transfer.TransferIO;
@@ -212,6 +214,51 @@ class ShootCoordinatorTest {
     }
 
     @Test
+    void shotOnMoveReadinessDropDebounceKeepsFeedAliveForOneFlicker() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
+        AtomicReference<Boolean> aimReady = new AtomicReference<>(true);
+
+        Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get, () -> true, () -> false, () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(3);
+        assertTrue(shooter.isKickerActive());
+
+        aimReady.set(false);
+        runSchedulerCycles(1);
+        assertTrue(shooter.isKickerActive(), "Shot-on-move drop debounce should mask a one-cycle readiness flicker.");
+        assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
+
+        runSchedulerCycles(1);
+        assertFalse(shooter.isKickerActive(), "A sustained readiness loss should still close the gate.");
+        assertEquals(0.0, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void shotOnMoveToleranceIsLooserThanStationaryTolerance() {
+        double rpmError = (ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE
+                + ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE) / 2.0;
+        OffsetShooterIO shooterIO = new OffsetShooterIO(rpmError);
+        Shooter shooter = new Shooter(shooterIO);
+
+        shooter.setTargetsForDistance(4.0);
+        runSchedulerCycles(1);
+
+        var stationaryReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.STATIONARY);
+        var shotOnMoveReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.SHOT_ON_MOVE);
+
+        assertFalse(stationaryReadiness.leftVelocityAtSetpoint());
+        assertFalse(stationaryReadiness.rightVelocityAtSetpoint());
+        assertTrue(shotOnMoveReadiness.leftVelocityAtSetpoint());
+        assertTrue(shotOnMoveReadiness.rightVelocityAtSetpoint());
+    }
+
+    @Test
     void hoodNotAtSetpointBlocksShooterAtSetpointPolicy() {
         LaggingHoodShooterIO shooterIO = new LaggingHoodShooterIO();
         TestTransferIO transferIO = new TestTransferIO();
@@ -304,6 +351,24 @@ class ShootCoordinatorTest {
         @Override
         public void setHoodAngle(double angle) {
             hoodRad = angle;
+        }
+    }
+
+    private static final class OffsetShooterIO extends TestShooterIO {
+        private final double rpmError;
+
+        private OffsetShooterIO(double rpmError) {
+            this.rpmError = rpmError;
+        }
+
+        @Override
+        public void setLeftVelocity(double rpm) {
+            super.setLeftVelocity(rpm - rpmError);
+        }
+
+        @Override
+        public void setRightVelocity(double rpm) {
+            super.setRightVelocity(rpm - rpmError);
         }
     }
 

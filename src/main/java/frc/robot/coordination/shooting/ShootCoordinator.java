@@ -3,6 +3,7 @@ package frc.robot.coordination.shooting;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.Shooter.ReadinessMode;
 import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.subsystems.shooter.Shooter.ReadinessDiagnostics;
 import frc.robot.subsystems.transfer.Transfer;
@@ -18,6 +19,8 @@ public class ShootCoordinator {
     private final Transfer transfer;
     private final ShootCoordinatorConstants.FeedGateMode feedGateMode;
     private int readyStableCycles = 0;
+    private int readyDropStableCycles = 0;
+    private boolean feedGateOpen = false;
     private boolean activelyFeeding = false;
 
     public ShootCoordinator(Shooter shooter, Transfer transfer) {
@@ -42,7 +45,7 @@ public class ShootCoordinator {
     }
 
     public Command shootForDistance(DoubleSupplier distanceMetersSupplier, BooleanSupplier aimReadySupplier) {
-        return shootForDistance(distanceMetersSupplier, aimReadySupplier, () -> false, () -> true)
+        return shootForDistance(distanceMetersSupplier, aimReadySupplier, () -> false, () -> false, () -> true)
                 .withName("ShootCoordinatorShootForDistance");
     }
 
@@ -50,7 +53,31 @@ public class ShootCoordinator {
             DoubleSupplier distanceMetersSupplier,
             BooleanSupplier aimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
-        return shootForDistance(distanceMetersSupplier, aimReadySupplier, manualFeedOverrideSupplier, () -> true)
+        return shootForDistance(
+                        distanceMetersSupplier,
+                        aimReadySupplier,
+                        () -> false,
+                        manualFeedOverrideSupplier,
+                        () -> true)
+                .withName("ShootCoordinatorShootForDistance");
+    }
+
+    public Command shootForDistance(
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier aimReadySupplier,
+            BooleanSupplier shotOnMoveSupplier,
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
+        return Commands.runEnd(
+                        () -> executeShoot(
+                                distanceMetersSupplier,
+                                aimReadySupplier,
+                                shotOnMoveSupplier,
+                                manualFeedOverrideSupplier,
+                                automaticFeedEnabledSupplier),
+                        this::stopAllOutputs,
+                        shooter,
+                        transfer)
                 .withName("ShootCoordinatorShootForDistance");
     }
 
@@ -59,15 +86,12 @@ public class ShootCoordinator {
             BooleanSupplier aimReadySupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
-        return Commands.runEnd(
-                        () -> executeShoot(
-                                distanceMetersSupplier,
-                                aimReadySupplier,
-                                manualFeedOverrideSupplier,
-                                automaticFeedEnabledSupplier),
-                        this::stopAllOutputs,
-                        shooter,
-                        transfer)
+        return shootForDistance(
+                        distanceMetersSupplier,
+                        aimReadySupplier,
+                        () -> false,
+                        manualFeedOverrideSupplier,
+                        automaticFeedEnabledSupplier)
                 .withName("ShootCoordinatorShootForDistance");
     }
 
@@ -83,6 +107,7 @@ public class ShootCoordinator {
     private void executeShoot(
             DoubleSupplier distanceMetersSupplier,
             BooleanSupplier aimReadySupplier,
+            BooleanSupplier shotOnMoveSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
         double distanceMeters = distanceMetersSupplier.getAsDouble();
@@ -93,7 +118,9 @@ public class ShootCoordinator {
 
         // Use same-cycle readiness after targets are updated to avoid one-loop stale gate
         // decisions at mode transitions / target changes.
-        ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow();
+        boolean shotOnMove = shotOnMoveSupplier.getAsBoolean();
+        ReadinessMode readinessMode = shotOnMove ? ReadinessMode.SHOT_ON_MOVE : ReadinessMode.STATIONARY;
+        ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow(readinessMode);
         boolean aimReady = aimReadySupplier.getAsBoolean();
         boolean manualFeedOverride = manualFeedOverrideSupplier.getAsBoolean();
         boolean automaticFeedEnabled = automaticFeedEnabledSupplier.getAsBoolean();
@@ -102,10 +129,15 @@ public class ShootCoordinator {
                         distanceValid,
                         readiness.atSetpoint(),
                         aimReady,
+                        shotOnMove,
                         manualFeedOverride,
                         automaticFeedEnabled,
-                        readyStableCycles);
+                        feedGateOpen,
+                        readyStableCycles,
+                        readyDropStableCycles);
         readyStableCycles = gateEvaluation.nextReadyStableCycles();
+        readyDropStableCycles = gateEvaluation.nextReadyDropStableCycles();
+        feedGateOpen = gateEvaluation.gateDecision().gateOpen();
 
         applyFeedOutputs(gateEvaluation.gateDecision().gateOpen(), manualFeedOverride);
 
@@ -114,6 +146,7 @@ public class ShootCoordinator {
                 distanceValid,
                 readiness.atSetpoint(),
                 aimReady,
+                shotOnMove,
                 manualFeedOverride,
                 automaticFeedEnabled,
                 gateEvaluation.gateDecision());
@@ -143,6 +176,7 @@ public class ShootCoordinator {
             boolean distanceValid,
             boolean shooterAtSetpoint,
             boolean aimReady,
+            boolean shotOnMove,
             boolean manualFeedOverride,
             boolean automaticFeedEnabled,
             GateDecision gateDecision) {
@@ -153,11 +187,13 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/AimToleranceRad", AutoAimHeadingConfig.AIM_TOLERANCE_RAD);
         Logger.recordOutput("Shooting/ShooterAtSetpoint", shooterAtSetpoint);
         Logger.recordOutput("Shooting/AimReady", aimReady);
+        Logger.recordOutput("Shooting/ShotOnMove", shotOnMove);
         Logger.recordOutput("Shooting/ManualFeedOverride", manualFeedOverride);
         Logger.recordOutput("Shooting/AutomaticFeedEnabled", automaticFeedEnabled);
         Logger.recordOutput("Shooting/GateOpen", gateDecision.gateOpen());
         Logger.recordOutput("Shooting/BlockReason", gateDecision.blockReason());
         Logger.recordOutput("Shooting/ReadyStableCycles", readyStableCycles);
+        Logger.recordOutput("Shooting/ReadyDropStableCycles", readyDropStableCycles);
 
         String state;
         if (manualFeedOverride) {
@@ -180,6 +216,8 @@ public class ShootCoordinator {
 
     private void stopAllOutputs() {
         readyStableCycles = 0;
+        readyDropStableCycles = 0;
+        feedGateOpen = false;
         activelyFeeding = false;
         shooter.stopAll();
         transfer.stopAll();
@@ -193,31 +231,39 @@ public class ShootCoordinator {
             boolean distanceValid,
             boolean shooterAtSetpoint,
             boolean aimReady,
+            boolean shotOnMove,
             boolean manualFeedOverride,
             boolean automaticFeedEnabled,
-            int previousReadyStableCycles) {
+            boolean previousGateOpen,
+            int previousReadyStableCycles,
+            int previousReadyDropStableCycles) {
         if (manualFeedOverride) {
-            return new GateEvaluation(new GateDecision(true, "ManualFeedOverride"), 0);
+            return new GateEvaluation(new GateDecision(true, "ManualFeedOverride"), 0, 0);
         }
         if (!automaticFeedEnabled) {
-            return new GateEvaluation(new GateDecision(false, "FeedingDisabledOverride"), 0);
+            return new GateEvaluation(new GateDecision(false, "FeedingDisabledOverride"), 0, 0);
         }
         if (!distanceValid) {
-            return new GateEvaluation(new GateDecision(false, "DistanceInvalid"), 0);
+            return new GateEvaluation(new GateDecision(false, "DistanceInvalid"), 0, 0);
         }
         return switch (feedGateMode) {
             case IMMEDIATE -> {
-                yield new GateEvaluation(new GateDecision(true, ""), 0);
+                yield new GateEvaluation(new GateDecision(true, ""), 0, 0);
             }
             case SHOOTER_AT_SETPOINT -> {
-                if (!shooterAtSetpoint) {
-                    yield new GateEvaluation(new GateDecision(false, "ShooterNotAtSetpoint"), 0);
+                if (shooterAtSetpoint) {
+                    int nextReadyStableCycles = previousReadyStableCycles + 1;
+                    boolean gateOpen = nextReadyStableCycles >= ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES;
+                    yield new GateEvaluation(
+                            new GateDecision(gateOpen, gateOpen ? "" : "ReadinessDebounce"),
+                            nextReadyStableCycles,
+                            0);
                 }
-                int nextReadyStableCycles = previousReadyStableCycles + 1;
-                boolean gateOpen = nextReadyStableCycles >= ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES;
-                yield new GateEvaluation(
-                        new GateDecision(gateOpen, gateOpen ? "" : "ReadinessDebounce"),
-                        nextReadyStableCycles);
+                yield holdOrCloseForReadinessDrop(
+                        shotOnMove,
+                        previousGateOpen,
+                        previousReadyDropStableCycles,
+                        "ShooterNotAtSetpoint");
             }
             case SHOOTER_AND_AIM -> {
                 if (shooterAtSetpoint && aimReady) {
@@ -225,19 +271,52 @@ public class ShootCoordinator {
                     boolean gateOpen = nextReadyStableCycles >= ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES;
                     yield new GateEvaluation(
                             new GateDecision(gateOpen, gateOpen ? "" : "ReadinessDebounce"),
-                            nextReadyStableCycles);
+                            nextReadyStableCycles,
+                            0);
                 }
                 if (!shooterAtSetpoint && !aimReady) {
-                    yield new GateEvaluation(new GateDecision(false, "ShooterNotAtSetpoint+AimNotReady"), 0);
+                    yield holdOrCloseForReadinessDrop(
+                            shotOnMove,
+                            previousGateOpen,
+                            previousReadyDropStableCycles,
+                            "ShooterNotAtSetpoint+AimNotReady");
                 }
                 if (!shooterAtSetpoint) {
-                    yield new GateEvaluation(new GateDecision(false, "ShooterNotAtSetpoint"), 0);
+                    yield holdOrCloseForReadinessDrop(
+                            shotOnMove,
+                            previousGateOpen,
+                            previousReadyDropStableCycles,
+                            "ShooterNotAtSetpoint");
                 }
-                yield new GateEvaluation(new GateDecision(false, "AimNotReady"), 0);
+                yield holdOrCloseForReadinessDrop(
+                        shotOnMove,
+                        previousGateOpen,
+                        previousReadyDropStableCycles,
+                        "AimNotReady");
             }
         };
     }
 
+    private GateEvaluation holdOrCloseForReadinessDrop(
+            boolean shotOnMove,
+            boolean previousGateOpen,
+            int previousReadyDropStableCycles,
+            String closedBlockReason) {
+        if (shotOnMove && previousGateOpen) {
+            int nextReadyDropStableCycles = previousReadyDropStableCycles + 1;
+            if (nextReadyDropStableCycles < ShootCoordinatorConstants.SHOT_ON_MOVE_GATE_DROP_DEBOUNCE_CYCLES) {
+                return new GateEvaluation(
+                        new GateDecision(true, "ShotOnMoveReadinessDropDebounce"),
+                        0,
+                        nextReadyDropStableCycles);
+            }
+        }
+        return new GateEvaluation(new GateDecision(false, closedBlockReason), 0, 0);
+    }
+
     private record GateDecision(boolean gateOpen, String blockReason) {}
-    private record GateEvaluation(GateDecision gateDecision, int nextReadyStableCycles) {}
+    private record GateEvaluation(
+            GateDecision gateDecision,
+            int nextReadyStableCycles,
+            int nextReadyDropStableCycles) {}
 }

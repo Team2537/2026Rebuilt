@@ -35,7 +35,9 @@ public final class ShooterConstants {
 
     public static final double STATUS_UPDATE_HZ = 50.0;
 
-    public static final double SHOOTER_RPM_TOLERANCE = 200.0;
+    public static final double STATIONARY_SHOOTER_RPM_TOLERANCE = 150.0;
+    public static final double SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE = 200.0;
+    public static final double SHOOTER_RPM_TOLERANCE = SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE;
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 85.0;
     public static final double MOTION_COMP_TIME_SCALE =

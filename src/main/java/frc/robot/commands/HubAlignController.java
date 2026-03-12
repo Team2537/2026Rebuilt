@@ -16,13 +16,13 @@ import org.littletonrobotics.junction.Logger;
  * Uses a profiled PID with a short target-loss hold window and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 4.5;
+    private static final double KP = 6.5;
     private static final double KD = 0.3;
     private static final double TOLERANCE_RAD = Units.degreesToRadians(2.0);
     private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(1.0);
     private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(4.0);
     private static final double LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(8.0);
-    private static final double MIN_OMEGA_RAD_PER_SEC = 0.03;
+    private static final double MIN_OMEGA_RAD_PER_SEC = 0.001;
     private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
     private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 18.0;
     private static final double HEADING_FEEDFORWARD_GAIN = 0.6;

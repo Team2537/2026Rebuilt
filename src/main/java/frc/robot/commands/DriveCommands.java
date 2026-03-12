@@ -31,7 +31,10 @@ import java.util.function.Supplier;
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
-    private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(1.2);
+    // Keep the snap command's finish threshold aligned with HubAlignController's
+    // internal tolerance. If snap demands a tighter threshold than the controller
+    // will actively correct to, the command can remain scheduled with zero output.
+    private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
 

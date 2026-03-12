@@ -266,6 +266,36 @@ final class FullFunctionalityBindings {
     }
 
     @Test
+    void slowModeHoldKeepsDefaultDriveActiveAndRobotMoving() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setTeleopEnabled();
+            context.container.teleopInit();
+            context.runCycles(20);
+
+            Pose2d startingPose = context.drive.getPose();
+            context.driverControllerSim.setLeftStickButton(true);
+            context.driverControllerSim.setLeftY(0.55);
+            context.runCycles(30);
+
+            assertTrue(
+                    context.drive.isConstraintProfileActive(frc.robot.subsystems.drive.DriveConstants.ConstraintProfile.SLOW_MODE),
+                    "Expected left stick hold to enable slow mode while driving.");
+            assertTrue(
+                    context.recorder.runningCount("DriveJoystickDefault") >= 1,
+                    "Expected DriveJoystickDefault to remain running while slow mode is held.");
+            assertTrue(
+                    context.drive.getPose().getTranslation().getDistance(startingPose.getTranslation()) > 0.05,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Slow mode hold should still allow translational motion",
+                            "distanceMeters>0.05",
+                            String.format(
+                                    Locale.US,
+                                    "distanceMeters=%.4f",
+                                    context.drive.getPose().getTranslation().getDistance(startingPose.getTranslation()))));
+        }
+    }
+
+    @Test
     void driverButtonsWorkAcrossMultipleSituations() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();

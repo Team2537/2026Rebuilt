@@ -325,8 +325,7 @@ public final class RobotContainer {
                                         true),
                                 () -> drive.setConstraintProfileActive(
                                         DriveConstants.ConstraintProfile.SLOW_MODE,
-                                        false),
-                                drive)
+                                        false))
                         .withName("DriveHoldSlowMode"));
         bindOnFalse(
                 driverController.leftStick(),
@@ -334,8 +333,7 @@ public final class RobotContainer {
                 Commands.runOnce(
                                 () -> drive.setConstraintProfileActive(
                                         DriveConstants.ConstraintProfile.SLOW_MODE,
-                                        false),
-                                drive)
+                                        false))
                         .withName("DriveReleaseSlowMode"));
         bindOnTrue(
                 driverController.leftStick().and(driverController.rightStick()),
