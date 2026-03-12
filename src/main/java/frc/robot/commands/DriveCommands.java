@@ -109,17 +109,32 @@ public final class DriveCommands {
     }
 
     /** Returns a command that snaps heading to the nearest cardinal direction. */
-    public static Command headingSnap(Drive drive) {
+    public static Command headingSnap(
+            Drive drive,
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier) {
         HubAlignController alignController = new HubAlignController();
         HeadingSnapState state = new HeadingSnapState();
+        BooleanSupplier turningStickActiveSupplier =
+                () -> Math.abs(MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND)) > 1e-6;
 
         return Commands.run(
                 () -> {
+                    Translation2d linearVelocity = getLinearVelocityFromJoysticks(
+                            -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
                     double omega = alignController.calculate(
                             RobotState.getInstance().getRotation().getRadians(),
                             state.targetHeading,
                             0.0);
-                    drive.runDriverVelocity(new ChassisSpeeds(0.0, 0.0, omega));
+                    ChassisSpeeds speeds = new ChassisSpeeds(
+                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
+                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
+                            omega);
+                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
+                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
+                            : speeds;
+                    drive.runDriverVelocity(commandSpeeds);
                 },
                 drive)
                 .beforeStarting(() -> {
@@ -127,10 +142,10 @@ public final class DriveCommands {
                     state.targetHeading = snappedHeading;
                     alignController.reset(RobotState.getInstance().getRotation().getRadians(), snappedHeading);
                 })
-                .until(() -> Math.abs(MathUtil.angleModulus(
-                        state.targetHeading.minus(RobotState.getInstance().getRotation()).getRadians()))
-                        <= HEADING_SNAP_TOLERANCE_RAD)
-                .andThen(Commands.runOnce(drive::stop, drive))
+                .until(() -> turningStickActiveSupplier.getAsBoolean()
+                        || Math.abs(MathUtil.angleModulus(
+                                state.targetHeading.minus(RobotState.getInstance().getRotation()).getRadians()))
+                                <= HEADING_SNAP_TOLERANCE_RAD)
                 .withName("DriveHeadingSnap");
     }
 

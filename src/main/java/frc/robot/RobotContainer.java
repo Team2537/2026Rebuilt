@@ -369,9 +369,14 @@ public final class RobotContainer {
                 "driver.povRight.onTrue",
                 DriveCommands.toggleFieldOriented(drive).withName("DriveToggleFieldOriented"));
         bindOnTrue(
-                driverController.povUp(),
+                driverController.povUp().and(new Trigger(() -> Math.abs(driverController.getRightX()) <= 0.1)),
                 "driver.povUp.onTrue",
-                DriveCommands.headingSnap(drive).withName("DriveHeadingSnap"));
+                DriveCommands.headingSnap(
+                                drive,
+                                () -> driverController.getLeftY(),
+                                () -> driverController.getLeftX(),
+                                () -> -driverController.getRightX())
+                        .withName("DriveHeadingSnap"));
 
         ShootingTeleopController.AimingContext aimingContext = shootingTeleopController.createAimingContext();
         DoubleSupplier hubDistanceSupplier = aimingContext.hubDistanceSupplier();
