@@ -3,8 +3,10 @@ package frc.robot.coordination.shooting;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import edu.wpi.first.hal.AllianceStationID;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
@@ -25,6 +27,7 @@ import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferIO;
+import frc.robot.util.FieldConstants;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -148,6 +151,44 @@ class ShootingTeleopControllerXLockTest {
         assertTrue(unlocked, "Expected X-lock to release after driver input resumes.");
     }
 
+    @Test
+    void rightTriggerPublishesPassTargetOutsideBlueAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() + 0.7,
+                FieldConstants.getHubTargetTranslation().getY() - 0.9,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.PASS);
+        assertTrue(
+                selection.targetPose().getX() < FieldConstants.getAllianceZoneBoundaryX(),
+                "Blue pass target should stay on the blue side of the field.");
+        assertTrue(
+                selection.targetPose().getY() < FieldConstants.getHubTargetTranslation().getY(),
+                "Blue pass target should move away from the hub lane.");
+    }
+
+    @Test
+    void rightTriggerPublishesPassTargetOutsideRedAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Red1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.7,
+                FieldConstants.getHubTargetTranslation().getY() + 0.9,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.PASS);
+        assertTrue(
+                selection.targetPose().getX() > FieldConstants.getAllianceZoneBoundaryX(),
+                "Red pass target should stay on the red side of the field.");
+        assertTrue(
+                selection.targetPose().getY() > FieldConstants.getHubTargetTranslation().getY(),
+                "Red pass target should move away from the hub lane.");
+    }
+
     private static final class Fixture {
         private final TestModuleIO[] moduleIOs = new TestModuleIO[] {
                 new TestModuleIO(),
@@ -216,6 +257,21 @@ class ShootingTeleopControllerXLockTest {
                 CommandScheduler.getInstance().run();
                 telemetry.periodic();
             }
+        }
+
+        private void setPose(Pose2d pose) {
+            drive.setPose(pose);
+            runSchedulerCycles(2);
+        }
+
+        private void setAlliance(AllianceStationID allianceStationID) {
+            DriverStationSim.setAllianceStationId(allianceStationID);
+            DriverStationSim.notifyNewData();
+            runSchedulerCycles(2);
+        }
+
+        private ShootingTeleopController.TargetSelection publishRightTriggerTargetTelemetry() {
+            return controller.publishRightTriggerTargetTelemetry();
         }
 
         private boolean isDriveInXLock() {

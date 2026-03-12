@@ -12,6 +12,7 @@ import frc.robot.util.AutoAimHeadingConfig;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
+import java.util.function.Supplier;
 import org.littletonrobotics.junction.Logger;
 
 public class ShootCoordinator {
@@ -68,11 +69,28 @@ public class ShootCoordinator {
             BooleanSupplier shotOnMoveSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
+        return shootForDistance(
+                        distanceMetersSupplier,
+                        aimReadySupplier,
+                        () -> shotOnMoveSupplier.getAsBoolean()
+                                ? ReadinessMode.SHOT_ON_MOVE
+                                : ReadinessMode.STATIONARY,
+                        manualFeedOverrideSupplier,
+                        automaticFeedEnabledSupplier)
+                .withName("ShootCoordinatorShootForDistance");
+    }
+
+    public Command shootForDistance(
+            DoubleSupplier distanceMetersSupplier,
+            BooleanSupplier aimReadySupplier,
+            Supplier<ReadinessMode> readinessModeSupplier,
+            BooleanSupplier manualFeedOverrideSupplier,
+            BooleanSupplier automaticFeedEnabledSupplier) {
         return Commands.runEnd(
                         () -> executeShoot(
                                 distanceMetersSupplier,
                                 aimReadySupplier,
-                                shotOnMoveSupplier,
+                                readinessModeSupplier,
                                 manualFeedOverrideSupplier,
                                 automaticFeedEnabledSupplier),
                         this::stopAllOutputs,
@@ -107,7 +125,7 @@ public class ShootCoordinator {
     private void executeShoot(
             DoubleSupplier distanceMetersSupplier,
             BooleanSupplier aimReadySupplier,
-            BooleanSupplier shotOnMoveSupplier,
+            Supplier<ReadinessMode> readinessModeSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
         double distanceMeters = distanceMetersSupplier.getAsDouble();
@@ -118,8 +136,8 @@ public class ShootCoordinator {
 
         // Use same-cycle readiness after targets are updated to avoid one-loop stale gate
         // decisions at mode transitions / target changes.
-        boolean shotOnMove = shotOnMoveSupplier.getAsBoolean();
-        ReadinessMode readinessMode = shotOnMove ? ReadinessMode.SHOT_ON_MOVE : ReadinessMode.STATIONARY;
+        ReadinessMode readinessMode = Objects.requireNonNullElse(readinessModeSupplier.get(), ReadinessMode.STATIONARY);
+        boolean shotOnMove = readinessMode != ReadinessMode.STATIONARY;
         ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow(readinessMode);
         boolean aimReady = aimReadySupplier.getAsBoolean();
         boolean manualFeedOverride = manualFeedOverrideSupplier.getAsBoolean();
@@ -146,6 +164,7 @@ public class ShootCoordinator {
                 distanceValid,
                 readiness.atSetpoint(),
                 aimReady,
+                readinessMode,
                 shotOnMove,
                 manualFeedOverride,
                 automaticFeedEnabled,
@@ -176,6 +195,7 @@ public class ShootCoordinator {
             boolean distanceValid,
             boolean shooterAtSetpoint,
             boolean aimReady,
+            ReadinessMode readinessMode,
             boolean shotOnMove,
             boolean manualFeedOverride,
             boolean automaticFeedEnabled,
@@ -184,9 +204,14 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/DistanceValid", distanceValid);
         Logger.recordOutput("Shooting/FeedGateMode", feedGateMode.name());
         Logger.recordOutput("Shooting/FeedGatePolicy", "InlineModeSwitch");
-        Logger.recordOutput("Shooting/AimToleranceRad", AutoAimHeadingConfig.AIM_TOLERANCE_RAD);
+        Logger.recordOutput(
+                "Shooting/AimToleranceRad",
+                readinessMode == ReadinessMode.PASSING
+                        ? AutoAimHeadingConfig.PASS_AIM_TOLERANCE_RAD
+                        : AutoAimHeadingConfig.AIM_TOLERANCE_RAD);
         Logger.recordOutput("Shooting/ShooterAtSetpoint", shooterAtSetpoint);
         Logger.recordOutput("Shooting/AimReady", aimReady);
+        Logger.recordOutput("Shooting/ReadinessMode", readinessMode.name());
         Logger.recordOutput("Shooting/ShotOnMove", shotOnMove);
         Logger.recordOutput("Shooting/ManualFeedOverride", manualFeedOverride);
         Logger.recordOutput("Shooting/AutomaticFeedEnabled", automaticFeedEnabled);

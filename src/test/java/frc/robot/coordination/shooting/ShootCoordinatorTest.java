@@ -259,6 +259,25 @@ class ShootCoordinatorTest {
     }
 
     @Test
+    void passingToleranceIsLooserThanShotOnMoveTolerance() {
+        double rpmError = (ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
+                + ShooterConstants.PASSING_SHOOTER_RPM_TOLERANCE) / 2.0;
+        OffsetShooterIO shooterIO = new OffsetShooterIO(rpmError);
+        Shooter shooter = new Shooter(shooterIO);
+
+        shooter.setTargetsForDistance(4.0);
+        runSchedulerCycles(1);
+
+        var shotOnMoveReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.SHOT_ON_MOVE);
+        var passingReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.PASSING);
+
+        assertFalse(shotOnMoveReadiness.leftVelocityAtSetpoint());
+        assertFalse(shotOnMoveReadiness.rightVelocityAtSetpoint());
+        assertTrue(passingReadiness.leftVelocityAtSetpoint());
+        assertTrue(passingReadiness.rightVelocityAtSetpoint());
+    }
+
+    @Test
     void hoodNotAtSetpointBlocksShooterAtSetpointPolicy() {
         LaggingHoodShooterIO shooterIO = new LaggingHoodShooterIO();
         TestTransferIO transferIO = new TestTransferIO();

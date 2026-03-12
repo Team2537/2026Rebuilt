@@ -57,6 +57,7 @@ public final class RobotContainer {
     private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
     private static final String APRIL_TAG_OBJECT_PREFIX = "Tag ";
     private static final String APRIL_TAG_TRAJECTORY_OBJECT_PREFIX = "trajTag";
+    private static final String RIGHT_TRIGGER_TARGET_OBJECT_NAME = "Right Trigger Target";
     private static final int APRIL_TAG_TRAJECTORY_SEGMENTS = 10;
     private static final double INTAKE_TRIGGER_DOUBLE_PRESS_WINDOW_SEC = 0.35;
 
@@ -122,6 +123,9 @@ public final class RobotContainer {
 
     public void robotPeriodic() {
         dashboardField.setRobotPose(RobotState.getInstance().getPose());
+        ShootingTeleopController.TargetSelection targetSelection =
+                shootingTeleopController.publishRightTriggerTargetTelemetry();
+        dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).setPose(targetSelection.targetPose());
         publishAprilTagPosesAndTrajectories();
         commandTelemetry.periodic();
         dashboardOverrides.periodic(vision);

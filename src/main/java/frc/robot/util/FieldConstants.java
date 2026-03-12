@@ -4,6 +4,7 @@ import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import java.io.IOException;
@@ -31,14 +32,29 @@ public final class FieldConstants {
   public static final AprilTagFieldLayout TAG_LAYOUT = loadRebuiltLayout();
   public static final double FIELD_LENGTH_METERS = TAG_LAYOUT.getFieldLength();
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
+  public static final double ALLIANCE_ZONE_DEPTH_METERS = Units.inchesToMeters(158.6);
+  public static final double ROBOT_BUMPER_LENGTH_METERS = 0.9;
   private static final double HUB_TARGET_X_METERS = 4.6;
   private static final double HUB_TARGET_Y_METERS = getTagY(BLUE_HUB_TAG_ID, 4.0213534);
+  private static final double PASS_TARGET_X_FROM_ALLIANCE_WALL_METERS = ALLIANCE_ZONE_DEPTH_METERS * 0.5;
+  private static final double PASS_TARGET_WALL_MARGIN_METERS = 0.8;
+  private static final double PASS_TARGET_HUB_CLEARANCE_METERS = 1.6;
   private static final Translation2d BLUE_HUB_TARGET_TRANSLATION =
       new Translation2d(HUB_TARGET_X_METERS, HUB_TARGET_Y_METERS);
   private static final Translation2d RED_HUB_TARGET_TRANSLATION =
       new Translation2d(
           FIELD_LENGTH_METERS - HUB_TARGET_X_METERS,
           HUB_TARGET_Y_METERS);
+  private static final double PASS_TARGET_LOWER_Y_METERS =
+      clamp(
+          HUB_TARGET_Y_METERS - PASS_TARGET_HUB_CLEARANCE_METERS,
+          PASS_TARGET_WALL_MARGIN_METERS,
+          FIELD_WIDTH_METERS - PASS_TARGET_WALL_MARGIN_METERS);
+  private static final double PASS_TARGET_UPPER_Y_METERS =
+      clamp(
+          HUB_TARGET_Y_METERS + PASS_TARGET_HUB_CLEARANCE_METERS,
+          PASS_TARGET_WALL_MARGIN_METERS,
+          FIELD_WIDTH_METERS - PASS_TARGET_WALL_MARGIN_METERS);
 
   /** Returns the alliance-specific hub scoring target position on the field. */
   public static Translation2d getHubTargetTranslation() {
@@ -55,12 +71,57 @@ public final class FieldConstants {
     if (robotPose == null) {
       return null;
     }
-    Translation2d hubTarget = getHubTargetTranslation();
-    Translation2d toHub = hubTarget.minus(robotPose.getTranslation());
-    if (toHub.getNorm() <= 1e-6) {
+    return getHeadingToTarget(robotPose, getHubTargetTranslation());
+  }
+
+  /** Returns whether the robot is allowed to launch into its alliance hub. */
+  public static boolean isInAllianceZone(Pose2d robotPose) {
+    if (robotPose == null) {
+      return false;
+    }
+    double halfRobotLengthMeters = ROBOT_BUMPER_LENGTH_METERS * 0.5;
+    double allianceZoneBoundaryX = getAllianceZoneBoundaryX();
+    return isRedAlliance()
+        ? robotPose.getX() + halfRobotLengthMeters >= allianceZoneBoundaryX
+        : robotPose.getX() - halfRobotLengthMeters <= allianceZoneBoundaryX;
+  }
+
+  /** Returns the field X coordinate of the alliance-zone boundary for the current alliance. */
+  public static double getAllianceZoneBoundaryX() {
+    return isRedAlliance()
+        ? FIELD_LENGTH_METERS - ALLIANCE_ZONE_DEPTH_METERS
+        : ALLIANCE_ZONE_DEPTH_METERS;
+  }
+
+  /** Returns the alliance-relative pass target translation used when right-trigger passing. */
+  public static Translation2d getPassTargetTranslation(Pose2d robotPose) {
+    double targetY =
+        robotPose != null && robotPose.getY() >= HUB_TARGET_Y_METERS
+            ? PASS_TARGET_UPPER_Y_METERS
+            : PASS_TARGET_LOWER_Y_METERS;
+    double targetX =
+        isRedAlliance()
+            ? FIELD_LENGTH_METERS - PASS_TARGET_X_FROM_ALLIANCE_WALL_METERS
+            : PASS_TARGET_X_FROM_ALLIANCE_WALL_METERS;
+    return new Translation2d(targetX, targetY);
+  }
+
+  /** Returns the pass target pose used for visualization/logging. */
+  public static Pose2d getPassTargetPose(Pose2d robotPose) {
+    Translation2d translation = getPassTargetTranslation(robotPose);
+    return new Pose2d(translation, Rotation2d.kZero);
+  }
+
+  /** Returns the field heading from the robot pose toward a translation, or null if unavailable. */
+  public static Rotation2d getHeadingToTarget(Pose2d robotPose, Translation2d targetTranslation) {
+    if (robotPose == null || targetTranslation == null) {
       return null;
     }
-    return toHub.getAngle();
+    Translation2d toTarget = targetTranslation.minus(robotPose.getTranslation());
+    if (toTarget.getNorm() <= 1e-6) {
+      return null;
+    }
+    return toTarget.getAngle();
   }
 
   private static AprilTagFieldLayout loadRebuiltLayout() {
@@ -105,6 +166,10 @@ public final class FieldConstants {
     return TAG_LAYOUT.getTagPose(tagId)
         .map(tagPose -> tagPose.getY())
         .orElse(defaultY);
+  }
+
+  private static double clamp(double value, double minInclusive, double maxInclusive) {
+    return Math.max(minInclusive, Math.min(maxInclusive, value));
   }
 
   private static boolean isRedAlliance() {

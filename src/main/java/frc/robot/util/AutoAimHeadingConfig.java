@@ -6,6 +6,8 @@ import edu.wpi.first.math.trajectory.TrapezoidProfile;
 public final class AutoAimHeadingConfig {
     private static final double DEFAULT_AIM_TOLERANCE_DEG = 1.5;
     private static final double DEFAULT_AIM_RELEASE_TOLERANCE_DEG = 2.5;
+    private static final double DEFAULT_PASS_AIM_TOLERANCE_DEG = 8.0;
+    private static final double DEFAULT_PASS_AIM_RELEASE_TOLERANCE_DEG = 12.0;
     private static final double DEFAULT_TARGET_HOLD_SEC = 0.12;
 
     public static final double HEADING_PROFILE_MAX_VELOCITY_RAD_PER_SEC = Math.toRadians(
@@ -24,6 +26,12 @@ public final class AutoAimHeadingConfig {
     public static final double AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(readPositiveDouble(
             "autoAim.aimReleaseToleranceDeg",
             DEFAULT_AIM_RELEASE_TOLERANCE_DEG));
+    public static final double PASS_AIM_TOLERANCE_RAD = Math.toRadians(readPositiveDouble(
+            "autoAim.passAimToleranceDeg",
+            DEFAULT_PASS_AIM_TOLERANCE_DEG));
+    public static final double PASS_AIM_RELEASE_TOLERANCE_RAD = Math.toRadians(readPositiveDouble(
+            "autoAim.passAimReleaseToleranceDeg",
+            DEFAULT_PASS_AIM_RELEASE_TOLERANCE_DEG));
     public static final double TARGET_HOLD_SEC = readPositiveDouble("autoAim.targetHoldSec", DEFAULT_TARGET_HOLD_SEC);
 
     private static double readPositiveDouble(String propertyKey, double defaultValue) {

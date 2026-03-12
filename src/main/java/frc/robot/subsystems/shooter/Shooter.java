@@ -54,7 +54,8 @@ public class Shooter extends SubsystemBase {
 
     public enum ReadinessMode {
         STATIONARY,
-        SHOT_ON_MOVE
+        SHOT_ON_MOVE,
+        PASSING
     }
 
     private enum KickerControlMode {
@@ -166,9 +167,11 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/Readiness/Mode", readinessMode.name());
         Logger.recordOutput(
                 "Shooter/Readiness/RpmTolerance",
-                readinessMode == ReadinessMode.SHOT_ON_MOVE
-                        ? ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
-                        : ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE);
+                switch (readinessMode) {
+                    case STATIONARY -> ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE;
+                    case SHOT_ON_MOVE -> ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE;
+                    case PASSING -> ShooterConstants.PASSING_SHOOTER_RPM_TOLERANCE;
+                });
     }
 
     private void applyKickerOutput() {
@@ -279,9 +282,11 @@ public class Shooter extends SubsystemBase {
         double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
         double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
         double hoodAngleErrorRad = targetHoodAngleRad - inputs.hoodPositionRad;
-        double shooterRpmTolerance = readinessMode == ReadinessMode.SHOT_ON_MOVE
-                ? ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
-                : ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE;
+        double shooterRpmTolerance = switch (readinessMode) {
+            case STATIONARY -> ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE;
+            case SHOT_ON_MOVE -> ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE;
+            case PASSING -> ShooterConstants.PASSING_SHOOTER_RPM_TOLERANCE;
+        };
 
         boolean leftVelocityAtSetpoint =
                 Math.abs(leftVelocityErrorRpm) <= shooterRpmTolerance;
