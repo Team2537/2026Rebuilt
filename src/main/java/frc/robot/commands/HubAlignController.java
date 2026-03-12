@@ -18,7 +18,7 @@ import org.littletonrobotics.junction.Logger;
 public class HubAlignController {
     private static final double KP = 6.5;
     private static final double KD = 0.3;
-    private static final double TOLERANCE_RAD = Units.degreesToRadians(2.0);
+    private static final double TOLERANCE_RAD = Units.degreesToRadians(1.0);
     private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(1.0);
     private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(4.0);
     private static final double LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(8.0);

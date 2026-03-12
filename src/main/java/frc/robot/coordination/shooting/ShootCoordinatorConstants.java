@@ -9,7 +9,7 @@ public final class ShootCoordinatorConstants {
     }
 
     public static final FeedGateMode DEFAULT_FEED_GATE_MODE = FeedGateMode.SHOOTER_AND_AIM;
-    public static final int GATE_READY_DEBOUNCE_CYCLES = 2;
+    public static final int GATE_READY_DEBOUNCE_CYCLES = 4;
     public static final int SHOT_ON_MOVE_GATE_DROP_DEBOUNCE_CYCLES = 2;
 
     private ShootCoordinatorConstants() {}
