@@ -50,7 +50,8 @@ public final class ShootingTeleopController {
 
     public enum RightTriggerMode {
         SHOOT,
-        PASS
+        PASS,
+        NOTHING
     }
 
     public record TargetSelection(
@@ -103,6 +104,24 @@ public final class ShootingTeleopController {
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
+        return createSelectedShootCommand(
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                distanceMetersSupplier,
+                targetHeadingSupplier,
+                null,
+                manualFeedOverrideSupplier);
+    }
+
+    Command createSelectedShootCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier aimReadyOverrideSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
                 Commands.either(
                         createOverrideAutoAimShootCommand(
@@ -116,6 +135,7 @@ public final class ShootingTeleopController {
                                 omegaFallbackSupplier,
                                 distanceMetersSupplier,
                                 targetHeadingSupplier,
+                                aimReadyOverrideSupplier,
                                 manualFeedOverrideSupplier,
                                 () -> false),
                         () -> dashboardOverrides.isAutoAimEnabled()
@@ -199,22 +219,10 @@ public final class ShootingTeleopController {
 
     private TargetSelection buildTelemetryTargetSelection() {
         Pose2d robotPose = RobotState.getInstance().getPose();
-        if (FieldConstants.isInAllianceZone(robotPose)) {
-            return new TargetSelection(
-                    RightTriggerMode.SHOOT,
-                    new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero),
-                    LaunchCalculator.getHubDistanceMeters(robotPose),
-                    FieldConstants.getHubFacingHeading(robotPose),
-                    ReadinessMode.STATIONARY);
-        }
-
-        Pose2d passTargetPose = FieldConstants.getPassTargetPose(robotPose);
-        return new TargetSelection(
-                RightTriggerMode.PASS,
-                passTargetPose,
-                getShooterDistanceToTarget(robotPose, passTargetPose.getTranslation()),
-                FieldConstants.getHeadingToTarget(robotPose, passTargetPose.getTranslation()),
-                ReadinessMode.PASSING);
+        return buildTargetSelection(
+                robotPose,
+                LaunchCalculator.getHubDistanceMeters(robotPose),
+                FieldConstants.getHubFacingHeading(robotPose));
     }
 
     private Supplier<TargetSelection> createRightTriggerTargetSelectionSupplier(
@@ -223,23 +231,8 @@ public final class ShootingTeleopController {
         CycleCache<TargetSelection> cycleCache = new CycleCache<>();
         return () -> cycleCache.get(commandTelemetry.getCycle(), () -> {
             Pose2d robotPose = RobotState.getInstance().getPose();
-            TargetSelection selection;
-            if (FieldConstants.isInAllianceZone(robotPose)) {
-                selection = new TargetSelection(
-                        RightTriggerMode.SHOOT,
-                        new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero),
-                        hubDistanceMetersSupplier.getAsDouble(),
-                        hubTargetHeadingSupplier.get(),
-                        ReadinessMode.STATIONARY);
-            } else {
-                Pose2d passTargetPose = FieldConstants.getPassTargetPose(robotPose);
-                selection = new TargetSelection(
-                        RightTriggerMode.PASS,
-                        passTargetPose,
-                        getShooterDistanceToTarget(robotPose, passTargetPose.getTranslation()),
-                        FieldConstants.getHeadingToTarget(robotPose, passTargetPose.getTranslation()),
-                        ReadinessMode.PASSING);
-            }
+            TargetSelection selection =
+                    buildTargetSelection(robotPose, hubDistanceMetersSupplier.getAsDouble(), hubTargetHeadingSupplier.get());
             logTargetSelection(selection);
             return selection;
         });
@@ -351,19 +344,24 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier hubDistanceMetersSupplier,
             Supplier<Rotation2d> hubTargetHeadingSupplier,
+            BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
         Supplier<TargetSelection> targetSelectionSupplier =
                 createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
-        return createShootCommand(
-                xSupplier,
-                ySupplier,
-                omegaFallbackSupplier,
-                () -> targetSelectionSupplier.get().distanceMeters(),
-                () -> targetSelectionSupplier.get().targetHeading(),
-                () -> targetSelectionSupplier.get().readinessMode(),
-                manualFeedOverrideSupplier,
-                automaticFeedEnabledSupplier);
+        return Commands.either(
+                createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaFallbackSupplier),
+                createShootCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        () -> targetSelectionSupplier.get().distanceMeters(),
+                        () -> targetSelectionSupplier.get().targetHeading(),
+                        () -> targetSelectionSupplier.get().readinessMode(),
+                        aimReadyOverrideSupplier,
+                        manualFeedOverrideSupplier,
+                        automaticFeedEnabledSupplier),
+                () -> targetSelectionSupplier.get().mode() == RightTriggerMode.NOTHING);
     }
 
     private Command createZoneAwareAimCommand(
@@ -374,12 +372,15 @@ public final class ShootingTeleopController {
             Supplier<Rotation2d> hubTargetHeadingSupplier) {
         Supplier<TargetSelection> targetSelectionSupplier =
                 createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
-        return createAimCommand(
-                xSupplier,
-                ySupplier,
-                omegaFallbackSupplier,
-                () -> targetSelectionSupplier.get().distanceMeters(),
-                () -> targetSelectionSupplier.get().targetHeading());
+        return Commands.either(
+                createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaFallbackSupplier),
+                createAimCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaFallbackSupplier,
+                        () -> targetSelectionSupplier.get().distanceMeters(),
+                        () -> targetSelectionSupplier.get().targetHeading()),
+                () -> targetSelectionSupplier.get().mode() == RightTriggerMode.NOTHING);
     }
 
     private Command createAimCommand(
@@ -407,12 +408,23 @@ public final class ShootingTeleopController {
             BooleanSupplier manualFeedOverrideSupplier) {
         Supplier<TargetSelection> targetSelectionSupplier =
                 createRightTriggerTargetSelectionSupplier(hubDistanceMetersSupplier, hubTargetHeadingSupplier);
-        return createShootWithoutAimCommand(
-                xSupplier,
-                ySupplier,
-                omegaSupplier,
-                () -> targetSelectionSupplier.get().distanceMeters(),
-                manualFeedOverrideSupplier);
+        return Commands.either(
+                createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaSupplier),
+                createShootWithoutAimCommand(
+                        xSupplier,
+                        ySupplier,
+                        omegaSupplier,
+                        () -> targetSelectionSupplier.get().distanceMeters(),
+                        manualFeedOverrideSupplier),
+                () -> targetSelectionSupplier.get().mode() == RightTriggerMode.NOTHING);
+    }
+
+    private Command createBlockedRightTriggerCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier) {
+        return DriveCommands.joystickDrive(drive, xSupplier, ySupplier, omegaSupplier)
+                .withName("DriveJoystickBlockedRightTrigger");
     }
 
     private Command createShootWithoutAimCommand(
@@ -445,6 +457,7 @@ public final class ShootingTeleopController {
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
             Supplier<ReadinessMode> readinessModeSupplier,
+            BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
         BooleanSupplier shotOnMoveSupplier = createTeleopShotOnMoveSupplier();
@@ -460,7 +473,9 @@ public final class ShootingTeleopController {
                             : ReadinessMode.STATIONARY;
                 });
         BooleanSupplier cachedAimReadySupplier =
-                createTeleopAimReadySupplier(targetHeadingSupplier, cachedReadinessModeSupplier);
+                aimReadyOverrideSupplier != null
+                        ? aimReadyOverrideSupplier
+                        : createTeleopAimReadySupplier(targetHeadingSupplier, cachedReadinessModeSupplier);
         BooleanSupplier readyToFeedSupplier =
                 () -> shooter.getReadinessDiagnosticsNow(cachedReadinessModeSupplier.get())
                         .atSetpoint()
@@ -571,6 +586,10 @@ public final class ShootingTeleopController {
     private void logTargetSelection(TargetSelection selection) {
         Logger.recordOutput("Shooting/RightTriggerMode", selection.mode().name());
         Logger.recordOutput("Shooting/InAllianceZone", selection.mode() == RightTriggerMode.SHOOT);
+        Logger.recordOutput("Shooting/InOpponentAllianceZone",
+                FieldConstants.isInOpponentAllianceZone(RobotState.getInstance().getPose()));
+        Logger.recordOutput("Shooting/InNeutralBlockedBand",
+                FieldConstants.isInHubBackBlockedNeutralBand(RobotState.getInstance().getPose()));
         Logger.recordOutput("Shooting/TargetPose", selection.targetPose());
         Logger.recordOutput("Shooting/TargetPoseX", selection.targetPose().getX());
         Logger.recordOutput("Shooting/TargetPoseY", selection.targetPose().getY());
@@ -580,6 +599,41 @@ public final class ShootingTeleopController {
                 selection.targetHeading() != null ? selection.targetHeading().getDegrees() : Double.NaN);
         Logger.recordOutput("Shooting/TargetReadinessMode", selection.readinessMode().name());
         Logger.recordOutput("Shooting/AllianceZoneBoundaryX", FieldConstants.getAllianceZoneBoundaryX());
+        Logger.recordOutput("Shooting/OpponentAllianceZoneBoundaryX", FieldConstants.getOpponentAllianceZoneBoundaryX());
+        Logger.recordOutput("Shooting/HubBackBlockLowerY", FieldConstants.getHubBackBlockLowerY());
+        Logger.recordOutput("Shooting/HubBackBlockUpperY", FieldConstants.getHubBackBlockUpperY());
+    }
+
+    private static TargetSelection buildTargetSelection(
+            Pose2d robotPose,
+            double hubDistanceMeters,
+            Rotation2d hubTargetHeading) {
+        if (FieldConstants.isInAllianceZone(robotPose)) {
+            return new TargetSelection(
+                    RightTriggerMode.SHOOT,
+                    new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero),
+                    hubDistanceMeters,
+                    hubTargetHeading,
+                    ReadinessMode.STATIONARY);
+        }
+
+        if (FieldConstants.isInHubBackBlockedNeutralBand(robotPose)) {
+            Pose2d blockedPose = robotPose != null ? robotPose : new Pose2d();
+            return new TargetSelection(
+                    RightTriggerMode.NOTHING,
+                    blockedPose,
+                    Double.NaN,
+                    null,
+                    ReadinessMode.STATIONARY);
+        }
+
+        Pose2d passTargetPose = FieldConstants.getPassTargetPose(robotPose);
+        return new TargetSelection(
+                RightTriggerMode.PASS,
+                passTargetPose,
+                getShooterDistanceToTarget(robotPose, passTargetPose.getTranslation()),
+                FieldConstants.getHeadingToTarget(robotPose, passTargetPose.getTranslation()),
+                ReadinessMode.PASSING);
     }
 
     private static double getAimToleranceRad(ReadinessMode readinessMode) {

@@ -16,26 +16,26 @@ final class FullFunctionalityRightTriggerPassing {
     private static final double POSE_EPSILON_METERS = 1e-6;
 
     @Test
-    void blueRightTriggerPassesWhenOutsideAllianceZone() {
+    void blueShootButtonPassesInNeutralUpperLane() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(20);
 
-            Pose2d outsideBlueZonePose = new Pose2d(
-                    FieldConstants.getAllianceZoneBoundaryX() + 0.9,
-                    FieldConstants.getHubTargetTranslation().getY() - 0.8,
+            Pose2d passPose = new Pose2d(
+                    8.0,
+                    FieldConstants.getHubBackBlockUpperY() + 0.2,
                     Rotation2d.kZero);
-            context.drive.setPose(outsideBlueZonePose);
+            context.drive.setPose(passPose);
             context.runCycles(10);
 
             Field2d dashboardField =
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
-            Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(outsideBlueZonePose);
+            Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
 
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             boolean kickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
-            assertTrue(kickerActivated, "Blue outside-zone right trigger should eventually pass.");
+            assertTrue(kickerActivated, "Blue neutral-lane shoot button should eventually pass.");
 
             Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
@@ -44,16 +44,16 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getX() < FieldConstants.getAllianceZoneBoundaryX(),
                     "Blue pass target should stay on the blue side of the field.");
             assertTrue(
-                    publishedTarget.getY() < FieldConstants.getHubTargetTranslation().getY(),
+                    publishedTarget.getY() > FieldConstants.getHubTargetTranslation().getY(),
                     "Blue pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
         }
     }
 
     @Test
-    void redRightTriggerPassesWhenOutsideAllianceZone() {
+    void redShootButtonPassesInNeutralLowerLane() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             DriverStationSim.setAllianceStationId(AllianceStationID.Red1);
             DriverStationSim.notifyNewData();
@@ -62,20 +62,20 @@ final class FullFunctionalityRightTriggerPassing {
             context.container.teleopInit();
             context.runCycles(20);
 
-            Pose2d outsideRedZonePose = new Pose2d(
-                    FieldConstants.getAllianceZoneBoundaryX() - 0.9,
-                    FieldConstants.getHubTargetTranslation().getY() + 0.8,
+            Pose2d passPose = new Pose2d(
+                    8.0,
+                    FieldConstants.getHubBackBlockLowerY() - 0.2,
                     Rotation2d.kZero);
-            context.drive.setPose(outsideRedZonePose);
+            context.drive.setPose(passPose);
             context.runCycles(10);
 
             Field2d dashboardField =
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
-            Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(outsideRedZonePose);
+            Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
 
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             boolean kickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
-            assertTrue(kickerActivated, "Red outside-zone right trigger should eventually pass.");
+            assertTrue(kickerActivated, "Red neutral-lane shoot button should eventually pass.");
 
             Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
@@ -84,10 +84,10 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getX() > FieldConstants.getAllianceZoneBoundaryX(),
                     "Red pass target should stay on the red side of the field.");
             assertTrue(
-                    publishedTarget.getY() > FieldConstants.getHubTargetTranslation().getY(),
+                    publishedTarget.getY() < FieldConstants.getHubTargetTranslation().getY(),
                     "Red pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
         }
     }

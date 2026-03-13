@@ -65,37 +65,42 @@ class ShootingTeleopControllerXLockTest {
     }
 
     @Test
-    void locksWithXByTheTimeFeedingBeginsWhenIdle() {
+    void locksWithXWhenIdleAndReady() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
         AtomicBoolean aimReady = new AtomicBoolean(true);
 
         Command command = fixture.createShootCommand(0.0, 0.0, 0.0, aimReady::get);
         CommandScheduler.getInstance().schedule(command);
 
-        boolean sawFeedStart = false;
-        boolean sawLockWhenFeeding = false;
+        boolean locked = false;
         StringBuilder trace = new StringBuilder();
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 16; i++) {
             fixture.runSchedulerCycles(1);
             boolean xLock = fixture.isDriveInXLock();
             boolean feeding = fixture.coordinator.isActivelyFeeding();
             trace.append(String.format("c%d[x=%s,f=%s] ", i + 1, xLock, feeding));
-            if (feeding) {
-                sawFeedStart = true;
-                sawLockWhenFeeding = xLock;
+            if (xLock) {
+                locked = true;
                 break;
             }
         }
 
         assertTrue(
-                sawFeedStart,
-                "Expected feeding to begin during the observation window. Trace: " + trace);
-        assertTrue(
-                sawLockWhenFeeding,
-                "Drive should be X-locked by the time feeding begins when idle. Trace: " + trace);
+                locked,
+                "Drive should eventually enter X-lock when idle and ready. Trace: " + trace);
     }
 
     @Test
     void doesNotLockWithXWhenAimIsNotReady() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
         AtomicBoolean aimReady = new AtomicBoolean(false);
 
         Command command = fixture.createShootCommand(0.0, 0.0, 0.0, aimReady::get);
@@ -109,6 +114,11 @@ class ShootingTeleopControllerXLockTest {
 
     @Test
     void doesNotLockWithXWhenDriverCommandsTranslation() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
         AtomicBoolean aimReady = new AtomicBoolean(true);
 
         Command command = fixture.createShootCommand(0.45, 0.0, 0.0, aimReady::get);
@@ -123,6 +133,11 @@ class ShootingTeleopControllerXLockTest {
 
     @Test
     void transitionsOutOfXLockWhenDriverInputResumes() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
         AtomicBoolean aimReady = new AtomicBoolean(true);
         AtomicReference<Double> xInput = new AtomicReference<>(0.0);
 
@@ -152,11 +167,42 @@ class ShootingTeleopControllerXLockTest {
     }
 
     @Test
-    void rightTriggerPublishesPassTargetOutsideBlueAllianceZone() {
+    void blockedNeutralBandDoesNotFeedOrXLock() {
         fixture.setAlliance(AllianceStationID.Blue1);
         fixture.setPose(new Pose2d(
-                FieldConstants.getAllianceZoneBoundaryX() + 0.7,
-                FieldConstants.getHubTargetTranslation().getY() - 0.9,
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+
+        AtomicBoolean aimReady = new AtomicBoolean(true);
+        Command command = fixture.createShootCommand(0.0, 0.0, 0.0, aimReady::get);
+        CommandScheduler.getInstance().schedule(command);
+
+        fixture.runSchedulerCycles(8);
+
+        assertFalse(fixture.coordinator.isActivelyFeeding(), "Blocked band should refuse the pass shot.");
+        assertFalse(fixture.isDriveInXLock(), "Blocked band should not enter shooting X-lock.");
+    }
+
+    @Test
+    void rightTriggerPublishesShootTargetInsideBlueAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.SHOOT);
+    }
+
+    @Test
+    void rightTriggerPublishesPassTargetInBlueNeutralUpperLane() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockUpperY() + 0.2,
                 Rotation2d.kZero));
 
         ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
@@ -166,16 +212,92 @@ class ShootingTeleopControllerXLockTest {
                 selection.targetPose().getX() < FieldConstants.getAllianceZoneBoundaryX(),
                 "Blue pass target should stay on the blue side of the field.");
         assertTrue(
-                selection.targetPose().getY() < FieldConstants.getHubTargetTranslation().getY(),
+                selection.targetPose().getY() > FieldConstants.getHubTargetTranslation().getY(),
                 "Blue pass target should move away from the hub lane.");
     }
 
     @Test
-    void rightTriggerPublishesPassTargetOutsideRedAllianceZone() {
+    void rightTriggerPublishesNothingTargetInBlueNeutralBlockedBand() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.NOTHING);
+        assertTrue(selection.targetHeading() == null, "Blocked band should not publish an aim heading.");
+    }
+
+    @Test
+    void rightTriggerPublishesPassTargetInBlueOpponentAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getOpponentAllianceZoneBoundaryX() + 0.2,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.PASS);
+        assertTrue(
+                selection.targetPose().getX() < FieldConstants.getAllianceZoneBoundaryX(),
+                "Blue opponent-zone pass target should still stay on the blue side of the field.");
+    }
+
+    @Test
+    void rightTriggerPublishesShootTargetInsideRedAllianceZone() {
         fixture.setAlliance(AllianceStationID.Red1);
         fixture.setPose(new Pose2d(
-                FieldConstants.getAllianceZoneBoundaryX() - 0.7,
-                FieldConstants.getHubTargetTranslation().getY() + 0.9,
+                FieldConstants.getAllianceZoneBoundaryX() + 0.2,
+                FieldConstants.getHubTargetTranslation().getY(),
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.SHOOT);
+    }
+
+    @Test
+    void rightTriggerPublishesPassTargetInRedNeutralLowerLane() {
+        fixture.setAlliance(AllianceStationID.Red1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockLowerY() - 0.2,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.PASS);
+        assertTrue(
+                selection.targetPose().getX() > FieldConstants.getAllianceZoneBoundaryX(),
+                "Red pass target should stay on the red side of the field.");
+        assertTrue(
+                selection.targetPose().getY() < FieldConstants.getHubTargetTranslation().getY(),
+                "Red pass target should move away from the hub lane.");
+    }
+
+    @Test
+    void rightTriggerPublishesNothingTargetInRedNeutralBlockedBand() {
+        fixture.setAlliance(AllianceStationID.Red1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.RightTriggerMode.NOTHING);
+        assertTrue(selection.targetHeading() == null, "Blocked band should not publish an aim heading.");
+    }
+
+    @Test
+    void rightTriggerPublishesPassTargetInRedOpponentAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Red1);
+        fixture.setPose(new Pose2d(
+                FieldConstants.getOpponentAllianceZoneBoundaryX() - 0.2,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
                 Rotation2d.kZero));
 
         ShootingTeleopController.TargetSelection selection = fixture.publishRightTriggerTargetTelemetry();

@@ -34,11 +34,17 @@ public final class FieldConstants {
   public static final double FIELD_WIDTH_METERS = TAG_LAYOUT.getFieldWidth();
   public static final double ALLIANCE_ZONE_DEPTH_METERS = Units.inchesToMeters(158.6);
   public static final double ROBOT_BUMPER_LENGTH_METERS = 0.9;
+  public static final int BLUE_HUB_BACK_BLOCK_UPPER_TAG_ID = 24;
+  public static final int BLUE_HUB_BACK_BLOCK_LOWER_TAG_ID = 27;
   private static final double HUB_TARGET_X_METERS = 4.6;
   private static final double HUB_TARGET_Y_METERS = getTagY(BLUE_HUB_TAG_ID, 4.0213534);
   private static final double PASS_TARGET_X_FROM_ALLIANCE_WALL_METERS = ALLIANCE_ZONE_DEPTH_METERS * 0.5;
   private static final double PASS_TARGET_WALL_MARGIN_METERS = 0.8;
   private static final double PASS_TARGET_HUB_CLEARANCE_METERS = 1.6;
+  private static final double HUB_BACK_BLOCK_UPPER_Y_METERS =
+      getTagY(BLUE_HUB_BACK_BLOCK_UPPER_TAG_ID, 4.6247558);
+  private static final double HUB_BACK_BLOCK_LOWER_Y_METERS =
+      getTagY(BLUE_HUB_BACK_BLOCK_LOWER_TAG_ID, 3.417951);
   private static final Translation2d BLUE_HUB_TARGET_TRANSLATION =
       new Translation2d(HUB_TARGET_X_METERS, HUB_TARGET_Y_METERS);
   private static final Translation2d RED_HUB_TARGET_TRANSLATION =
@@ -91,6 +97,50 @@ public final class FieldConstants {
     return isRedAlliance()
         ? FIELD_LENGTH_METERS - ALLIANCE_ZONE_DEPTH_METERS
         : ALLIANCE_ZONE_DEPTH_METERS;
+  }
+
+  /** Returns the field X coordinate of the opponent alliance-zone boundary. */
+  public static double getOpponentAllianceZoneBoundaryX() {
+    return isRedAlliance()
+        ? ALLIANCE_ZONE_DEPTH_METERS
+        : FIELD_LENGTH_METERS - ALLIANCE_ZONE_DEPTH_METERS;
+  }
+
+  /** Returns whether the robot overlaps the opponent alliance zone. */
+  public static boolean isInOpponentAllianceZone(Pose2d robotPose) {
+    if (robotPose == null) {
+      return false;
+    }
+    double halfRobotLengthMeters = ROBOT_BUMPER_LENGTH_METERS * 0.5;
+    double opponentAllianceZoneBoundaryX = getOpponentAllianceZoneBoundaryX();
+    return isRedAlliance()
+        ? robotPose.getX() - halfRobotLengthMeters <= opponentAllianceZoneBoundaryX
+        : robotPose.getX() + halfRobotLengthMeters >= opponentAllianceZoneBoundaryX;
+  }
+
+  /** Returns whether the robot is in the neutral X band between the two alliance zones. */
+  public static boolean isInNeutralField(Pose2d robotPose) {
+    return robotPose != null
+        && !isInAllianceZone(robotPose)
+        && !isInOpponentAllianceZone(robotPose);
+  }
+
+  /** Returns whether the robot is in the no-pass band behind the hub while in neutral field. */
+  public static boolean isInHubBackBlockedNeutralBand(Pose2d robotPose) {
+    return robotPose != null
+        && isInNeutralField(robotPose)
+        && robotPose.getY() >= HUB_BACK_BLOCK_LOWER_Y_METERS
+        && robotPose.getY() <= HUB_BACK_BLOCK_UPPER_Y_METERS;
+  }
+
+  /** Returns the lower Y bound of the neutral no-pass band behind the hub. */
+  public static double getHubBackBlockLowerY() {
+    return HUB_BACK_BLOCK_LOWER_Y_METERS;
+  }
+
+  /** Returns the upper Y bound of the neutral no-pass band behind the hub. */
+  public static double getHubBackBlockUpperY() {
+    return HUB_BACK_BLOCK_UPPER_Y_METERS;
   }
 
   /** Returns the alliance-relative pass target translation used when right-trigger passing. */
