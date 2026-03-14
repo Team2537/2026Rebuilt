@@ -117,4 +117,52 @@ class PathPlannerNamedAutoSimTest {
                 "Final pose was too far from score path endpoint. finalPose=" + previousPose + " expectedTranslation="
                         + expectedEndPose.getTranslation() + " deltaMeters=" + endDelta.getNorm());
     }
+
+    @Test
+    void rightRushEventAutoExtendsIntakeDuringPath() {
+        assertRushEventAutoExtendsIntakeDuringPath("right rush event auto");
+    }
+
+    @Test
+    void leftRushEventAutoExtendsIntakeDuringPath() {
+        assertRushEventAutoExtendsIntakeDuringPath("left rush event auto");
+    }
+
+    private static void assertRushEventAutoExtendsIntakeDuringPath(String autoName) {
+        GyroIOSim gyro = new GyroIOSim(Drive.getModuleTranslations());
+        Drive drive = new Drive(
+                gyro,
+                new ModuleIOSim(TunerConstants.FrontLeft),
+                new ModuleIOSim(TunerConstants.FrontRight),
+                new ModuleIOSim(TunerConstants.BackLeft),
+                new ModuleIOSim(TunerConstants.BackRight));
+        gyro.setModulePositionsSupplier(drive::getModulePositionsForSim);
+
+        Shooter shooter = new Shooter(new ShooterIOSim());
+        Transfer transfer = new Transfer(new TransferIOSim());
+        Intake intake = new Intake(new IntakeIOSim());
+        ShootCoordinator shootCoordinator = new ShootCoordinator(shooter, transfer);
+
+        frc.robot.RobotState.initialize(drive);
+        AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
+
+        Command auto = new PathPlannerAuto(autoName).withName("TestAuto_" + autoName);
+        CommandScheduler.getInstance().schedule(auto);
+
+        boolean intakeEverExtended = intake.isExtended();
+        for (int i = 0; i < 2000; i++) {
+            SimHooks.stepTiming(0.02);
+            DriverStationSim.notifyNewData();
+            CommandScheduler.getInstance().run();
+            intakeEverExtended |= intake.isExtended();
+
+            if (!CommandScheduler.getInstance().isScheduled(auto) && intakeEverExtended) {
+                break;
+            }
+        }
+
+        assertTrue(
+                intakeEverExtended,
+                autoName + " never extended the intake. The path's intake event marker may not be bound.");
+    }
 }
