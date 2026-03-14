@@ -361,7 +361,7 @@ public final class RobotContainer {
                 intakeRollerTrigger,
                 "driver.leftTrigger.onTrue",
                 createIntakeTriggerPressCommand());
-        bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.spinRoller());
+        bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.driverTriggerSpinRollerCommand());
 
         bindOnTrue(
                 driverController.start(),

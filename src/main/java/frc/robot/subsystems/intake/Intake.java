@@ -3,6 +3,7 @@ package frc.robot.subsystems.intake;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -41,6 +42,10 @@ public class Intake extends SubsystemBase {
         }
     }
 
+    private static final class DriverTriggerWiggleSession {
+        private double startSec = Double.NaN;
+    }
+
     private static final String DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY = "Intake/SmartRetract/EnableNibble";
     private static final String DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY =
             "Intake/SmartRetract/EnableHalfRetractReturn";
@@ -58,6 +63,7 @@ public class Intake extends SubsystemBase {
     private boolean cachedSmartRetractNibbleEnabled = false;
     private boolean cachedSmartRetractHalfRetractReturnEnabled = false;
     private SmartRetractController.Mode cachedSmartRetractMode = SmartRetractController.Mode.DISABLED;
+    private double commandedLeftTargetRot = IntakeConstants.RETRACTED_POSITION_ROT;
 
     public Intake(IntakeIO io) {
         super("intake");
@@ -362,6 +368,16 @@ public class Intake extends SubsystemBase {
                 .withName("IntakeSpinRoller");
     }
 
+    public Command driverTriggerSpinRollerCommand() {
+        DriverTriggerWiggleSession session = new DriverTriggerWiggleSession();
+        return Commands.run(
+                        () -> executeDriverTriggerSpinRoller(session),
+                        this)
+                .beforeStarting(() -> session.startSec = Timer.getFPGATimestamp())
+                .finallyDo(interrupted -> endDriverTriggerSpinRoller())
+                .withName("IntakeSpinRoller");
+    }
+
     public Command backgroundCommand() {
         return Commands.runEnd(
                 () -> {
@@ -414,6 +430,7 @@ public class Intake extends SubsystemBase {
             double velocityRotPerSec,
             double accelerationRotPerSecSq,
             double maxVolts) {
+        commandedLeftTargetRot = leftTargetRot;
         io.setIntakePosition(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq, maxVolts);
     }
 
@@ -475,7 +492,7 @@ public class Intake extends SubsystemBase {
         if (goalState == GoalState.RETRACTED && motionState == MotionState.RETRACTED) {
             return;
         }
-        if (isAtTargetPosition(targetRotations(goalState))) {
+        if (isAtTargetPosition(commandedLeftTargetRot)) {
             motionState = atGoalState(goalState);
             return;
         }
@@ -512,5 +529,46 @@ public class Intake extends SubsystemBase {
                 IntakeConstants.SLOW_INTAKE_VELOCITY,
                 IntakeConstants.SLOW_INTAKE_ACCELERATION,
                 IntakeConstants.SLOW_RETRACT_MAX_VOLTS);
+    }
+
+    private void executeDriverTriggerSpinRoller(DriverTriggerWiggleSession session) {
+        io.setRollerRpm(IntakeConstants.ROLLER_RPM);
+        if (!isGoalExtended() && !isExtended()) {
+            Logger.recordOutput("Intake/DriverTriggerWiggleActive", false);
+            Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", commandedLeftTargetRot);
+            return;
+        }
+
+        double elapsedSec = Math.max(0.0, Timer.getFPGATimestamp() - session.startSec);
+        boolean highPhase =
+                ((int) Math.floor(elapsedSec / IntakeConstants.DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC)) % 2 == 1;
+        double wiggleTargetRot = highPhase
+                ? IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT
+                : IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT;
+
+        commandDriverTriggerTarget(wiggleTargetRot);
+        Logger.recordOutput("Intake/DriverTriggerWiggleActive", true);
+        Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", wiggleTargetRot);
+    }
+
+    private void endDriverTriggerSpinRoller() {
+        io.stopRoller();
+        Logger.recordOutput("Intake/DriverTriggerWiggleActive", false);
+        Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT);
+        if (DriverStation.isDisabled() || (!isGoalExtended() && !isExtended())) {
+            return;
+        }
+        commandDriverTriggerTarget(IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT);
+    }
+
+    private void commandDriverTriggerTarget(double leftTargetRot) {
+        goalState = GoalState.EXTENDED;
+        motionState = isAtTargetPosition(leftTargetRot) ? MotionState.EXTENDED : MotionState.MOVING_TO_EXTENDED;
+        MotionProfile profile = standardMotionProfile();
+        requestIntakePosition(
+                leftTargetRot,
+                profile.velocityRotPerSec,
+                profile.accelerationRotPerSecSq,
+                profile.maxVolts);
     }
 }
