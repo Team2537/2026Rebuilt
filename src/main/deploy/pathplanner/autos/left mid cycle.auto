@@ -19,14 +19,33 @@
                 "data": {
                   "name": "IntakeHome"
                 }
+              }
+            ]
+          }
+        },
+        {
+          "type": "deadline",
+          "data": {
+            "commands": [
+              {
+                "type": "wait",
+                "data": {
+                  "waitTime": 2.5
+                }
               },
               {
-                "type": "path",
+                "type": "named",
                 "data": {
-                  "pathName": "right to midfield"
+                  "name": "ShooterShootHub"
                 }
               }
             ]
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "left to midfield"
           }
         },
         {
@@ -42,7 +61,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "right midfield intake"
+                  "pathName": "left midfield intake"
                 }
               },
               {
@@ -55,9 +74,15 @@
           }
         },
         {
+          "type": "named",
+          "data": {
+            "name": "IntakeStopAndRetract"
+          }
+        },
+        {
           "type": "path",
           "data": {
-            "pathName": "right after intake to trench"
+            "pathName": "left after intake to trench"
           }
         },
         {
@@ -67,7 +92,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 10.0
+                  "waitTime": 4
                 }
               },
               {

@@ -101,7 +101,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
     }
 
     @Test
-    void doesNotReextendIfInwardBeforeShootRelease() {
+    void longShootWithoutReachingSmartRetractTargetRestoresExtendedOnRelease() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
@@ -118,22 +118,28 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.runCycles(30);
 
             context.driverControllerSim.setRightTriggerAxis(1.0);
-            context.runCycles(320);
+            boolean reachedSmartRetractTarget = context.runUntil(
+                    () -> Units.radiansToRotations(context.intakeInputs.leftPositionRad)
+                            <= IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT + 1.20,
+                    500);
+            assertTrue(
+                    !reachedSmartRetractTarget,
+                    "Expected this scenario to keep nibble smart retract above the inward target.");
             context.driverControllerSim.setRightTriggerAxis(0.0);
-            context.runCycles(40);
+            context.runCycles(100);
 
             double afterReleaseRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
             assertTrue(
-                    !context.intake.isExtended(),
+                    context.intake.isExtended(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "If shoot is released after smart retract has moved inward, intake should stay retracted",
-                            "intake.isExtended()=false",
+                            "If smart retract never fully reaches its inward target, releasing shoot should restore extended",
+                            "intake.isExtended()=true",
                             context.intake.isExtended()));
             assertTrue(
-                    Math.abs(afterReleaseRot - IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT) <= 1.20,
+                    Math.abs(afterReleaseRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "After release post-full smart retract, intake should stay near smart retract limit",
-                            IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT + "±1.20 rot",
+                            "After release without reaching smart retract target, intake should settle back near extended position",
+                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
                             String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
         }
     }

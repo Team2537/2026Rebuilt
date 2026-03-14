@@ -3,6 +3,7 @@ package frc.robot.sim;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import edu.wpi.first.math.MathUtil;
 import java.util.Map;
 import java.util.Set;
 
@@ -24,21 +25,40 @@ final class FullFunctionalityAutoGoldens {
             boolean transferEverMoved,
             boolean intakeEverExtended) {}
 
-    static final Map<String, AutoGolden> BY_NAME = Map.of(
-            "Along Alliance Moving Shot",
-                    new AutoGolden(8.020, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false),
-            "brag",
-                    new AutoGolden(7.000, 5.309856, 2.576406, 6.392854, 128.309389, true, true, false),
-            "mid back up then score",
-                    new AutoGolden(11.620, 1.039678, 2.555260, 3.987686, -179.999729, true, true, false),
-            "right mid cycle",
-                    new AutoGolden(18.880, 12.426243, 3.014197, 1.314147, -117.788933, true, true, true),
-            "right mid rush cycle",
-                    new AutoGolden(21.120, 12.449354, 3.005534, 1.314379, -120.507662, true, true, true),
-            "right rush event auto",
-                    new AutoGolden(17.960, 13.732693, 2.704229, 1.710229, -129.414236, true, true, false),
-            "right sweeper",
-                    new AutoGolden(5.420, 9.457444, 8.076133, 6.070486, 33.685364, false, false, false));
+    static final Map<String, AutoGolden> BY_NAME = Map.ofEntries(
+            Map.entry(
+                    "Along Alliance Moving Shot",
+                    new AutoGolden(8.020, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false)),
+            Map.entry(
+                    "brag",
+                    new AutoGolden(7.000, 5.309856, 2.576406, 6.392854, 128.309389, true, true, false)),
+            Map.entry(
+                    "left mid cycle",
+                    new AutoGolden(18.880, 12.490841, 3.014197, 6.755853, 117.788933, true, true, true)),
+            Map.entry(
+                    "left mid rush cycle",
+                    new AutoGolden(20.820, 12.449354, 3.005534, 6.755621, 120.507662, true, true, true)),
+            Map.entry(
+                    "left rush event auto",
+                    new AutoGolden(17.960, 13.732693, 2.704229, 6.359771, 129.414236, true, true, false)),
+            Map.entry(
+                    "left sweeper",
+                    new AutoGolden(5.420, 9.457444, 8.076133, 1.999514, -33.685364, false, false, false)),
+            Map.entry(
+                    "mid back up then score",
+                    new AutoGolden(11.620, 1.039678, 2.555260, 3.987686, -179.999729, true, true, false)),
+            Map.entry(
+                    "right mid cycle",
+                    new AutoGolden(19.080, 12.115259, 3.014197, 1.314147, -121.956178, true, true, true)),
+            Map.entry(
+                    "right mid rush cycle",
+                    new AutoGolden(20.620, 12.070692, 3.005534, 1.314379, -120.507662, true, true, true)),
+            Map.entry(
+                    "right rush event auto",
+                    new AutoGolden(17.960, 13.732693, 2.704229, 1.710229, -129.414236, true, true, false)),
+            Map.entry(
+                    "right sweeper",
+                    new AutoGolden(5.420, 9.457444, 8.076133, 6.070486, 33.685364, false, false, false)));
 
     static void assertExpectedAutoSet(Set<String> autoNames) {
         assertEquals(
@@ -85,7 +105,8 @@ final class FullFunctionalityAutoGoldens {
                         golden.finalY() + "±" + POSE_TOLERANCE_M,
                         finalY));
         assertTrue(
-                Math.abs(finalHeadingDeg - golden.finalHeadingDeg()) <= HEADING_TOLERANCE_DEG,
+                Math.abs(Math.toDegrees(MathUtil.angleModulus(
+                        Math.toRadians(finalHeadingDeg - golden.finalHeadingDeg())))) <= HEADING_TOLERANCE_DEG,
                 FullFunctionalityHarness.formatExpectedVsActual(
                         "Auto final heading should match golden",
                         golden.finalHeadingDeg() + "±" + HEADING_TOLERANCE_DEG,

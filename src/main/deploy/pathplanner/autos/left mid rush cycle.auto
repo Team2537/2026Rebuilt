@@ -23,7 +23,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "right to midfield"
+                  "pathName": "left to midfield"
                 }
               }
             ]
@@ -42,7 +42,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "right midfield intake"
+                  "pathName": "left midfield intake"
                 }
               },
               {
@@ -57,7 +57,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "right after intake to trench"
+            "pathName": "left after intake to trench"
           }
         },
         {
@@ -67,7 +67,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 10.0
+                  "waitTime": 10
                 }
               },
               {

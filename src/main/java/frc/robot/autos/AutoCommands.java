@@ -14,6 +14,7 @@ import frc.robot.RobotState;
 import frc.robot.commands.DriveCommands;
 import frc.robot.coordination.shooting.ShootCoordinator;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.util.AimReadyLatch;
@@ -44,7 +45,7 @@ public final class AutoCommands {
      * Runs until interrupted.
      */
     public static Command aimForHub(
-            Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
+            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
         return shootCoordinator.aimForDistance(createHubDistanceSupplier(shooter))
                 .withName("AutoAimForHub");
     }
@@ -54,7 +55,7 @@ public final class AutoCommands {
      * Runs until interrupted.
      */
     public static Command shootHub(
-            Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
+            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
         Supplier<LaunchCalculator.MotionCompensation> compensationSupplier =
                 createHubMotionCompensationSupplier(shooter);
         DoubleSupplier distanceSupplier =
@@ -68,14 +69,17 @@ public final class AutoCommands {
                 });
         BooleanSupplier aimReadySupplier = createAimReadySupplier(rawDesiredRobotHeadingSupplier);
 
-        return Commands.parallel(
-                        shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
-                        DriveCommands.autoAlignToHubPose(
-                                drive,
-                                () -> 0.0,
-                                () -> 0.0,
-                                () -> 0.0,
-                                targetHeadingSupplier))
+        return withSmartRetractDuringShoot(
+                        Commands.parallel(
+                                shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
+                                DriveCommands.autoAlignToHubPose(
+                                        drive,
+                                        () -> 0.0,
+                                        () -> 0.0,
+                                        () -> 0.0,
+                                        targetHeadingSupplier)),
+                        intake,
+                        shootCoordinator)
                 .withName("AutoShootHub");
     }
 
@@ -84,7 +88,7 @@ public final class AutoCommands {
      * Uses motion-compensated heading to override PathPlanner's rotation target.
      */
     public static Command shootHubOnMove(
-            Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
+            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
         Supplier<LaunchCalculator.MotionCompensation> compensationSupplier =
                 createHubMotionCompensationSupplier(shooter);
         DoubleSupplier distanceSupplier =
@@ -104,17 +108,27 @@ public final class AutoCommands {
         BooleanSupplier aimReadySupplier =
                 createAimReadySupplier(profiledDesiredRobotHeadingSupplier);
 
-        return withPathRotationOverride(
-                        shootCoordinator.shootForDistance(
-                                distanceSupplier,
-                                aimReadySupplier,
-                                () -> true,
-                                () -> false,
-                                () -> true),
-                        rawDesiredRobotHeadingSupplier,
-                        profiledDesiredRobotHeadingSupplier,
-                        profiledHeadingTarget)
+        return withSmartRetractDuringShoot(
+                        withPathRotationOverride(
+                                shootCoordinator.shootForDistance(
+                                        distanceSupplier,
+                                        aimReadySupplier,
+                                        () -> true,
+                                        () -> false,
+                                        () -> true),
+                                rawDesiredRobotHeadingSupplier,
+                                profiledDesiredRobotHeadingSupplier,
+                                profiledHeadingTarget),
+                        intake,
+                        shootCoordinator)
                 .withName("AutoShootHubOnMove");
+    }
+
+    private static Command withSmartRetractDuringShoot(
+            Command shootingCommand, Intake intake, ShootCoordinator shootCoordinator) {
+        return Commands.parallel(
+                shootingCommand,
+                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding));
     }
 
     private static Supplier<LaunchCalculator.MotionCompensation> createHubMotionCompensationSupplier(

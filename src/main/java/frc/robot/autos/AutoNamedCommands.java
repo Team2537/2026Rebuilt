@@ -39,13 +39,14 @@ public final class AutoNamedCommands {
 
         register(
                 "ShooterAimHub",
-                AutoCommands.aimForHub(drive, shooter, shootCoordinator).withName("AutoNamed_ShooterAimHub"));
+                AutoCommands.aimForHub(drive, shooter, intake, shootCoordinator).withName("AutoNamed_ShooterAimHub"));
         register(
                 "ShooterShootHub",
-                AutoCommands.shootHub(drive, shooter, shootCoordinator).withName("AutoNamed_ShooterShootHub"));
+                AutoCommands.shootHub(drive, shooter, intake, shootCoordinator)
+                        .withName("AutoNamed_ShooterShootHub"));
         register(
                 "ShooterShootHubOnMove",
-                AutoCommands.shootHubOnMove(drive, shooter, shootCoordinator)
+                AutoCommands.shootHubOnMove(drive, shooter, intake, shootCoordinator)
                         .withName("AutoNamed_ShooterShootHubOnMove"));
         register("ShooterHome", shooter.homeCommand().withName("AutoNamed_ShooterHome"));
         register("ShooterStop", shooter.stopCommand().withName("AutoNamed_ShooterStop"));
