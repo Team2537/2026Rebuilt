@@ -3,6 +3,8 @@ package frc.robot.sim;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.subsystems.intake.IntakeConstants;
 import java.util.Locale;
@@ -140,7 +142,71 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "After release without reaching smart retract target, intake should settle back near extended position",
                             IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
-                            String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
+                    String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
         }
+    }
+
+    @Test
+    void autonomousShooterShootHubNamedCommandRunsSmartRetractAndRestoresExtendedOnCancel() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setAutonomousEnabled();
+            context.runCycles(40);
+
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
+            context.runCycles(8);
+
+            context.intake.setExtended(true);
+            context.runCycles(180);
+            double extendedStartRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            assertTrue(
+                    Math.abs(extendedStartRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Intake should be physically near extended before autonomous smart retract test",
+                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
+                            String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
+
+            Command shootHub = FullFunctionalityHarness.namedCommand("ShooterShootHub")
+                    .withName("FF_AutoShooterShootHubSmartRetract");
+            CommandScheduler.getInstance().schedule(shootHub);
+            boolean commandedInward = context.runUntil(
+                    () -> commandedLeftTargetRot(context)
+                            <= IntakeConstants.EXTENDED_POSITION_ROT - 0.25,
+                    400);
+            assertTrue(
+                    commandedInward,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Autonomous ShooterShootHub should command intake smart retract inward",
+                            String.format(
+                                    Locale.US,
+                                    "commandedLeftTargetRot<=%.3f",
+                                    IntakeConstants.EXTENDED_POSITION_ROT - 0.25),
+                            String.format(
+                                    Locale.US,
+                                    "commandedLeftTargetRot=%.3f",
+                                    commandedLeftTargetRot(context))));
+
+            CommandScheduler.getInstance().cancel(shootHub);
+            boolean restoredExtended = context.runUntil(
+                    () -> context.intake.isExtended()
+                            && Math.abs(Units.radiansToRotations(context.intakeInputs.leftPositionRad)
+                                            - IntakeConstants.EXTENDED_POSITION_ROT)
+                                    <= 1.20,
+                    220);
+            assertTrue(
+                    restoredExtended,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Canceling autonomous ShooterShootHub should restore the intake to extended after smart retract",
+                            "intake restored near extended",
+                            String.format(
+                                    Locale.US,
+                                    "isExtended=%s leftRot=%.3f",
+                                    context.intake.isExtended(),
+                                    Units.radiansToRotations(context.intakeInputs.leftPositionRad))));
+        }
+    }
+
+    private static double commandedLeftTargetRot(FullFunctionalityHarness.Context context) {
+        return FullFunctionalityHarness.getPrivateField(context.intake, "commandedLeftTargetRot", Double.class);
     }
 }

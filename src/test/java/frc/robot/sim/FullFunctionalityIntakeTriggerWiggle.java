@@ -22,12 +22,25 @@ final class FullFunctionalityIntakeTriggerWiggle {
             extendAndSettleAtBaseline(context);
 
             context.driverControllerSim.setLeftTriggerAxis(1.0);
-            context.runCycles(15);
+            boolean sawInitialBaseline = context.runUntil(
+                    () -> Math.abs(commandedLeftTargetInches(context) - IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_IN)
+                            <= POSITION_TOLERANCE_IN,
+                    20);
             double lowPhaseTargetIn = commandedLeftTargetInches(context);
-            context.runCycles(25);
+            boolean reachedPeak = context.runUntil(
+                    () -> Math.abs(commandedLeftTargetInches(context) - IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_IN)
+                            <= POSITION_TOLERANCE_IN,
+                    30);
             double highPhaseTargetIn = commandedLeftTargetInches(context);
-            context.runCycles(25);
+            boolean returnedLow = context.runUntil(
+                    () -> Math.abs(commandedLeftTargetInches(context) - IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_IN)
+                            <= POSITION_TOLERANCE_IN,
+                    30);
             double returnLowPhaseTargetIn = commandedLeftTargetInches(context);
+
+            assertTrue(sawInitialBaseline, "Expected left-trigger wiggle to begin from the baseline extension target.");
+            assertTrue(reachedPeak, "Expected left-trigger wiggle to reach the configured peak target.");
+            assertTrue(returnedLow, "Expected left-trigger wiggle to return to the baseline target after the peak.");
 
             assertNearInches(
                     lowPhaseTargetIn,

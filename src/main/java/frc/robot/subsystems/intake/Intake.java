@@ -369,7 +369,7 @@ public class Intake extends SubsystemBase {
                 .withName("IntakeSpinRoller");
     }
 
-    public Command driverTriggerSpinRollerCommand() {
+    public Command wiggleSpinRollerCommand() {
         DriverTriggerWiggleSession session = new DriverTriggerWiggleSession();
         return Commands.run(
                         () -> executeDriverTriggerSpinRoller(session),
@@ -377,6 +377,10 @@ public class Intake extends SubsystemBase {
                 .beforeStarting(() -> session.startSec = Timer.getFPGATimestamp())
                 .finallyDo(interrupted -> endDriverTriggerSpinRoller())
                 .withName("IntakeSpinRoller");
+    }
+
+    public Command driverTriggerSpinRollerCommand() {
+        return wiggleSpinRollerCommand();
     }
 
     public Command backgroundCommand() {

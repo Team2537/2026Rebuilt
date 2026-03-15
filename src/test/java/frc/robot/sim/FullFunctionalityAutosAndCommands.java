@@ -280,6 +280,10 @@ final class FullFunctionalityAutosAndCommands {
                     context.shooter.setTargets(2200.0, 2200.0, Units.degreesToRadians(70.0));
                     context.runCycles(100);
                 }
+                if (named.equals("IntakeRoller")) {
+                    context.intake.setExtended(true);
+                    context.runCycles(160);
+                }
 
                 String lifecycleName = "FullFunctionalityNamed_" + named;
                 Command command = FullFunctionalityHarness.namedCommand(named).withName(lifecycleName);
@@ -297,6 +301,8 @@ final class FullFunctionalityAutosAndCommands {
                 boolean sawRightHomingCurrentThreshold = false;
                 boolean sawNegativeHoodVolts = false;
                 boolean sawHoodHomingCurrentThreshold = false;
+                double minCommandedIntakeTargetRot = Double.POSITIVE_INFINITY;
+                double maxCommandedIntakeTargetRot = Double.NEGATIVE_INFINITY;
 
                 CommandScheduler.getInstance().schedule(command);
                 if (continuousNamedCommands.contains(named)) {
@@ -308,6 +314,14 @@ final class FullFunctionalityAutosAndCommands {
                         maxTransferVolts = Math.max(maxTransferVolts, context.transferInputs.appliedVolts);
                         maxRollerAbsVolts = Math.max(maxRollerAbsVolts, Math.abs(context.intakeInputs.rollerAppliedVolts));
                         maxShooterTargetRpm = Math.max(maxShooterTargetRpm, Math.abs(context.shooter.getTargetAverageShooterRpm()));
+                        if (named.equals("IntakeRoller")) {
+                            double commandedTargetRot = FullFunctionalityHarness.getPrivateField(
+                                    context.intake,
+                                    "commandedLeftTargetRot",
+                                    Double.class);
+                            minCommandedIntakeTargetRot = Math.min(minCommandedIntakeTargetRot, commandedTargetRot);
+                            maxCommandedIntakeTargetRot = Math.max(maxCommandedIntakeTargetRot, commandedTargetRot);
+                        }
                     }
                     CommandScheduler.getInstance().cancel(command);
                     context.runCycles(8);
@@ -415,6 +429,23 @@ final class FullFunctionalityAutosAndCommands {
                                     "IntakeRoller should drive roller motor",
                                     "maxAbsRollerVolts>1.0",
                                     maxRollerAbsVolts));
+                        }
+                        if (minCommandedIntakeTargetRot
+                                        > IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT + 0.05
+                                || maxCommandedIntakeTargetRot
+                                        < IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT - 0.05) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "Auto IntakeRoller should wiggle the extended intake between baseline and peak targets",
+                                    String.format(
+                                            Locale.US,
+                                            "min<=%.3f rot and max>=%.3f rot",
+                                            IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT + 0.05,
+                                            IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT - 0.05),
+                                    String.format(
+                                            Locale.US,
+                                            "min=%.3f rot max=%.3f rot",
+                                            minCommandedIntakeTargetRot,
+                                            maxCommandedIntakeTargetRot)));
                         }
                     }
                     case "TransferRun" -> {
