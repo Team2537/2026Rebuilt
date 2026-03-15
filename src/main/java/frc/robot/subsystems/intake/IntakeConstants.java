@@ -8,7 +8,7 @@ public final class IntakeConstants {
     public static final int RIGHT_MOTOR_ID = 24;
 
     public static final double ROLLER_RPM = 4000.0;
-    public static final double SLOW_ROLLER_RPM = 1500.0;
+    public static final double SLOW_ROLLER_RPM = 0.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
 
@@ -69,9 +69,9 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_HALF_RETRACT_POSITION_ROT = 10.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
-    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.2;
+    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.4;
 
-    public static final double SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS = 2.0;
+    public static final double SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS = 1.5;
     public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 3;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.40;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 6.0;

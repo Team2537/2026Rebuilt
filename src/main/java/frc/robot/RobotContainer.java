@@ -397,10 +397,13 @@ public final class RobotContainer {
                 dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
         Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
         Trigger aimTrigger = rightBumperPressed.and(rightTriggerPressed.negate());
+        Trigger autoAimOverrideActive =
+                new Trigger(() -> dashboardOverrides.isAutoAimEnabled()
+                        && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()));
 
         bindWhileTrue(
-                aimTrigger,
-                "driver.aim.whileTrue",
+                aimTrigger.and(autoAimOverrideActive),
+                "driver.aim.override.whileTrue",
                 shootingTeleopController.createSelectedAimCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
@@ -408,8 +411,27 @@ public final class RobotContainer {
                         hubDistanceSupplier,
                         teleopAutoAlignHeadingSupplier).withName("ShooterDriverAim"));
         bindWhileTrue(
-                shootTrigger,
-                "driver.shoot.whileTrue",
+                aimTrigger.and(autoAimOverrideActive.negate()),
+                "driver.aim.normal.whileTrue",
+                shootingTeleopController.createSelectedAimCommand(
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        hubDistanceSupplier,
+                        teleopAutoAlignHeadingSupplier).withName("ShooterDriverAim"));
+        bindWhileTrue(
+                shootTrigger.and(autoAimOverrideActive),
+                "driver.shoot.override.whileTrue",
+                shootingTeleopController.createSelectedShootCommand(
+                        () -> driverController.getLeftY(),
+                        () -> driverController.getLeftX(),
+                        () -> -driverController.getRightX(),
+                        hubDistanceSupplier,
+                        teleopAutoAlignHeadingSupplier,
+                        rightBumperPressed::getAsBoolean).withName("ShooterTriggerSelectedMode"));
+        bindWhileTrue(
+                shootTrigger.and(autoAimOverrideActive.negate()),
+                "driver.shoot.normal.whileTrue",
                 shootingTeleopController.createSelectedShootCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),

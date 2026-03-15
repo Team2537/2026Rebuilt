@@ -409,6 +409,7 @@ class ShootingTeleopControllerXLockTest {
             }
             return true;
         }
+
     }
 
     private static final class TestGyroIO implements GyroIO {
