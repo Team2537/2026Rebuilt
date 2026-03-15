@@ -131,10 +131,12 @@ public class IntakeIOReal implements IntakeIO {
         inputs.leftVelocityRpm = leftVelocity.getValueAsDouble() * 60.0;
 
         inputs.rightAppliedVolts = rightAppliedVolts.getValueAsDouble();
-        inputs.rightPositionRad = Units.rotationsToRadians(rightPosition.getValueAsDouble());
+        // Keep real telemetry sign convention aligned with sim/intake state logic:
+        // the right mechanism reports opposite signed position/velocity to the left.
+        inputs.rightPositionRad = -Units.rotationsToRadians(rightPosition.getValueAsDouble());
         inputs.rightSupplyCurrentAmps = rightSupplyCurrent.getValueAsDouble();
         inputs.rightStatorCurrentAmps = rightStatorCurrent.getValueAsDouble();
-        inputs.rightVelocityRpm = rightVelocity.getValueAsDouble() * 60.0;
+        inputs.rightVelocityRpm = -rightVelocity.getValueAsDouble() * 60.0;
 
         inputs.rollerAppliedVolts = rollerAppliedVolts.getValueAsDouble();
         inputs.rollerPositionRad = Units.rotationsToRadians(rollerPosition.getValueAsDouble());

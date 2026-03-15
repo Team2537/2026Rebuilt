@@ -61,7 +61,7 @@ public final class IntakeConstants {
     public static final double SLOW_RETRACT_MAX_VOLTS = 4.0;
 
     public static final double HOMING_CURRENT_THRESHOLD_AMPS = 20.0;
-    public static final double HOMING_VOLTAGE = -1.5;
+    public static final double HOMING_VOLTAGE = -2.0;
     public static final double HOMING_WAIT_TIMEOUT_SEC = 4.0;
 
     // Smart-retract will only drive intake as far as this value (unless regular retract is used).

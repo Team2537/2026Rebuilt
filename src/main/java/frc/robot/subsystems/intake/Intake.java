@@ -174,6 +174,7 @@ public class Intake extends SubsystemBase {
                                 () -> {
                                     motionState = preHomeMotionState;
                                     goalState = preHomeGoalState;
+                                    updateMotionStateFromSensors();
                                     DriverStation.reportWarning(
                                             "Intake homing did not hit both current thresholds; skipping encoder reset/retract.",
                                             false);
@@ -484,12 +485,6 @@ public class Intake extends SubsystemBase {
 
     private void updateMotionStateFromSensors() {
         if (motionState == MotionState.HOMING) {
-            return;
-        }
-        if (goalState == GoalState.EXTENDED && motionState == MotionState.EXTENDED) {
-            return;
-        }
-        if (goalState == GoalState.RETRACTED && motionState == MotionState.RETRACTED) {
             return;
         }
         if (isAtTargetPosition(commandedLeftTargetRot)) {

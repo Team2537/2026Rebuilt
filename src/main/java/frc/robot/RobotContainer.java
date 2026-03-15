@@ -395,8 +395,8 @@ public final class RobotContainer {
         Trigger dashboardTuneTrigger = rightBumperPressed.and(new Trigger(shooter::isDashboardTuningEnabled));
         Trigger dashboardTransferTuneTrigger =
                 dashboardTuneTrigger.and(new Trigger(shooter::isDashboardFeedKickerEnabled));
-        Trigger shootTrigger = rightBumperPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
-        Trigger aimTrigger = rightTriggerPressed.and(rightBumperPressed.negate());
+        Trigger shootTrigger = rightTriggerPressed.and(new Trigger(() -> !shooter.isDashboardTuningEnabled()));
+        Trigger aimTrigger = rightBumperPressed.and(rightTriggerPressed.negate());
 
         bindWhileTrue(
                 aimTrigger,
@@ -410,7 +410,7 @@ public final class RobotContainer {
         bindWhileTrue(
                 shootTrigger,
                 "driver.shoot.whileTrue",
-                shootingTeleopController.createSelectedShootWithoutAimCommand(
+                shootingTeleopController.createSelectedShootCommand(
                         () -> driverController.getLeftY(),
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
