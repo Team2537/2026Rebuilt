@@ -42,7 +42,9 @@ final class FullFunctionalityAutosAndCommands {
             "TransferStop",
             "ShooterAimHub",
             "ShooterShootHub",
+            "ShooterShootHubNoSmartRetract",
             "ShooterShootHubOnMove",
+            "ShooterShootHubOnMoveNoSmartRetract",
             "ShooterHome",
             "ShooterStop");
 
@@ -271,7 +273,9 @@ final class FullFunctionalityAutosAndCommands {
                     "TransferReverse",
                     "ShooterAimHub",
                     "ShooterShootHub",
-                    "ShooterShootHubOnMove");
+                    "ShooterShootHubNoSmartRetract",
+                    "ShooterShootHubOnMove",
+                    "ShooterShootHubOnMoveNoSmartRetract");
 
             List<String> failures = new ArrayList<>();
             for (String named : ALL_AUTO_NAMED_COMMANDS) {
@@ -290,6 +294,11 @@ final class FullFunctionalityAutosAndCommands {
                 if (named.equals("ShooterHome")) {
                     context.shooter.setTargets(2200.0, 2200.0, Units.degreesToRadians(70.0));
                     context.runCycles(100);
+                }
+                if (named.equals("ShooterShootHubNoSmartRetract")
+                        || named.equals("ShooterShootHubOnMoveNoSmartRetract")) {
+                    context.intake.setExtended(true);
+                    context.runCycles(160);
                 }
                 if (named.equals("IntakeRoller")) {
                     context.intake.setExtended(true);
@@ -325,7 +334,9 @@ final class FullFunctionalityAutosAndCommands {
                         maxTransferVolts = Math.max(maxTransferVolts, context.transferInputs.appliedVolts);
                         maxRollerAbsVolts = Math.max(maxRollerAbsVolts, Math.abs(context.intakeInputs.rollerAppliedVolts));
                         maxShooterTargetRpm = Math.max(maxShooterTargetRpm, Math.abs(context.shooter.getTargetAverageShooterRpm()));
-                        if (named.equals("IntakeRoller")) {
+                        if (named.equals("IntakeRoller")
+                                || named.equals("ShooterShootHubNoSmartRetract")
+                                || named.equals("ShooterShootHubOnMoveNoSmartRetract")) {
                             double commandedTargetRot = FullFunctionalityHarness.getPrivateField(
                                     context.intake,
                                     "commandedLeftTargetRot",
@@ -508,12 +519,58 @@ final class FullFunctionalityAutosAndCommands {
                             failures.add(named + " should run transfer while shooting but transfer never moved.");
                         }
                     }
+                    case "ShooterShootHubNoSmartRetract" -> {
+                        if (!kickerEverActive) {
+                            failures.add(named + " should activate kicker at least once but never did.");
+                        }
+                        if (maxTransferAbsVolts < 1.0) {
+                            failures.add(named + " should run transfer while shooting but transfer never moved.");
+                        }
+                        if (!context.intake.isExtended()) {
+                            failures.add(named + " should leave intake marked extended, but intake.isExtended() became false.");
+                        }
+                        if (minCommandedIntakeTargetRot < IntakeConstants.EXTENDED_POSITION_ROT - 0.10) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "ShooterShootHubNoSmartRetract should not command intake inward",
+                                    String.format(
+                                            Locale.US,
+                                            "minCommandedIntakeTargetRot>=%.3f rot",
+                                            IntakeConstants.EXTENDED_POSITION_ROT - 0.10),
+                                    String.format(
+                                            Locale.US,
+                                            "minCommandedIntakeTargetRot=%.3f rot",
+                                            minCommandedIntakeTargetRot)));
+                        }
+                    }
                     case "ShooterShootHubOnMove" -> {
                         if (maxShooterTargetRpm < 300.0) {
                             failures.add(FullFunctionalityHarness.formatExpectedVsActual(
                                     "ShooterShootHubOnMove should at least spin shooter targets",
                                     "maxShooterTargetRpm>=300",
                                     maxShooterTargetRpm));
+                        }
+                    }
+                    case "ShooterShootHubOnMoveNoSmartRetract" -> {
+                        if (maxShooterTargetRpm < 300.0) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "ShooterShootHubOnMoveNoSmartRetract should at least spin shooter targets",
+                                    "maxShooterTargetRpm>=300",
+                                    maxShooterTargetRpm));
+                        }
+                        if (!context.intake.isExtended()) {
+                            failures.add(named + " should leave intake marked extended, but intake.isExtended() became false.");
+                        }
+                        if (minCommandedIntakeTargetRot < IntakeConstants.EXTENDED_POSITION_ROT - 0.10) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "ShooterShootHubOnMoveNoSmartRetract should not command intake inward",
+                                    String.format(
+                                            Locale.US,
+                                            "minCommandedIntakeTargetRot>=%.3f rot",
+                                            IntakeConstants.EXTENDED_POSITION_ROT - 0.10),
+                                    String.format(
+                                            Locale.US,
+                                            "minCommandedIntakeTargetRot=%.3f rot",
+                                            minCommandedIntakeTargetRot)));
                         }
                     }
                     case "ShooterHome" -> {

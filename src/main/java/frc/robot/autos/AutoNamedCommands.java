@@ -45,9 +45,17 @@ public final class AutoNamedCommands {
                 AutoCommands.shootHub(drive, shooter, intake, shootCoordinator)
                         .withName("AutoNamed_ShooterShootHub"));
         register(
+                "ShooterShootHubNoSmartRetract",
+                AutoCommands.shootHubWithoutSmartRetract(drive, shooter, intake, shootCoordinator)
+                        .withName("AutoNamed_ShooterShootHubNoSmartRetract"));
+        register(
                 "ShooterShootHubOnMove",
                 AutoCommands.shootHubOnMove(drive, shooter, intake, shootCoordinator)
                         .withName("AutoNamed_ShooterShootHubOnMove"));
+        register(
+                "ShooterShootHubOnMoveNoSmartRetract",
+                AutoCommands.shootHubOnMoveWithoutSmartRetract(drive, shooter, intake, shootCoordinator)
+                        .withName("AutoNamed_ShooterShootHubOnMoveNoSmartRetract"));
         register("ShooterHome", shooter.homeCommand().withName("AutoNamed_ShooterHome"));
         register("ShooterStop", shooter.stopCommand().withName("AutoNamed_ShooterStop"));
     }

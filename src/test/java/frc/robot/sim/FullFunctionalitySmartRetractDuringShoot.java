@@ -1,6 +1,7 @@
 package frc.robot.sim;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -203,6 +204,97 @@ final class FullFunctionalitySmartRetractDuringShoot {
                                     "isExtended=%s leftRot=%.3f",
                                     context.intake.isExtended(),
                                     Units.radiansToRotations(context.intakeInputs.leftPositionRad))));
+        }
+    }
+
+    @Test
+    void autonomousShooterShootHubNoSmartRetractLeavesIntakeExtended() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setAutonomousEnabled();
+            context.runCycles(40);
+
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
+            context.runCycles(8);
+
+            context.intake.setExtended(true);
+            context.runCycles(180);
+            double extendedStartRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            assertTrue(
+                    Math.abs(extendedStartRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Intake should be physically near extended before no-smart-retract autonomous shot test",
+                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
+                            String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
+
+            Command shootHubNoSmartRetract = FullFunctionalityHarness.namedCommand("ShooterShootHubNoSmartRetract")
+                    .withName("FF_AutoShooterShootHubNoSmartRetract");
+            CommandScheduler.getInstance().schedule(shootHubNoSmartRetract);
+            context.runCycles(160);
+
+            double minAllowedTargetRot = IntakeConstants.EXTENDED_POSITION_ROT - 0.10;
+            double commandedTargetRot = commandedLeftTargetRot(context);
+            assertFalse(
+                    commandedTargetRot < minAllowedTargetRot,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Autonomous ShooterShootHubNoSmartRetract should not command intake inward",
+                            String.format(Locale.US, "commandedLeftTargetRot>=%.3f", minAllowedTargetRot),
+                            String.format(Locale.US, "commandedLeftTargetRot=%.3f", commandedTargetRot)));
+            assertTrue(
+                    context.intake.isExtended(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Autonomous ShooterShootHubNoSmartRetract should leave intake marked extended",
+                            "intake.isExtended()=true",
+                            context.intake.isExtended()));
+
+            CommandScheduler.getInstance().cancel(shootHubNoSmartRetract);
+            context.runCycles(20);
+        }
+    }
+
+    @Test
+    void autonomousShooterShootHubOnMoveNoSmartRetractLeavesIntakeExtended() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setAutonomousEnabled();
+            context.runCycles(40);
+
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
+            context.runCycles(8);
+
+            context.intake.setExtended(true);
+            context.runCycles(180);
+            double extendedStartRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+            assertTrue(
+                    Math.abs(extendedStartRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Intake should be physically near extended before no-smart-retract on-move autonomous shot test",
+                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
+                            String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
+
+            Command shootHubOnMoveNoSmartRetract =
+                    FullFunctionalityHarness.namedCommand("ShooterShootHubOnMoveNoSmartRetract")
+                            .withName("FF_AutoShooterShootHubOnMoveNoSmartRetract");
+            CommandScheduler.getInstance().schedule(shootHubOnMoveNoSmartRetract);
+            context.runCycles(160);
+
+            double minAllowedTargetRot = IntakeConstants.EXTENDED_POSITION_ROT - 0.10;
+            double commandedTargetRot = commandedLeftTargetRot(context);
+            assertFalse(
+                    commandedTargetRot < minAllowedTargetRot,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Autonomous ShooterShootHubOnMoveNoSmartRetract should not command intake inward",
+                            String.format(Locale.US, "commandedLeftTargetRot>=%.3f", minAllowedTargetRot),
+                            String.format(Locale.US, "commandedLeftTargetRot=%.3f", commandedTargetRot)));
+            assertTrue(
+                    context.intake.isExtended(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Autonomous ShooterShootHubOnMoveNoSmartRetract should leave intake marked extended",
+                            "intake.isExtended()=true",
+                            context.intake.isExtended()));
+
+            CommandScheduler.getInstance().cancel(shootHubOnMoveNoSmartRetract);
+            context.runCycles(20);
         }
     }
 
