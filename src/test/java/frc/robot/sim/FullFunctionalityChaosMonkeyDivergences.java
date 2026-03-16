@@ -15,20 +15,17 @@ final class FullFunctionalityChaosMonkeyDivergences {
     private static final int CHAOS_PHASES = 20;
     private static final int TELEOP_CHAOS_CYCLES_PER_PHASE = 52;
     private static final int POST_RELEASE_SETTLE_CYCLES = 80;
-    private static final int MANY_MANUAL_FEED_STARTS = 12;
-
     private static final double RETRACT_TOLERANCE_LEFT_ROT = 0.55;
     private static final double RETRACT_TOLERANCE_RIGHT_ROT = 0.60;
     private static final double STRICT_FINAL_RETRACT_LEFT_ROT = 0.40;
     private static final double STRICT_FINAL_RETRACT_RIGHT_ROT = 0.45;
 
     private static final List<String> TRACKED_COMMANDS = List.of(
-            "IntakeToggleExtended",
             "DriverIntakeTriggerPress",
-            "DriverManualFeed",
             "IntakeSpinRoller",
-            "TransferReverse",
+            "DriveToggleSlowMode",
             "DriveToggleFieldOriented",
+            "DriveHeadingSnap",
             "DriveResetOdometryAndHeading",
             "DriverIntakeHome",
             "StopManipulators",
@@ -43,9 +40,7 @@ final class FullFunctionalityChaosMonkeyDivergences {
             "DriveSysIdDynamicReverse");
 
     private static final List<String> HELD_COMMANDS = List.of(
-            "DriverManualFeed",
             "IntakeSpinRoller",
-            "TransferReverse",
             "ShooterTriggerSelectedMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot",
@@ -138,25 +133,18 @@ final class FullFunctionalityChaosMonkeyDivergences {
             context.runCycles(POST_RELEASE_SETTLE_CYCLES);
 
             Map<String, FullFunctionalityHarness.CommandCounts> deltas = deltaCounts(context, before, TRACKED_COMMANDS);
-            FullFunctionalityHarness.CommandCounts manualFeedDelta = deltas.get("DriverManualFeed");
-            FullFunctionalityHarness.CommandCounts toggleDelta = deltas.get("IntakeToggleExtended");
             FullFunctionalityHarness.CommandCounts rollerDelta = deltas.get("IntakeSpinRoller");
-            FullFunctionalityHarness.CommandCounts reverseDelta = deltas.get("TransferReverse");
+            FullFunctionalityHarness.CommandCounts slowModeDelta = deltas.get("DriveToggleSlowMode");
             FullFunctionalityHarness.CommandCounts fieldToggleDelta = deltas.get("DriveToggleFieldOriented");
+            FullFunctionalityHarness.CommandCounts headingSnapDelta = deltas.get("DriveHeadingSnap");
             FullFunctionalityHarness.CommandCounts resetDelta = deltas.get("DriveResetOdometryAndHeading");
 
             assertTrue(
-                    toggleDelta.starts() >= 20,
+                    headingSnapDelta.starts() >= 20,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos B spam should trigger many intake toggles",
+                            "Chaos B/X spam should trigger many heading snaps",
                             "starts>=20",
-                            toggleDelta));
-            assertTrue(
-                    manualFeedDelta.starts() >= MANY_MANUAL_FEED_STARTS,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos X spam should trigger many manual-feed starts",
-                            "starts>=" + MANY_MANUAL_FEED_STARTS,
-                            manualFeedDelta));
+                            headingSnapDelta));
             assertTrue(
                     rollerDelta.starts() >= 20,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -164,11 +152,11 @@ final class FullFunctionalityChaosMonkeyDivergences {
                             "starts>=20",
                             rollerDelta));
             assertTrue(
-                    reverseDelta.starts() >= 20,
+                    slowModeDelta.starts() >= 8,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Chaos Y spam should repeatedly start transfer reverse",
-                            "starts>=20",
-                            reverseDelta));
+                            "Chaos left-stick spam should toggle slow mode frequently",
+                            "starts>=8",
+                            slowModeDelta));
             assertTrue(
                     fieldToggleDelta.starts() >= 8,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -245,8 +233,8 @@ final class FullFunctionalityChaosMonkeyDivergences {
                             "left/right within strict retract tolerance",
                             String.format(
                                     Locale.US,
-                                    "manualFeedDelta=%s leftRot=%.3f rightRot=%.3f intakeExtended=%s",
-                                    manualFeedDelta,
+                                    "headingSnapDelta=%s leftRot=%.3f rightRot=%.3f intakeExtended=%s",
+                                    headingSnapDelta,
                                     leftRot,
                                     rightRot,
                                     context.intake.isExtended())));

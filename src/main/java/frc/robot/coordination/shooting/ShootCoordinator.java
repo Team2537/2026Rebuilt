@@ -157,7 +157,7 @@ public class ShootCoordinator {
         readyDropStableCycles = gateEvaluation.nextReadyDropStableCycles();
         feedGateOpen = gateEvaluation.gateDecision().gateOpen();
 
-        applyFeedOutputs(gateEvaluation.gateDecision().gateOpen(), manualFeedOverride);
+        applyFeedOutputs(gateEvaluation.gateDecision().gateOpen());
 
         logShootingState(
                 distanceMeters,
@@ -172,11 +172,11 @@ public class ShootCoordinator {
     }
 
     private void applyManualFeedOutputs() {
-        applyFeedOutputs(false, true);
+        applyFeedOutputs(true);
     }
 
-    private void applyFeedOutputs(boolean gateOpen, boolean manualFeedOverride) {
-        activelyFeeding = gateOpen || manualFeedOverride;
+    private void applyFeedOutputs(boolean gateOpen) {
+        activelyFeeding = gateOpen;
         if (!activelyFeeding) {
             stopFeedOutputs();
             return;
@@ -264,14 +264,14 @@ public class ShootCoordinator {
             boolean previousGateOpen,
             int previousReadyStableCycles,
             int previousReadyDropStableCycles) {
+        if (!distanceValid) {
+            return new GateEvaluation(new GateDecision(false, "DistanceInvalid"), 0, 0);
+        }
         if (manualFeedOverride) {
             return new GateEvaluation(new GateDecision(true, "ManualFeedOverride"), 0, 0);
         }
         if (!automaticFeedEnabled) {
             return new GateEvaluation(new GateDecision(false, "FeedingDisabledOverride"), 0, 0);
-        }
-        if (!distanceValid) {
-            return new GateEvaluation(new GateDecision(false, "DistanceInvalid"), 0, 0);
         }
         return switch (feedGateMode) {
             case IMMEDIATE -> {

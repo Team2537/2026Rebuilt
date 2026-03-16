@@ -101,8 +101,10 @@ test {
     // across all test classes within one JVM.
     forkEvery = 1
     reports {
-        // XML writer intermittently fails on this desktop sim suite; keep HTML/binary reports only.
+        // Report writers intermittently fail on this fork-per-test desktop sim suite.
+        // Keep Gradle's binary results and disable generated XML/HTML reports.
         junitXml.required = false
+        html.required = false
     }
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
     [

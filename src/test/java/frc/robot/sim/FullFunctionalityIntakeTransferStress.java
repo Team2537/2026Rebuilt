@@ -154,10 +154,8 @@ final class FullFunctionalityIntakeTransferStress {
             context.intake.setExtended(true);
             context.runCycles(12);
 
-            FullFunctionalityHarness.CommandCounts toggleBefore = context.recorder.getCounts("IntakeToggleExtended");
-            FullFunctionalityHarness.CommandCounts manualFeedBefore = context.recorder.getCounts("DriverManualFeed");
+            FullFunctionalityHarness.CommandCounts snapBefore = context.recorder.getCounts("DriveHeadingSnap");
             FullFunctionalityHarness.CommandCounts rollerBefore = context.recorder.getCounts("IntakeSpinRoller");
-            FullFunctionalityHarness.CommandCounts reverseBefore = context.recorder.getCounts("TransferReverse");
 
             final int spamRounds = 7;
             for (int i = 0; i < spamRounds; i++) {
@@ -187,68 +185,38 @@ final class FullFunctionalityIntakeTransferStress {
             context.clearControllerState();
             context.runCycles(24);
 
-            FullFunctionalityHarness.CommandCounts toggleDelta =
-                    context.recorder.getCounts("IntakeToggleExtended").minus(toggleBefore);
-            FullFunctionalityHarness.CommandCounts manualFeedDelta =
-                    context.recorder.getCounts("DriverManualFeed").minus(manualFeedBefore);
+            FullFunctionalityHarness.CommandCounts snapDelta =
+                    context.recorder.getCounts("DriveHeadingSnap").minus(snapBefore);
             FullFunctionalityHarness.CommandCounts rollerDelta =
                     context.recorder.getCounts("IntakeSpinRoller").minus(rollerBefore);
-            FullFunctionalityHarness.CommandCounts reverseDelta =
-                    context.recorder.getCounts("TransferReverse").minus(reverseBefore);
 
             assertTrue(
-                    toggleDelta.starts() >= spamRounds,
+                    snapDelta.starts() >= spamRounds,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "B spam should trigger many intake toggles",
+                            "B/X/Y spam should trigger many heading snaps",
                             "starts>=" + spamRounds,
-                            toggleDelta));
-            assertTrue(
-                    manualFeedDelta.starts() >= spamRounds && manualFeedDelta.interrupts() >= spamRounds,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "X spam should repeatedly start and interrupt standalone manual feed",
-                            "starts>=" + spamRounds + " and interrupts>=" + spamRounds,
-                            manualFeedDelta));
+                            snapDelta));
             assertTrue(
                     rollerDelta.starts() >= spamRounds && rollerDelta.interrupts() >= spamRounds,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Left-trigger spam should repeatedly start and interrupt intake roller",
                             "starts>=" + spamRounds + " and interrupts>=" + spamRounds,
                             rollerDelta));
-            assertTrue(
-                    reverseDelta.starts() >= spamRounds && reverseDelta.interrupts() >= spamRounds,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Y spam should repeatedly start and interrupt transfer reverse",
-                            "starts>=" + spamRounds + " and interrupts>=" + spamRounds,
-                            reverseDelta));
 
-            assertLifecycleClosed("IntakeToggleExtended", toggleDelta);
-            assertLifecycleClosed("DriverManualFeed", manualFeedDelta);
+            assertLifecycleClosed("DriveHeadingSnap", snapDelta);
             assertLifecycleClosed("IntakeSpinRoller", rollerDelta);
-            assertLifecycleClosed("TransferReverse", reverseDelta);
-
-            List<FullFunctionalityHarness.CommandRun> manualFeedRuns = context.recorder.getRuns("DriverManualFeed");
-            assertTrue(
-                    !manualFeedRuns.isEmpty(),
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Manual-feed spam should record run windows",
-                            "runs.size()>0",
-                            "runs.size()=" + manualFeedRuns.size()));
 
             assertTrue(
-                    context.recorder.runningCount("IntakeToggleExtended") == 0
-                            && context.recorder.runningCount("DriverManualFeed") == 0
-                            && context.recorder.runningCount("IntakeSpinRoller") == 0
-                            && context.recorder.runningCount("TransferReverse") == 0,
+                    context.recorder.runningCount("DriveHeadingSnap") == 0
+                            && context.recorder.runningCount("IntakeSpinRoller") == 0,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "No spammed intake/transfer commands should remain running after release",
-                            "runningCount=0 for all",
+                            "runningCount=0 for snap/roller",
                             String.format(
                                     Locale.US,
-                                    "toggle=%d manual=%d roller=%d reverse=%d",
-                                    context.recorder.runningCount("IntakeToggleExtended"),
-                                    context.recorder.runningCount("DriverManualFeed"),
-                                    context.recorder.runningCount("IntakeSpinRoller"),
-                                    context.recorder.runningCount("TransferReverse"))));
+                                    "snap=%d roller=%d",
+                                    context.recorder.runningCount("DriveHeadingSnap"),
+                                    context.recorder.runningCount("IntakeSpinRoller"))));
             assertTrue(
                     !context.intake.isExtended(),
                     FullFunctionalityHarness.formatExpectedVsActual(

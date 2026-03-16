@@ -340,6 +340,7 @@ final class FullFunctionalityUncoveredPathExploration {
 
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> false);
         CommandScheduler.getInstance().schedule(command);
+        int debounceCycles = ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES;
 
         shooter.atSetpoint = false;
         runSchedulerCycles(1);
@@ -352,21 +353,22 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         shooter.atSetpoint = true;
-        runSchedulerCycles(1);
-        assertEquals(
-                0,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 2: first ready cycle should still debounce closed",
-                        "setKickerTorqueCalls=0",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    0,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Ready debounce should keep the gate closed before the final stable cycle",
+                            "setKickerTorqueCalls=0",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 1,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 3: second consecutive ready cycle should open gate",
+                        "Gate should open on the final debounced ready cycle",
                         "setKickerTorqueCalls=1",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
@@ -381,66 +383,68 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         shooter.atSetpoint = true;
-        runSchedulerCycles(1);
-        assertEquals(
-                1,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 5: after reset, first ready cycle should stay closed",
-                        "setKickerTorqueCalls=1",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    1,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "After a drop, the gate should stay closed until the debounce window refills",
+                            "setKickerTorqueCalls=1",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 2,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 6: second ready cycle after reset should reopen gate",
+                        "After a drop, the gate should reopen on the final debounced ready cycle",
                         "setKickerTorqueCalls=2",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         distanceMeters.set(Double.NaN);
         runSchedulerCycles(1);
         assertEquals(
-                6,
+                2 + (2 * debounceCycles),
                 shooter.setTargetsForDistanceCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 7: invalid distance should skip target update and reset debounce",
-                        "setTargetsForDistanceCalls=6",
+                        "Invalid distance should skip target update and reset debounce",
+                        "setTargetsForDistanceCalls=" + (2 + (2 * debounceCycles)),
                         "setTargetsForDistanceCalls=" + shooter.setTargetsForDistanceCalls));
 
         distanceMeters.set(4.0);
-        runSchedulerCycles(1);
-        assertEquals(
-                2,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 8: post-invalid first ready cycle should remain closed",
-                        "setKickerTorqueCalls=2",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    2,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "After an invalid-distance reset, the gate should stay closed until the debounce window refills",
+                            "setKickerTorqueCalls=2",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 3,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 9: post-invalid second ready cycle should reopen gate",
+                        "After an invalid-distance reset, the gate should reopen on the final debounced ready cycle",
                         "setKickerTorqueCalls=3",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         assertEquals(
-                8,
+                2 + (3 * debounceCycles),
                 shooter.setTargetsForDistanceCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
                         "Only valid distance cycles should update shooter targets",
-                        "setTargetsForDistanceCalls=8",
+                        "setTargetsForDistanceCalls=" + (2 + (3 * debounceCycles)),
                         "setTargetsForDistanceCalls=" + shooter.setTargetsForDistanceCalls));
         assertEquals(
-                6,
+                3 * debounceCycles,
                 shooter.stopKickerCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Closed-gate cycles should stop kicker exactly 6 times",
-                        "stopKickerCalls=6",
+                        "Closed-gate cycles should stop kicker exactly 3*debounceCycles times",
+                        "stopKickerCalls=" + (3 * debounceCycles),
                         "stopKickerCalls=" + shooter.stopKickerCalls));
         assertEquals(
                 3,
@@ -450,11 +454,11 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setPercentCalls=3",
                         "setPercentCalls=" + transfer.setPercentCalls));
         assertEquals(
-                6,
+                3 * debounceCycles,
                 transfer.stopAllCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Gate-closed cycles should stop transfer exactly 6 times",
-                        "stopAllCalls=6",
+                        "Gate-closed cycles should stop transfer exactly 3*debounceCycles times",
+                        "stopAllCalls=" + (3 * debounceCycles),
                         "stopAllCalls=" + transfer.stopAllCalls));
 
         command.cancel();
@@ -472,6 +476,7 @@ final class FullFunctionalityUncoveredPathExploration {
 
         Command command = coordinator.shootForDistance(distanceMeters::get, aimReady::get);
         CommandScheduler.getInstance().schedule(command);
+        int debounceCycles = ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES;
 
         shooter.atSetpoint = false;
         aimReady.set(false);
@@ -496,21 +501,22 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         aimReady.set(true);
-        runSchedulerCycles(1);
-        assertEquals(
-                0,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 3: first dual-ready cycle should debounce closed",
-                        "setKickerTorqueCalls=0",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    0,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Dual-ready debounce should keep the gate closed before the final stable cycle",
+                            "setKickerTorqueCalls=0",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 1,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 4: second dual-ready cycle should open gate",
+                        "Dual-ready gate should open on the final debounced cycle",
                         "setKickerTorqueCalls=1",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
@@ -525,21 +531,22 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         aimReady.set(true);
-        runSchedulerCycles(1);
-        assertEquals(
-                1,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 6: first dual-ready cycle after reset should remain closed",
-                        "setKickerTorqueCalls=1",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    1,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "After an aim drop, the gate should stay closed until the debounce window refills",
+                            "setKickerTorqueCalls=1",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 2,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 7: second dual-ready cycle after reset should reopen gate",
+                        "After an aim drop, the gate should reopen on the final debounced cycle",
                         "setKickerTorqueCalls=2",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
@@ -554,37 +561,38 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         shooter.atSetpoint = true;
-        runSchedulerCycles(1);
-        assertEquals(
-                2,
-                shooter.setKickerTorqueCalls,
-                FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 9: first dual-ready cycle after shooter recovery should remain closed",
-                        "setKickerTorqueCalls=2",
-                        "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
-
+        for (int i = 0; i < debounceCycles - 1; i++) {
+            runSchedulerCycles(1);
+            assertEquals(
+                    2,
+                    shooter.setKickerTorqueCalls,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "After shooter recovery, the gate should stay closed until the debounce window refills",
+                            "setKickerTorqueCalls=2",
+                            "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
+        }
         runSchedulerCycles(1);
         assertEquals(
                 3,
                 shooter.setKickerTorqueCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Cycle 10: second dual-ready cycle after shooter recovery should open gate",
+                        "After shooter recovery, the gate should reopen on the final debounced cycle",
                         "setKickerTorqueCalls=3",
                         "setKickerTorqueCalls=" + shooter.setKickerTorqueCalls));
 
         assertEquals(
-                10,
+                4 + (3 * debounceCycles),
                 shooter.setTargetsForDistanceCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "All 10 valid cycles should update shooter targets",
-                        "setTargetsForDistanceCalls=10",
+                        "All valid cycles should update shooter targets",
+                        "setTargetsForDistanceCalls=" + (4 + (3 * debounceCycles)),
                         "setTargetsForDistanceCalls=" + shooter.setTargetsForDistanceCalls));
         assertEquals(
-                7,
+                1 + (3 * debounceCycles),
                 shooter.stopKickerCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Seven gate-closed cycles should stop kicker",
-                        "stopKickerCalls=7",
+                        "Closed-gate cycles should stop kicker exactly 1+3*debounceCycles times",
+                        "stopKickerCalls=" + (1 + (3 * debounceCycles)),
                         "stopKickerCalls=" + shooter.stopKickerCalls));
         assertEquals(
                 3,
@@ -594,11 +602,11 @@ final class FullFunctionalityUncoveredPathExploration {
                         "setPercentCalls=3",
                         "setPercentCalls=" + transfer.setPercentCalls));
         assertEquals(
-                7,
+                1 + (3 * debounceCycles),
                 transfer.stopAllCalls,
                 FullFunctionalityHarness.formatExpectedVsActual(
-                        "Seven gate-closed cycles should stop transfer",
-                        "stopAllCalls=7",
+                        "Closed-gate cycles should stop transfer exactly 1+3*debounceCycles times",
+                        "stopAllCalls=" + (1 + (3 * debounceCycles)),
                         "stopAllCalls=" + transfer.stopAllCalls));
 
         command.cancel();
@@ -761,6 +769,11 @@ final class FullFunctionalityUncoveredPathExploration {
 
         @Override
         public ReadinessDiagnostics getReadinessDiagnosticsNow() {
+            return getReadinessDiagnosticsNow(ReadinessMode.STATIONARY);
+        }
+
+        @Override
+        public ReadinessDiagnostics getReadinessDiagnosticsNow(ReadinessMode readinessMode) {
             return new ReadinessDiagnostics(
                     0.0,
                     0.0,

@@ -91,7 +91,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(() -> 4.0, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(2);
+        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES);
         assertFalse(shooter.isKickerActive());
         assertEquals(0.0, transferIO.percent, EPSILON);
 
@@ -113,7 +113,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(3);
+        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
         assertTrue(shooter.isKickerActive());
         assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
 
@@ -142,7 +142,7 @@ class ShootCoordinatorTest {
 
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
         CommandScheduler.getInstance().schedule(command);
-        runSchedulerCycles(3);
+        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
         assertTrue(shooter.isKickerActive());
 
         distanceMeters.set(Double.POSITIVE_INFINITY);
@@ -153,6 +153,36 @@ class ShootCoordinatorTest {
         distanceMeters.set(Double.NEGATIVE_INFINITY);
         runSchedulerCycles(2);
         assertFalse(shooter.isKickerActive());
+        assertEquals(0.0, transferIO.percent, EPSILON);
+    }
+
+    @Test
+    void manualFeedOverrideDoesNotBypassInvalidDistance() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        TestTransferIO transferIO = new TestTransferIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(transferIO);
+        ShootCoordinator coordinator =
+                new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
+        AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
+
+        Command command = coordinator.shootForDistance(
+                distanceMeters::get,
+                () -> false,
+                () -> false,
+                () -> true,
+                () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        boolean feedStarted = runUntil(coordinator::isActivelyFeeding, 4);
+        assertTrue(feedStarted);
+        assertTrue(shooter.isKickerActive());
+        assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
+
+        distanceMeters.set(Double.NaN);
+        runSchedulerCycles(2);
+
+        assertFalse(coordinator.isActivelyFeeding());
         assertEquals(0.0, transferIO.percent, EPSILON);
     }
 
@@ -197,8 +227,8 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(3);
-        assertTrue(shooter.isKickerActive());
+        boolean gateOpened = runUntil(shooter::isKickerActive, ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 3);
+        assertTrue(gateOpened);
 
         aimReady.set(false);
         runSchedulerCycles(1);
@@ -206,8 +236,10 @@ class ShootCoordinatorTest {
         assertEquals(0.0, transferIO.percent, EPSILON);
 
         aimReady.set(true);
-        runSchedulerCycles(1);
-        assertFalse(shooter.isKickerActive(), "Debounce should require a second stable cycle after aim drop.");
+        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES - 1);
+        assertFalse(
+                shooter.isKickerActive(),
+                "Debounce should require a full fresh ready window after aim drop.");
         runSchedulerCycles(1);
         assertTrue(shooter.isKickerActive());
         assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
@@ -226,7 +258,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get, () -> true, () -> false, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(3);
+        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
         assertTrue(shooter.isKickerActive());
 
         aimReady.set(false);
@@ -343,6 +375,16 @@ class ShootCoordinatorTest {
             DriverStationSim.notifyNewData();
             CommandScheduler.getInstance().run();
         }
+    }
+
+    private static boolean runUntil(java.util.function.BooleanSupplier condition, int maxCycles) {
+        for (int i = 0; i < maxCycles; i++) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            runSchedulerCycles(1);
+        }
+        return condition.getAsBoolean();
     }
 
     private static class TestShooterIO implements ShooterIO {

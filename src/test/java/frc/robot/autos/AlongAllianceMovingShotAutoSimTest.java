@@ -2,6 +2,7 @@ package frc.robot.autos;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.commands.PathPlannerAuto;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.math.MathUtil;
@@ -58,6 +59,7 @@ class AlongAllianceMovingShotAutoSimTest {
     @BeforeEach
     void setUp() throws IOException {
         HAL.initialize(500, 0);
+        AutoBuilder.resetForTesting();
         SimHooks.pauseTiming();
         DriverStationSim.setDsAttached(true);
         DriverStationSim.setAutonomous(true);
@@ -87,6 +89,7 @@ class AlongAllianceMovingShotAutoSimTest {
         CommandScheduler.getInstance().cancelAll();
         DriverStationSim.setEnabled(false);
         DriverStationSim.notifyNewData();
+        AutoBuilder.resetForTesting();
         Logger.end();
         SimHooks.resumeTiming();
     }

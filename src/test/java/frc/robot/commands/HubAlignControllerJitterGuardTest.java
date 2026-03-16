@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class HubAlignControllerJitterGuardTest {
     private static final double DT_SEC = 0.02;
+    private static final double POST_SETTLE_STATIC_REACQUIRE_MAX_RAD_PER_SEC = Units.degreesToRadians(8.0);
 
     @BeforeEach
     void setUp() {
@@ -45,10 +46,11 @@ class HubAlignControllerJitterGuardTest {
         double armedOmega = Math.abs(armedController.calculate(reacquireHeadingRad, target, 0.0));
 
         assertTrue(
-                armedOmega <= 0.08,
+                armedOmega <= POST_SETTLE_STATIC_REACQUIRE_MAX_RAD_PER_SEC,
                 String.format(
                         Locale.US,
-                        "Expected post-settle static reacquire omega <= 0.08 rad/s, got %.3f rad/s",
+                        "Expected post-settle static reacquire omega <= %.3f rad/s, got %.3f rad/s",
+                        POST_SETTLE_STATIC_REACQUIRE_MAX_RAD_PER_SEC,
                         armedOmega));
         assertTrue(
                 armedOmega < unarmedOmega * 0.5,

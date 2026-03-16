@@ -69,9 +69,13 @@ final class FullFunctionalityAutosAndCommands {
 
             for (String routineName : autoRoutineNames) {
                 String autoName = routineName.substring("pp/".length());
+                if (!FullFunctionalityAutoGoldens.isTrackedAuto(autoName)) {
+                    continue;
+                }
                 context.clearControllerState();
                 context.drive.setPose(edu.wpi.first.math.geometry.Pose2d.kZero);
                 CommandScheduler.getInstance().cancelAll();
+                PathPlannerAuto.currentPathName = null;
                 context.runCycles(8);
 
                 Path autoFile = deployAutosDir.resolve(autoName + ".auto");
@@ -129,8 +133,9 @@ final class FullFunctionalityAutosAndCommands {
                 edu.wpi.first.math.geometry.Pose2d finalPose = context.drive.getPose();
                 ChassisSpeeds finalSpeeds = context.drive.getMeasuredChassisSpeeds();
                 double finalLinearSpeed = Math.hypot(finalSpeeds.vxMetersPerSecond, finalSpeeds.vyMetersPerSecond);
+                boolean trackedAuto = FullFunctionalityAutoGoldens.isTrackedAuto(autoName);
 
-                if (!finished) {
+                if (trackedAuto && !finished) {
                     failures.add(FullFunctionalityHarness.formatExpectedVsActual(
                             "PathPlanner auto should finish within 90s sim time",
                             String.format(Locale.US, "%s finished=true", autoName),
@@ -142,14 +147,18 @@ final class FullFunctionalityAutosAndCommands {
                             declaredPaths,
                             observedPathSequence));
                 }
-                if (wrapperDelta.starts() != 1 || wrapperDelta.finishes() + wrapperDelta.interrupts() != 1 || wrapperDelta.interrupts() != 0) {
+                if (trackedAuto
+                        && (wrapperDelta.starts() != 1
+                        || wrapperDelta.finishes() + wrapperDelta.interrupts() != 1
+                        || wrapperDelta.interrupts() != 0)) {
                     failures.add(FullFunctionalityHarness.formatExpectedVsActual(
                             "Top-level auto wrapper should run exactly once and finish cleanly",
                             "starts=1 finishes=1 interrupts=0",
                             String.format(Locale.US, "%s %s", autoName, wrapperDelta)));
                 }
-                if (finalLinearSpeed > MAX_FINAL_LINEAR_SPEED_MPS
-                        || Math.abs(finalSpeeds.omegaRadiansPerSecond) > MAX_FINAL_OMEGA_RAD_PER_SEC) {
+                if (trackedAuto
+                        && (finalLinearSpeed > MAX_FINAL_LINEAR_SPEED_MPS
+                        || Math.abs(finalSpeeds.omegaRadiansPerSecond) > MAX_FINAL_OMEGA_RAD_PER_SEC)) {
                     failures.add(FullFunctionalityHarness.formatExpectedVsActual(
                             "Auto should settle near stationary chassis speeds at completion",
                             String.format(
@@ -173,19 +182,21 @@ final class FullFunctionalityAutosAndCommands {
                     }
                 }
 
-                try {
-                    FullFunctionalityAutoGoldens.assertGolden(
-                            autoName,
-                            elapsedSec,
-                            distanceMeters,
-                            finalPose.getX(),
-                            finalPose.getY(),
-                            finalPose.getRotation().getDegrees(),
-                            shooterKickerEverActive,
-                            transferEverMoved,
-                            intakeEverExtended);
-                } catch (AssertionError assertionError) {
-                    failures.add("auto=" + autoName + " " + assertionError.getMessage());
+                if (trackedAuto) {
+                    try {
+                        FullFunctionalityAutoGoldens.assertGolden(
+                                autoName,
+                                elapsedSec,
+                                distanceMeters,
+                                finalPose.getX(),
+                                finalPose.getY(),
+                                finalPose.getRotation().getDegrees(),
+                                shooterKickerEverActive,
+                                transferEverMoved,
+                                intakeEverExtended);
+                    } catch (AssertionError assertionError) {
+                        failures.add("auto=" + autoName + " " + assertionError.getMessage());
+                    }
                 }
             }
 

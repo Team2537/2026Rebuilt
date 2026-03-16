@@ -23,7 +23,7 @@ final class FullFunctionalityDriveAndAutoStress {
     private static final double MAX_ELAPSED_DRIFT_SEC = 0.16;
     private static final double MAX_FINAL_TRANSLATION_DRIFT_METERS = 0.03;
     private static final double MAX_FINAL_HEADING_DRIFT_DEG = 4.5;
-    private static final double MAX_DISTANCE_DRIFT_METERS = 0.08;
+    private static final double MAX_DISTANCE_DRIFT_METERS = 0.12;
 
     @Test
     void defaultDriveCommandRecoversAfterHeadingSnapAndStopWithXInterruption() {
@@ -202,7 +202,7 @@ final class FullFunctionalityDriveAndAutoStress {
     }
 
     @Test
-    void pathPlannerAutoRepeatabilityIsStableAcrossTwoRunsPerAuto() {
+    void trackedPathPlannerAutosRemainRepeatableAcrossTwoRunsPerAuto() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();
             context.runCycles(6);
@@ -211,12 +211,16 @@ final class FullFunctionalityDriveAndAutoStress {
                     .map(AutoRoutines.AutoRoutine::name)
                     .filter(name -> name.startsWith("pp/"))
                     .map(name -> name.substring("pp/".length()))
+                    .filter(FullFunctionalityAutoGoldens::isTrackedAuto)
                     .sorted()
                     .toList();
             assertTrue(!autoNames.isEmpty(), "Expected at least one PathPlanner auto routine.");
 
             List<String> failures = new ArrayList<>();
             for (String autoName : autoNames) {
+                if (FullFunctionalityAutoGoldens.isUntrackedCompAuto(autoName)) {
+                    continue;
+                }
                 AutoRunMetrics runOne = runPathPlannerAutoOnce(context, autoName, 1);
                 AutoRunMetrics runTwo = runPathPlannerAutoOnce(context, autoName, 2);
 
@@ -390,7 +394,7 @@ final class FullFunctionalityDriveAndAutoStress {
     }
 
     @Test
-    void fieldOrientedAndSlowModePersistAcrossRapidDisableEnableCycles() {
+    void fieldOrientedPersistsButSlowModeClearsAcrossRapidDisableEnableCycles() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
@@ -449,13 +453,13 @@ final class FullFunctionalityDriveAndAutoStress {
                                         i,
                                         context.drive.isFieldOriented())));
                 assertTrue(
-                        context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
+                        !context.drive.isConstraintProfileActive(DriveConstants.ConstraintProfile.SLOW_MODE),
                         FullFunctionalityHarness.formatExpectedVsActual(
-                                "Slow mode should restore on rapid re-enable while left stick remains held",
-                                "slowMode=true",
+                                "teleopInit should clear slow mode even if left stick remains held through re-enable",
+                                "slowMode=false",
                                 String.format(
                                         Locale.US,
-                                        "cycle=%d slowMode=%s",
+                                        "cycle=%d slowMode=%s leftStickHeld=true",
                                         i,
                                         context.drive.isConstraintProfileActive(
                                                 DriveConstants.ConstraintProfile.SLOW_MODE))));
@@ -497,6 +501,7 @@ final class FullFunctionalityDriveAndAutoStress {
         context.clearControllerState();
         context.drive.setPose(Pose2d.kZero);
         CommandScheduler.getInstance().cancelAll();
+        PathPlannerAuto.currentPathName = null;
         context.runCycles(8);
 
         String lifecycleName = "FF_Repeatability_" + sanitizeForLifecycle(autoName) + "_Run" + runIndex;

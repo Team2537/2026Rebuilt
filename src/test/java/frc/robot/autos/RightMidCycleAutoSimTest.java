@@ -2,6 +2,7 @@ package frc.robot.autos;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.commands.PathPlannerAuto;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -59,6 +60,7 @@ class RightMidCycleAutoSimTest {
     @BeforeEach
     void setUp() throws IOException {
         HAL.initialize(500, 0);
+        AutoBuilder.resetForTesting();
         SimHooks.pauseTiming();
         DriverStationSim.setDsAttached(true);
         DriverStationSim.setAutonomous(true);
@@ -93,6 +95,7 @@ class RightMidCycleAutoSimTest {
         DriverStationSim.setEnabled(false);
         DriverStationSim.notifyNewData();
         commandCaptureEnabled = false;
+        AutoBuilder.resetForTesting();
         if (!loggerClosed) {
             Logger.end();
             loggerClosed = true;

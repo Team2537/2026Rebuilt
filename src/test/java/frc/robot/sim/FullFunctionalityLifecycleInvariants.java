@@ -24,15 +24,12 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(24);
 
             List<String> keyCommands = List.of(
-                    "DriveHoldSlowMode",
+                    "DriveToggleSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
-                    "IntakeToggleExtended",
                     "DriverIntakeTriggerPress",
                     "IntakeSpinRoller",
-                    "DriverManualFeed",
-                    "TransferReverse",
                     "DriverIntakeHome",
                     "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
@@ -140,10 +137,10 @@ final class FullFunctionalityLifecycleInvariants {
             context.runCycles(20);
 
             List<String> finiteMustFinish = List.of(
+                    "DriveToggleSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
-                    "IntakeToggleExtended",
                     "DriveSetOdometryFromUnifiedVision",
                     "DashboardIntakeHome",
                     "DashboardShooterHome",
@@ -152,10 +149,7 @@ final class FullFunctionalityLifecycleInvariants {
                     "AutoNone");
 
             List<String> heldMustInterrupt = List.of(
-                    "DriveHoldSlowMode",
                     "IntakeSpinRoller",
-                    "DriverManualFeed",
-                    "TransferReverse",
                     "DriveSysIdQuasistaticForward",
                     "DriveSysIdQuasistaticReverse",
                     "DriveSysIdDynamicForward",

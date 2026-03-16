@@ -51,7 +51,6 @@ final class FullFunctionalityShooterStress {
             }
 
             context.driverControllerSim.setRightBumperButton(true);
-            context.driverControllerSim.setRightTriggerAxis(1.0);
             boolean shootStarted = context.runUntil(
                     () -> SHOOT_MODE_CANDIDATE_NAMES.stream()
                             .anyMatch(name -> context.recorder.getCounts(name)
@@ -255,14 +254,14 @@ final class FullFunctionalityShooterStress {
             FullFunctionalityHarness.CommandCounts shootModeBefore =
                     context.recorder.getCounts("ShooterTriggerSelectedMode");
 
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             boolean tuneStarted = context.runUntil(
                     () -> isRunning(context, "ShooterDashboardTune"),
                     180);
             assertTrue(
                     tuneStarted,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right-trigger hold with tuning enabled should start ShooterDashboardTune",
+                            "Right-bumper hold with tuning enabled should start ShooterDashboardTune",
                             "tuneRunning=true",
                             "tuneRunning=" + isRunning(context, "ShooterDashboardTune")));
 
@@ -331,7 +330,7 @@ final class FullFunctionalityShooterStress {
                                     isRunning(context, "TransferDashboardTune"),
                                     context.transferInputs.appliedVolts)));
 
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(12);
 
             FullFunctionalityHarness.CommandCounts tuneDelta =

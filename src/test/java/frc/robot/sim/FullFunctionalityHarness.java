@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.commands.PathPlannerAuto;
 import edu.wpi.first.hal.AllianceStationID;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.util.sendable.Sendable;
@@ -20,6 +21,7 @@ import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.shooter.Shooter;
+import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferIO;
@@ -121,6 +123,22 @@ final class FullFunctionalityHarness {
             }
         });
         schedulerHooksInstalled = true;
+    }
+
+    static void resetDashboardState() {
+        SmartDashboard.putBoolean("Overrides/OverrideAutoAim", false);
+        SmartDashboard.putNumber("Overrides/AimDistanceMeters", 1.5);
+        SmartDashboard.putBoolean("Overrides/DisableFeeding", false);
+        SmartDashboard.putBoolean("Overrides/DisableVision", false);
+        SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
+        SmartDashboard.putNumber("Shooter/Tuning/LeftRPM", ShooterConstants.SHOT_MAP_LEFT_RPM[0]);
+        SmartDashboard.putNumber("Shooter/Tuning/RightRPM", ShooterConstants.SHOT_MAP_RIGHT_RPM[0]);
+        SmartDashboard.putNumber("Shooter/Tuning/HoodDeg", ShooterConstants.SHOT_MAP_HOOD_ANGLE_DEG[0]);
+        SmartDashboard.putBoolean("Shooter/Tuning/FeedKicker", false);
+        SmartDashboard.putNumber("Shooter/Tuning/KickerTorqueAmps", ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
+        SmartDashboard.putBoolean("Shooter/SysId/Enabled", false);
+        SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+        SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
     }
 
     static <T> T getPrivateField(Object target, String fieldName, Class<T> type) {
@@ -260,6 +278,8 @@ final class FullFunctionalityHarness {
             DriverStationSim.resetData();
             AutoBuilder.resetForTesting();
             NamedCommands.clearAll();
+            PathPlannerAuto.currentPathName = null;
+            resetDashboardState();
             FullFunctionalityHarness.installSchedulerHooksIfNeeded();
 
             CommandScheduler scheduler = CommandScheduler.getInstance();
@@ -428,6 +448,8 @@ final class FullFunctionalityHarness {
             DriverStationSim.setEnabled(false);
             DriverStationSim.notifyNewData();
             runCycles(2);
+            PathPlannerAuto.currentPathName = null;
+            resetDashboardState();
             ACTIVE_RECORDER.compareAndSet(recorder, null);
             SimHooks.resumeTiming();
         }

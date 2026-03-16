@@ -32,10 +32,17 @@ final class FullFunctionalityRightTriggerPassing {
             Field2d dashboardField =
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
             Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
+            FullFunctionalityHarness.CommandCounts shootBefore =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
 
-            context.driverControllerSim.setRightBumperButton(true);
-            boolean kickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
-            assertTrue(kickerActivated, "Blue neutral-lane shoot button should eventually pass.");
+            context.driverControllerSim.setRightTriggerAxis(1.0);
+            boolean shootModeStarted = context.runUntil(
+                    () -> context.recorder
+                            .getCounts("ShooterTriggerSelectedMode")
+                            .minus(shootBefore)
+                            .starts() >= 1,
+                    180);
+            assertTrue(shootModeStarted, "Blue neutral-lane shoot button should schedule shoot mode.");
 
             Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
@@ -47,7 +54,7 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getY() > FieldConstants.getHubTargetTranslation().getY(),
                     "Blue pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightBumperButton(false);
+            context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(10);
         }
     }
@@ -72,10 +79,17 @@ final class FullFunctionalityRightTriggerPassing {
             Field2d dashboardField =
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
             Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
+            FullFunctionalityHarness.CommandCounts shootBefore =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
 
-            context.driverControllerSim.setRightBumperButton(true);
-            boolean kickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
-            assertTrue(kickerActivated, "Red neutral-lane shoot button should eventually pass.");
+            context.driverControllerSim.setRightTriggerAxis(1.0);
+            boolean shootModeStarted = context.runUntil(
+                    () -> context.recorder
+                            .getCounts("ShooterTriggerSelectedMode")
+                            .minus(shootBefore)
+                            .starts() >= 1,
+                    180);
+            assertTrue(shootModeStarted, "Red neutral-lane shoot button should schedule shoot mode.");
 
             Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
@@ -87,7 +101,7 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getY() < FieldConstants.getHubTargetTranslation().getY(),
                     "Red pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightBumperButton(false);
+            context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(10);
         }
     }

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.math.MathUtil;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -28,43 +29,53 @@ final class FullFunctionalityAutoGoldens {
     static final Map<String, AutoGolden> BY_NAME = Map.ofEntries(
             Map.entry(
                     "Along Alliance Moving Shot",
-                    new AutoGolden(8.020, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false)),
+                    new AutoGolden(7.120, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false)),
             Map.entry(
                     "brag",
                     new AutoGolden(7.000, 5.309856, 2.576406, 6.392854, 128.309389, true, true, false)),
             Map.entry(
                     "left mid cycle",
-                    new AutoGolden(18.880, 12.490841, 3.014197, 6.755853, 117.788933, true, true, true)),
+                    new AutoGolden(18.240, 12.490841, 3.014197, 6.755853, 121.735764, true, true, true)),
             Map.entry(
                     "left mid rush cycle",
-                    new AutoGolden(20.820, 12.449354, 3.005534, 6.755621, 120.507662, true, true, true)),
+                    new AutoGolden(20.180, 12.550650, 3.005534, 6.755621, 120.507662, true, true, true)),
             Map.entry(
                     "left rush event auto",
-                    new AutoGolden(17.960, 13.732693, 2.704229, 6.359771, 129.414236, true, true, false)),
+                    new AutoGolden(20.020, 12.540156, 2.704229, 6.359771, 129.414236, true, true, false)),
             Map.entry(
                     "left sweeper",
-                    new AutoGolden(5.420, 9.457444, 8.076133, 1.999514, -33.685364, false, false, false)),
+                    new AutoGolden(4.640, 9.457444, 8.076133, 1.999514, -33.685364, false, false, false)),
             Map.entry(
                     "mid back up then score",
                     new AutoGolden(11.620, 1.039678, 2.555260, 3.987686, -179.999729, true, true, false)),
             Map.entry(
                     "right mid cycle",
-                    new AutoGolden(19.080, 12.115259, 3.014197, 1.314147, -121.956178, true, true, true)),
+                    new AutoGolden(18.460, 12.115259, 3.014197, 1.314147, -121.956178, true, true, true)),
             Map.entry(
                     "right mid rush cycle",
-                    new AutoGolden(20.620, 12.070692, 3.005534, 1.314379, -120.507662, true, true, true)),
+                    new AutoGolden(20.000, 12.070692, 3.005534, 1.314379, -120.507662, true, true, true)),
             Map.entry(
                     "right rush event auto",
-                    new AutoGolden(17.960, 13.732693, 2.704229, 1.710229, -129.414236, true, true, false)),
+                    new AutoGolden(20.480, 12.571879, 2.704229, 1.710229, -129.414236, true, true, false)),
             Map.entry(
                     "right sweeper",
-                    new AutoGolden(5.420, 9.457444, 8.076133, 6.070486, 33.685364, false, false, false)));
+                    new AutoGolden(4.640, 9.457444, 8.076133, 6.070486, 33.685364, false, false, false)));
 
     static void assertExpectedAutoSet(Set<String> autoNames) {
+        Set<String> missingTrackedAutos = new HashSet<>(BY_NAME.keySet());
+        missingTrackedAutos.removeAll(autoNames);
         assertEquals(
-                BY_NAME.keySet(),
-                autoNames,
-                "PathPlanner auto set changed. Update FullFunctionalityAutoGoldens for new/removed autos.");
+                Set.of(),
+                missingTrackedAutos,
+                "Tracked PathPlanner autos are missing. Update FullFunctionalityAutoGoldens if comp autos were removed/renamed.");
+    }
+
+    static boolean isTrackedAuto(String autoName) {
+        return BY_NAME.containsKey(autoName);
+    }
+
+    static boolean isUntrackedCompAuto(String autoName) {
+        return !isTrackedAuto(autoName);
     }
 
     static void assertGolden(

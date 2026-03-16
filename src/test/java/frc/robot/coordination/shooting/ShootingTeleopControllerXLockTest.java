@@ -3,6 +3,7 @@ package frc.robot.coordination.shooting;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.pathplanner.lib.auto.AutoBuilder;
 import edu.wpi.first.hal.AllianceStationID;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.math.MathUtil;
@@ -41,6 +42,7 @@ class ShootingTeleopControllerXLockTest {
     @BeforeEach
     void setUp() {
         HAL.initialize(500, 0);
+        AutoBuilder.resetForTesting();
         CommandScheduler.getInstance().cancelAll();
 
         DriverStationSim.setDsAttached(true);
@@ -182,6 +184,36 @@ class ShootingTeleopControllerXLockTest {
 
         assertFalse(fixture.coordinator.isActivelyFeeding(), "Blocked band should refuse the pass shot.");
         assertFalse(fixture.isDriveInXLock(), "Blocked band should not enter shooting X-lock.");
+    }
+
+    @Test
+    void enteringBlockedNeutralBandStopsManualFeed() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockUpperY() + 0.2,
+                Rotation2d.kZero));
+
+        Command command = fixture.controller.createSelectedShootCommand(
+                () -> 0.0,
+                () -> 0.0,
+                () -> 0.0,
+                () -> 4.0,
+                () -> Rotation2d.kZero,
+                () -> true,
+                () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        fixture.runSchedulerCycles(3);
+        assertTrue(fixture.coordinator.isActivelyFeeding(), "Manual override should feed before entering the blocked band.");
+
+        fixture.setPose(new Pose2d(
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+        fixture.runSchedulerCycles(2);
+
+        assertFalse(fixture.coordinator.isActivelyFeeding(), "Entering the blocked band should stop feed immediately.");
     }
 
     @Test

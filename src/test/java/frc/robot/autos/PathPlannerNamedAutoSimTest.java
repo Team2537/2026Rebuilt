@@ -2,6 +2,7 @@ package frc.robot.autos;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.commands.PathPlannerAuto;
 import edu.wpi.first.hal.HAL;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -32,6 +33,7 @@ class PathPlannerNamedAutoSimTest {
     @BeforeEach
     void setUp() {
         HAL.initialize(500, 0);
+        AutoBuilder.resetForTesting();
         SimHooks.pauseTiming();
         DriverStationSim.setDsAttached(true);
         DriverStationSim.setAutonomous(true);
@@ -47,6 +49,7 @@ class PathPlannerNamedAutoSimTest {
         CommandScheduler.getInstance().cancelAll();
         DriverStationSim.setEnabled(false);
         DriverStationSim.notifyNewData();
+        AutoBuilder.resetForTesting();
         SimHooks.resumeTiming();
     }
 

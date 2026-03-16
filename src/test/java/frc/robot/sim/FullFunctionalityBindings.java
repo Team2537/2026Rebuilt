@@ -268,14 +268,14 @@ final class FullFunctionalityBindings {
     }
 
     @Test
-    void slowModeHoldKeepsDefaultDriveActiveAndRobotMoving() {
+    void slowModeToggleKeepsDefaultDriveActiveAndRobotMoving() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(20);
 
             Pose2d startingPose = context.drive.getPose();
-            context.driverControllerSim.setLeftStickButton(true);
+            context.tapDriverButton(context.driverControllerSim::setLeftStickButton);
             context.driverControllerSim.setLeftY(0.55);
             context.runCycles(30);
 
@@ -288,7 +288,7 @@ final class FullFunctionalityBindings {
             assertTrue(
                     context.drive.getPose().getTranslation().getDistance(startingPose.getTranslation()) > 0.05,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Slow mode hold should still allow translational motion",
+                            "Slow mode toggle should still allow translational motion",
                             "distanceMeters>0.05",
                             String.format(
                                     Locale.US,
@@ -316,30 +316,39 @@ final class FullFunctionalityBindings {
                             || context.recorder.getCounts("IntakeHome").starts() >= 1,
                     "Expected either IntakeBackground or IntakeHome to start in teleop.");
 
-            FullFunctionalityHarness.CommandCounts slowModeBefore = context.recorder.getCounts("DriveHoldSlowMode");
-            context.driverControllerSim.setLeftStickButton(true);
-            context.runCycles(20);
+            FullFunctionalityHarness.CommandCounts slowModeBefore = context.recorder.getCounts("DriveToggleSlowMode");
+            context.tapDriverButton(context.driverControllerSim::setLeftStickButton);
+            context.runCycles(10);
             assertTrue(
                     context.drive.isConstraintProfileActive(frc.robot.subsystems.drive.DriveConstants.ConstraintProfile.SLOW_MODE),
-                    "Expected left stick hold to enable slow mode while pressed.");
-            context.driverControllerSim.setLeftStickButton(false);
+                    "Expected left stick press to toggle slow mode on.");
+            context.tapDriverButton(context.driverControllerSim::setLeftStickButton);
             context.runCycles(10);
             assertTrue(
                     !context.drive.isConstraintProfileActive(frc.robot.subsystems.drive.DriveConstants.ConstraintProfile.SLOW_MODE),
-                    "Expected releasing left stick to disable slow mode.");
+                    "Expected a second left stick press to toggle slow mode off.");
             FullFunctionalityHarness.CommandCounts slowModeDelta =
-                    context.recorder.getCounts("DriveHoldSlowMode").minus(slowModeBefore);
-            assertTrue(
-                    slowModeDelta.starts() >= 1,
+                    context.recorder.getCounts("DriveToggleSlowMode").minus(slowModeBefore);
+            assertEquals(
+                    2,
+                    slowModeDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Left stick hold should schedule slow mode",
-                            "starts>=1",
+                            "Left stick should schedule the slow-mode toggle twice",
+                            "starts=2",
                             slowModeDelta));
-            assertTrue(
-                    slowModeDelta.interrupts() >= 1,
+            assertEquals(
+                    2,
+                    slowModeDelta.finishes(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Releasing left stick should interrupt slow mode hold",
-                            "interrupts>=1",
+                            "Slow-mode toggle should complete both presses as one-shot commands",
+                            "finishes=2",
+                            slowModeDelta));
+            assertEquals(
+                    0,
+                    slowModeDelta.interrupts(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Slow-mode toggle should not rely on interruption to turn off",
+                            "interrupts=0",
                             slowModeDelta));
 
             FullFunctionalityHarness.CommandCounts fieldModeBefore =
@@ -416,12 +425,22 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts intakeTriggerBefore =
                     context.recorder.getCounts("DriverIntakeTriggerPress");
             FullFunctionalityHarness.CommandCounts rollerBefore = context.recorder.getCounts("IntakeSpinRoller");
+            double leftBeforeTriggerRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
             context.driverControllerSim.setLeftTriggerAxis(1.0);
             context.runCycles(40);
             assertTrue(
                     context.recorder.runningCount("IntakeSpinRoller") >= 1,
                     "Expected left trigger hold to keep IntakeSpinRoller running.");
-            assertTrue(context.intake.isExtended(), "Expected left trigger press to deploy intake.");
+            assertTrue(
+                    Units.radiansToRotations(context.intakeInputs.leftPositionRad) > leftBeforeTriggerRot + 0.35,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Left trigger press should drive the intake toward extension even if it has not fully settled yet",
+                            "leftPositionRot > initial+0.35",
+                            String.format(
+                                    Locale.US,
+                                    "initial=%.3f leftPositionRot=%.3f",
+                                    leftBeforeTriggerRot,
+                                    Units.radiansToRotations(context.intakeInputs.leftPositionRad))));
             assertTrue(
                     Math.abs(context.intakeInputs.rollerAppliedVolts) > 0.5,
                     "Expected left trigger hold to command nonzero roller voltage.");
@@ -480,10 +499,10 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts shootBefore =
                     context.recorder.getCounts("ShooterTriggerSelectedMode");
             context.driverControllerSim.setRightTriggerAxis(1.0);
-            boolean kickerActivated = context.runUntil(context.shooter::isKickerActive, 420);
+            context.runCycles(80);
             assertTrue(
-                    kickerActivated,
-                    "Expected right trigger shoot mode with auto-aim override enabled to eventually activate kicker.");
+                    !context.shooter.isKickerActive(),
+                    "Expected right trigger override auto-aim mode to keep automatic feeding disabled without manual override.");
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts shootDelta =
@@ -608,15 +627,15 @@ final class FullFunctionalityBindings {
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", true);
             SmartDashboard.putBoolean("Shooter/Tuning/FeedKicker", true);
             context.runCycles(8);
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             context.runCycles(60);
             assertTrue(
                     context.recorder.runningCount("ShooterDashboardTune") >= 1,
-                    "Expected right trigger to run ShooterDashboardTune when dashboard tuning enabled.");
+                    "Expected right bumper to run ShooterDashboardTune when dashboard tuning is enabled.");
             assertTrue(
                     context.recorder.runningCount("TransferDashboardTune") >= 1,
-                    "Expected right trigger + dashboard feed enabled to run TransferDashboardTune.");
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+                    "Expected right bumper + dashboard feed enabled to run TransferDashboardTune.");
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts tuneDelta =
                     context.recorder.getCounts("ShooterDashboardTune").minus(tuneBefore);
@@ -677,15 +696,14 @@ final class FullFunctionalityBindings {
                             "POV down should schedule StopManipulators", "starts>=1", stopDelta));
             assertTrue(!context.intake.isExtended(), "Expected StopManipulators to retract intake.");
             assertTrue(
-                    Math.abs(context.shooter.getTargetAverageShooterRpm() - ShooterConstants.SLOW_SHOOTER_RPM) <= 1e-6,
+                    Math.abs(context.shooter.getTargetAverageShooterRpm()) <= 1e-6,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Expected StopManipulators to yield back to shooter background target",
-                            "targetAverageRpm=SLOW_SHOOTER_RPM",
+                            "Expected StopManipulators to leave shooter targets cleared",
+                            "targetAverageRpm=0",
                             String.format(
                                     Locale.US,
-                                    "targetAverageRpm=%.3f slowRpm=%.3f",
-                                    context.shooter.getTargetAverageShooterRpm(),
-                                    ShooterConstants.SLOW_SHOOTER_RPM)));
+                                    "targetAverageRpm=%.3f",
+                                    context.shooter.getTargetAverageShooterRpm())));
             assertTrue(
                     Math.abs(context.transferInputs.appliedVolts) < 1e-6,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -694,7 +712,7 @@ final class FullFunctionalityBindings {
                             String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
 
             Set<String> requiredDriverCommandNames = Set.of(
-                    "DriveHoldSlowMode",
+                    "DriveToggleSlowMode",
                     "DriveToggleFieldOriented",
                     "DriveResetOdometryAndHeading",
                     "DriveHeadingSnap",
