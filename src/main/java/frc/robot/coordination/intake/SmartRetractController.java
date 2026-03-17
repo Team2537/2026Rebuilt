@@ -21,7 +21,7 @@ public final class SmartRetractController {
         private double nibbleBackoffUntilSec = Double.NaN;
         private double commandedLeftTargetRot = Double.NaN;
         private double filteredSignalCurrentAmps = 0.0;
-        private double baselineSignalCurrentAmps = 0.0;
+        private double nibbleCurrentThresholdAmps = 0.0;
         private boolean feedLatched = false;
         private int feedTrueCycles = 0;
         private int feedFalseCycles = 0;
@@ -43,8 +43,8 @@ public final class SmartRetractController {
             return filteredSignalCurrentAmps;
         }
 
-        public double baselineSignalCurrentAmps() {
-            return baselineSignalCurrentAmps;
+        public double nibbleCurrentThresholdAmps() {
+            return nibbleCurrentThresholdAmps;
         }
 
         public boolean feedLatched() {
@@ -85,7 +85,7 @@ public final class SmartRetractController {
         session.active = session.startedExtended && session.mode != Mode.DISABLED;
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(initialLeftPositionRot);
         session.filteredSignalCurrentAmps = initialSignalCurrentAmps;
-        session.baselineSignalCurrentAmps = initialSignalCurrentAmps;
+        session.nibbleCurrentThresholdAmps = IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS;
         session.nibbleBackoffActive = false;
         session.nibbleSpikeCycles = 0;
         session.nibbleBackoffUntilSec = Double.NaN;
@@ -155,19 +155,12 @@ public final class SmartRetractController {
             }
             session.nibbleBackoffActive = false;
             session.nibbleSpikeCycles = 0;
-            session.baselineSignalCurrentAmps = session.filteredSignalCurrentAmps;
         }
 
-        double thresholdAmps =
-                session.baselineSignalCurrentAmps + IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS;
-        if (session.filteredSignalCurrentAmps >= thresholdAmps) {
+        if (session.filteredSignalCurrentAmps >= session.nibbleCurrentThresholdAmps) {
             session.nibbleSpikeCycles++;
         } else {
             session.nibbleSpikeCycles = 0;
-            session.baselineSignalCurrentAmps = filteredCurrent(
-                    session.baselineSignalCurrentAmps,
-                    session.filteredSignalCurrentAmps,
-                    0.05);
         }
 
         if (session.nibbleSpikeCycles >= IntakeConstants.SMART_RETRACT_NIBBLE_DETECT_CYCLES) {

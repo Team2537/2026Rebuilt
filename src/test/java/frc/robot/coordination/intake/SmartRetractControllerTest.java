@@ -211,6 +211,54 @@ class SmartRetractControllerTest {
         assertTrue(filtered < 50.0, "Filtered current should lag behind raw current");
     }
 
+    @Test
+    void nibbleUsesConstantCurrentThresholdInsteadOfBaselineDelta() {
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 20.0);
+        assertEquals(
+                IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS,
+                session.nibbleCurrentThresholdAmps(),
+                1e-9,
+                "Nibble threshold should come from the fixed threshold constant");
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, MID_POSITION, 0.0, true, false);
+        }
+
+        boolean sawBackoff = false;
+        for (int i = 0; i < 20; i++) {
+            controller.update(session, true, MID_POSITION, 11.0, true, false);
+            if (session.nibbleBackoffActive()) {
+                sawBackoff = true;
+                break;
+            }
+        }
+
+        assertTrue(
+                sawBackoff,
+                "Fixed threshold should still trigger backoff even if the session started with a much higher initial current.");
+    }
+
+    @Test
+    void nibbleDoesNotSpikeBelowFixedThreshold() {
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, MID_POSITION, 0.0, true, false);
+        }
+
+        for (int i = 0; i < 20; i++) {
+            controller.update(
+                    session,
+                    true,
+                    MID_POSITION,
+                    IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS - 1.0,
+                    true,
+                    false);
+        }
+
+        assertFalse(session.nibbleBackoffActive(), "Currents below the fixed threshold should not trigger nibble backoff.");
+    }
+
     private static int feedStartDelayCycles() {
         int configuredDelayCycles =
                 (int) Math.ceil(IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC * IntakeConstants.STATUS_UPDATE_HZ);

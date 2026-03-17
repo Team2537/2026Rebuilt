@@ -35,7 +35,8 @@ This is a quick field guide for tuning the new intake smart retract behavior on 
 - `Intake/SmartRetract/FeedFalseCycles`
 - `Intake/SmartRetract/SignalCurrentRawAmps`
 - `Intake/SmartRetract/SignalCurrentFilteredAmps`
-- `Intake/SmartRetract/SignalBaselineAmps`
+- `Intake/SmartRetract/SignalThresholdAmps`
+- `Intake/SmartRetract/SignalBaselineAmps` (compat alias of threshold)
 - `Intake/SmartRetract/CommandedTargetRot`
 - `Intake/SmartRetract/NibbleSpikeCycles`
 - `Intake/SmartRetract/NibbleBackoffActive`
@@ -69,17 +70,22 @@ Enable:
 Start from defaults and test repeated shoot/release cycles.
 
 Main knobs:
-- `SMART_RETRACT_NIBBLE_CURRENT_DELTA_AMPS`
+- `SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS`
 - `SMART_RETRACT_NIBBLE_DETECT_CYCLES`
 - `SMART_RETRACT_NIBBLE_STEP_ROT`
 - `SMART_RETRACT_NIBBLE_BACKOFF_ROT`
 - `SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC`
 
+Current log-based starting point (3-14 survey):
+- `SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 10.0`
+- `SMART_RETRACT_NIBBLE_STEP_ROT = 0.50`
+- `SMART_RETRACT_NIBBLE_BACKOFF_ROT = 5.0`
+
 Adjustments:
 - Retracts too aggressively into compression:
-  - Increase `CURRENT_DELTA_AMPS`, reduce `STEP_ROT`, or increase `BACKOFF_ROT`.
+  - Lower `CURRENT_THRESHOLD_AMPS`, reduce `STEP_ROT`, or increase `BACKOFF_ROT`.
 - Barely retracts:
-  - Lower `CURRENT_DELTA_AMPS` or increase `STEP_ROT`.
+  - Increase `CURRENT_THRESHOLD_AMPS`, increase `STEP_ROT`, or reduce `BACKOFF_ROT`.
 - Jitters near compression:
   - Increase `DETECT_CYCLES` and/or `BACKOFF_DWELL_SEC`.
 

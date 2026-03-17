@@ -307,7 +307,8 @@ public class Intake extends SubsystemBase {
             double rawSignalCurrentAmps) {
         Logger.recordOutput("Intake/SmartRetract/SignalCurrentRawAmps", rawSignalCurrentAmps);
         Logger.recordOutput("Intake/SmartRetract/SignalCurrentFilteredAmps", session.filteredSignalCurrentAmps());
-        Logger.recordOutput("Intake/SmartRetract/SignalBaselineAmps", session.baselineSignalCurrentAmps());
+        Logger.recordOutput("Intake/SmartRetract/SignalThresholdAmps", session.nibbleCurrentThresholdAmps());
+        Logger.recordOutput("Intake/SmartRetract/SignalBaselineAmps", session.nibbleCurrentThresholdAmps());
         Logger.recordOutput("Intake/SmartRetract/FeedLatched", session.feedLatched());
         Logger.recordOutput("Intake/SmartRetract/FeedTrueCycles", session.feedTrueCycles());
         Logger.recordOutput("Intake/SmartRetract/FeedFalseCycles", session.feedFalseCycles());
