@@ -13,22 +13,30 @@ import org.littletonrobotics.junction.Logger;
 
 /**
  * Heading alignment controller for tracking a dynamic target heading.
- * Uses a profiled PID with a short target-loss hold window and slew-limited output.
+ *
+ * <p>Uses a profiled heading setpoint, proportional heading feedback, measured-yaw-rate damping,
+ * mild setpoint-velocity feedforward, a short target-loss hold window, and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 6.5;
-    private static final double KD = 0.3;
-    private static final double TOLERANCE_RAD = Units.degreesToRadians(1.0);
-    private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(1.0);
-    private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(4.0);
-    private static final double LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(8.0);
+    private static final double KP = 6.0;
+    private static final double YAW_RATE_DAMPING_GAIN = 0.85;
+    private static final double TOLERANCE_RAD = Units.degreesToRadians(1.5);
+    private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(2.0);
+    private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(6.0);
+    private static final double LOW_ERROR_FEEDBACK_DYNAMIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(20.0);
+    private static final double FEEDFORWARD_FADE_START_RAD = Units.degreesToRadians(1.0);
+    private static final double FEEDFORWARD_FADE_END_RAD = Units.degreesToRadians(10.0);
+    private static final double PROFILED_SETTLED_VELOCITY_RAD_PER_SEC = Units.degreesToRadians(12.0);
     private static final double MIN_OMEGA_RAD_PER_SEC = 0.001;
     private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
-    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 18.0;
-    private static final double HEADING_FEEDFORWARD_GAIN = 0.6;
-    private static final double MAX_TARGET_VELOCITY_RAD_PER_SEC = 5.0;
-    private static final double FEEDFORWARD_DEADBAND_RAD_PER_SEC = 0.02;
-    private static final int TARGET_VELOCITY_FILTER_TAPS = 9;
+    private static final double MAX_DAMPING_OMEGA_RAD_PER_SEC = 3.2;
+    private static final double MAX_FEEDFORWARD_OMEGA_RAD_PER_SEC = 3.0;
+    private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 16.0;
+    private static final double HEADING_FEEDFORWARD_GAIN = 0.9;
+    private static final double TARGET_VELOCITY_FEEDFORWARD_GAIN = 0.6;
+    private static final double MAX_TARGET_VELOCITY_RAD_PER_SEC = 3.0;
+    private static final int TARGET_VELOCITY_FILTER_TAPS = 3;
+    private static final double FEEDFORWARD_DEADBAND_RAD_PER_SEC = 0.05;
 
     private final ProfiledPIDController pidController;
     private final SlewRateLimiter omegaLimiter;
@@ -36,13 +44,15 @@ public class HubAlignController {
     private final TargetHoldover<Rotation2d> targetHoldover =
             new TargetHoldover<>(AutoAimHeadingConfig.TARGET_HOLD_SEC, Timer::getFPGATimestamp);
 
-    private Rotation2d prevEffectiveTarget = null;
-    private double prevEffectiveTargetTimeSec = Double.NaN;
+    private Rotation2d previousEffectiveTarget = null;
+    private double previousEffectiveTargetTimeSec = Double.NaN;
     private boolean reachedToleranceOnce = false;
 
     public HubAlignController() {
         pidController = new ProfiledPIDController(
-                KP, 0.0, KD,
+                KP,
+                0.0,
+                0.0,
                 AutoAimHeadingConfig.createHeadingProfileConstraints());
         pidController.enableContinuousInput(-Math.PI, Math.PI);
         pidController.setTolerance(TOLERANCE_RAD);
@@ -53,7 +63,7 @@ public class HubAlignController {
      * Reset the controller state for a new command start.
      *
      * @param currentHeadingRad the robot's current heading in radians
-     * @param initialTarget     the initial target heading, or null if unavailable
+     * @param initialTarget the initial target heading, or null if unavailable
      */
     public void reset(double currentHeadingRad, Rotation2d initialTarget) {
         if (initialTarget != null) {
@@ -63,26 +73,35 @@ public class HubAlignController {
         }
         omegaLimiter.reset(0.0);
         pidController.reset(currentHeadingRad, 0.0);
-        targetVelocityFilter.reset();
-        prevEffectiveTarget = null;
-        prevEffectiveTargetTimeSec = Double.NaN;
+        resetTargetMotionTracking();
         reachedToleranceOnce = false;
+    }
+
+    /**
+     * Backwards-compatible overload used by tests that do not model measured yaw rate.
+     */
+    public double calculate(double currentHeadingRad, Rotation2d targetHeading, double fallbackOmega) {
+        return calculate(currentHeadingRad, 0.0, targetHeading, fallbackOmega);
     }
 
     /**
      * Calculate the angular velocity command for heading alignment.
      *
-     * <p>When {@code targetHeading} is unavailable, holds the most recent target briefly
-     * before falling back to driver omega input.
+     * <p>When {@code targetHeading} is unavailable, holds the most recent target briefly before
+     * falling back to driver omega input.
      *
      * @param currentHeadingRad the robot's current heading in radians
-     * @param targetHeading     the desired heading, or null if no target is available
-     * @param fallbackOmega     omega to return when no target is available (rad/s)
+     * @param currentYawRateRadPerSec measured robot yaw rate in rad/s
+     * @param targetHeading the desired heading, or null if no target is available
+     * @param fallbackOmega omega to return when no target is available (rad/s)
      * @return angular velocity command in rad/s
      */
-    public double calculate(double currentHeadingRad, Rotation2d targetHeading, double fallbackOmega) {
+    public double calculate(
+            double currentHeadingRad,
+            double currentYawRateRadPerSec,
+            Rotation2d targetHeading,
+            double fallbackOmega) {
         double nowSec = Timer.getFPGATimestamp();
-
         Rotation2d effectiveTarget = targetHeading;
         boolean targetHeld = false;
         double targetAgeSec = Double.NaN;
@@ -98,71 +117,70 @@ public class HubAlignController {
             targetHoldover.clear();
         }
 
-        Logger.recordOutput("Drive/AutoAlign/RawTargetDeg",
+        Logger.recordOutput(
+                "Drive/AutoAlign/RawTargetDeg",
                 targetHeading != null ? targetHeading.getDegrees() : Double.NaN);
-        Logger.recordOutput("Drive/AutoAlign/EffectiveTargetDeg",
+        Logger.recordOutput(
+                "Drive/AutoAlign/EffectiveTargetDeg",
                 effectiveTarget != null ? effectiveTarget.getDegrees() : Double.NaN);
         Logger.recordOutput("Drive/AutoAlign/TargetHeld", targetHeld);
         Logger.recordOutput("Drive/AutoAlign/UsingFallback", effectiveTarget == null);
-        Logger.recordOutput(
-                "Drive/AutoAlign/TargetAgeSec",
-                targetAgeSec);
-
-        // Compute target heading velocity for feedforward — helps track a moving aim point
-        double targetVelocityRadPerSec = 0.0;
-        if (effectiveTarget != null && prevEffectiveTarget != null
-                && Double.isFinite(prevEffectiveTargetTimeSec)) {
-            double dt = nowSec - prevEffectiveTargetTimeSec;
-            if (dt > 1e-6 && dt < 0.1) {
-                double rawVelocity = MathUtil.angleModulus(
-                        effectiveTarget.minus(prevEffectiveTarget).getRadians()) / dt;
-                double filteredVelocity = targetVelocityFilter.calculate(rawVelocity);
-                targetVelocityRadPerSec = MathUtil.clamp(
-                        filteredVelocity,
-                        -MAX_TARGET_VELOCITY_RAD_PER_SEC,
-                        MAX_TARGET_VELOCITY_RAD_PER_SEC);
-            }
-        }
-        if (effectiveTarget != null) {
-            prevEffectiveTarget = effectiveTarget;
-            prevEffectiveTargetTimeSec = nowSec;
-        } else {
-            prevEffectiveTarget = null;
-            prevEffectiveTargetTimeSec = Double.NaN;
-            targetVelocityFilter.reset();
-            reachedToleranceOnce = false;
-        }
-        double feedforwardOmega = MathUtil.clamp(
-                targetVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN,
-                -MAX_OMEGA_RAD_PER_SEC,
-                MAX_OMEGA_RAD_PER_SEC);
-        if (Math.abs(feedforwardOmega) < FEEDFORWARD_DEADBAND_RAD_PER_SEC) {
-            feedforwardOmega = 0.0;
-        }
+        Logger.recordOutput("Drive/AutoAlign/TargetAgeSec", targetAgeSec);
+        Logger.recordOutput("Drive/AutoAlign/MeasuredOmegaRadPerSec", currentYawRateRadPerSec);
 
         if (effectiveTarget == null) {
             clearTargetTracking();
             pidController.reset(currentHeadingRad, 0.0);
+            resetTargetMotionTracking();
             reachedToleranceOnce = false;
             double fallbackLimited = omegaLimiter.calculate(fallbackOmega);
             Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Double.NaN);
-            Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", 0.0);
+            Logger.recordOutput("Drive/AutoAlign/ProfileSetpointDeg", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/ProfileVelocityDegPerSec", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/TargetVelocityDegPerSec", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/RawFeedbackOmegaRadPerSec", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/FeedbackOmegaRadPerSec", Double.NaN);
             Logger.recordOutput("Drive/AutoAlign/LowErrorFeedbackScale", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/FeedforwardScale", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", 0.0);
+            Logger.recordOutput("Drive/AutoAlign/DampingOmegaRadPerSec", Double.NaN);
+            Logger.recordOutput("Drive/AutoAlign/UnclampedOmegaRadPerSec", fallbackOmega);
             Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", fallbackLimited);
             return fallbackLimited;
         }
 
         double targetHeadingRad = effectiveTarget.getRadians();
+        pidController.calculate(currentHeadingRad, targetHeadingRad);
+        double profileSetpointRad = pidController.getSetpoint().position;
+        double profileVelocityRadPerSec = pidController.getSetpoint().velocity;
+
+        double targetVelocityRadPerSec = 0.0;
+        if (previousEffectiveTarget != null && Double.isFinite(previousEffectiveTargetTimeSec)) {
+            double dtSec = nowSec - previousEffectiveTargetTimeSec;
+            if (dtSec > 1e-6 && dtSec < 0.1) {
+                double rawTargetVelocityRadPerSec = MathUtil.angleModulus(
+                        effectiveTarget.minus(previousEffectiveTarget).getRadians()) / dtSec;
+                targetVelocityRadPerSec = MathUtil.clamp(
+                        targetVelocityFilter.calculate(rawTargetVelocityRadPerSec),
+                        -MAX_TARGET_VELOCITY_RAD_PER_SEC,
+                        MAX_TARGET_VELOCITY_RAD_PER_SEC);
+            }
+        }
+        previousEffectiveTarget = effectiveTarget;
+        previousEffectiveTargetTimeSec = nowSec;
+
         double headingErrorRad = MathUtil.angleModulus(targetHeadingRad - currentHeadingRad);
-        double rawFeedbackOmega = pidController.calculate(currentHeadingRad, targetHeadingRad);
+        double rawFeedbackOmega = KP * headingErrorRad;
         double absHeadingErrorRad = Math.abs(headingErrorRad);
-        double absTargetVelocityRadPerSec = Math.abs(targetVelocityRadPerSec);
+
         if (absHeadingErrorRad <= LOW_ERROR_FEEDBACK_ARM_RAD) {
             reachedToleranceOnce = true;
         }
+
         double feedbackScale = 1.0;
+        double absTargetMotionRadPerSec = Math.max(Math.abs(profileVelocityRadPerSec), Math.abs(targetVelocityRadPerSec));
         if (reachedToleranceOnce
-                && absTargetVelocityRadPerSec <= LOW_ERROR_FEEDBACK_STATIC_TARGET_MAX_RAD_PER_SEC
+                && absTargetMotionRadPerSec <= LOW_ERROR_FEEDBACK_DYNAMIC_TARGET_MAX_RAD_PER_SEC
                 && absHeadingErrorRad < LOW_ERROR_FEEDBACK_FADE_END_RAD) {
             feedbackScale = MathUtil.clamp(
                     (absHeadingErrorRad - TOLERANCE_RAD) / (LOW_ERROR_FEEDBACK_FADE_END_RAD - TOLERANCE_RAD),
@@ -172,16 +190,34 @@ public class HubAlignController {
         }
         double feedbackOmega = rawFeedbackOmega * feedbackScale;
 
-        double commandedOmega;
-        if (absHeadingErrorRad <= TOLERANCE_RAD) {
-            // Within tolerance: use only feedforward to maintain smooth tracking of a
-            // moving target. Without this, the robot would stop, drift out of tolerance,
-            // correct, and stop again — causing chatter.
-            commandedOmega = feedforwardOmega;
-        } else {
-            commandedOmega = MathUtil.clamp(
-                    feedbackOmega + feedforwardOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
+        double feedforwardScale = MathUtil.clamp(
+                (absHeadingErrorRad - FEEDFORWARD_FADE_START_RAD)
+                        / (FEEDFORWARD_FADE_END_RAD - FEEDFORWARD_FADE_START_RAD),
+                0.0,
+                1.0);
+        feedforwardScale = 0.15 + 0.85 * feedforwardScale * feedforwardScale;
+        double feedforwardOmega = MathUtil.clamp(
+                (profileVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN
+                                + targetVelocityRadPerSec * TARGET_VELOCITY_FEEDFORWARD_GAIN)
+                        * feedforwardScale,
+                -MAX_FEEDFORWARD_OMEGA_RAD_PER_SEC,
+                MAX_FEEDFORWARD_OMEGA_RAD_PER_SEC);
+        if (Math.abs(feedforwardOmega) < FEEDFORWARD_DEADBAND_RAD_PER_SEC) {
+            feedforwardOmega = 0.0;
         }
+
+        double dampingOmega = MathUtil.clamp(
+                -currentYawRateRadPerSec * YAW_RATE_DAMPING_GAIN,
+                -MAX_DAMPING_OMEGA_RAD_PER_SEC,
+                MAX_DAMPING_OMEGA_RAD_PER_SEC);
+
+        double unclampedOmega = feedbackOmega + feedforwardOmega + dampingOmega;
+        if (absHeadingErrorRad <= TOLERANCE_RAD
+                && Math.abs(profileVelocityRadPerSec) <= PROFILED_SETTLED_VELOCITY_RAD_PER_SEC) {
+            unclampedOmega = dampingOmega;
+        }
+
+        double commandedOmega = MathUtil.clamp(unclampedOmega, -MAX_OMEGA_RAD_PER_SEC, MAX_OMEGA_RAD_PER_SEC);
         if (absHeadingErrorRad > TOLERANCE_RAD
                 && Math.abs(commandedOmega) > 0.0
                 && Math.abs(commandedOmega) < MIN_OMEGA_RAD_PER_SEC) {
@@ -190,13 +226,31 @@ public class HubAlignController {
         double limitedOmega = omegaLimiter.calculate(commandedOmega);
 
         Logger.recordOutput("Drive/AutoAlign/HeadingErrorDeg", Units.radiansToDegrees(headingErrorRad));
-        Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", feedforwardOmega);
+        Logger.recordOutput("Drive/AutoAlign/ProfileSetpointDeg", Units.radiansToDegrees(profileSetpointRad));
+        Logger.recordOutput(
+                "Drive/AutoAlign/ProfileVelocityDegPerSec",
+                Units.radiansToDegrees(profileVelocityRadPerSec));
+        Logger.recordOutput(
+                "Drive/AutoAlign/TargetVelocityDegPerSec",
+                Units.radiansToDegrees(targetVelocityRadPerSec));
+        Logger.recordOutput("Drive/AutoAlign/RawFeedbackOmegaRadPerSec", rawFeedbackOmega);
+        Logger.recordOutput("Drive/AutoAlign/FeedbackOmegaRadPerSec", feedbackOmega);
         Logger.recordOutput("Drive/AutoAlign/LowErrorFeedbackScale", feedbackScale);
+        Logger.recordOutput("Drive/AutoAlign/FeedforwardScale", feedforwardScale);
+        Logger.recordOutput("Drive/AutoAlign/FeedforwardOmegaRadPerSec", feedforwardOmega);
+        Logger.recordOutput("Drive/AutoAlign/DampingOmegaRadPerSec", dampingOmega);
+        Logger.recordOutput("Drive/AutoAlign/UnclampedOmegaRadPerSec", unclampedOmega);
         Logger.recordOutput("Drive/AutoAlign/OmegaCommandRadPerSec", limitedOmega);
         return limitedOmega;
     }
 
     private void clearTargetTracking() {
         targetHoldover.clear();
+    }
+
+    private void resetTargetMotionTracking() {
+        targetVelocityFilter.reset();
+        previousEffectiveTarget = null;
+        previousEffectiveTargetTimeSec = Double.NaN;
     }
 }

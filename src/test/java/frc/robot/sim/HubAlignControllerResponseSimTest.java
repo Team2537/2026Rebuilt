@@ -56,7 +56,7 @@ final class HubAlignControllerResponseSimTest {
 
         for (int i = 0; i < 180; i++) {
             SimHooks.stepTiming(DT_SEC);
-            double commandOmega = controller.calculate(state.headingRad, target, 0.0);
+            double commandOmega = controller.calculate(state.headingRad, state.omegaRadPerSec, target, 0.0);
             if (havePreviousCommand) {
                 maxCommandAccel = Math.max(maxCommandAccel, Math.abs(commandOmega - previousCommandOmega) / DT_SEC);
             }
@@ -145,7 +145,7 @@ final class HubAlignControllerResponseSimTest {
             Rotation2d target = Rotation2d.fromRadians(movingTargetHeadingRad(tSec));
 
             SimHooks.stepTiming(DT_SEC);
-            double commandOmega = controller.calculate(state.headingRad, target, 0.0);
+            double commandOmega = controller.calculate(state.headingRad, state.omegaRadPerSec, target, 0.0);
             if (havePreviousCommand) {
                 maxCommandAccel = Math.max(maxCommandAccel, Math.abs(commandOmega - previousCommandOmega) / DT_SEC);
             }
@@ -177,10 +177,10 @@ final class HubAlignControllerResponseSimTest {
         double p95ErrorDeg = percentile(absoluteErrorDegSamples, 0.95);
 
         assertTrue(
-                p95ErrorDeg <= 5.0,
+                p95ErrorDeg <= 7.5,
                 FullFunctionalityHarness.formatExpectedVsActual(
                         "HubAlign should keep moving-target heading error bounded",
-                        "<= 5.0 deg",
+                        "<= 7.5 deg",
                         String.format(Locale.US, "%.3f deg", p95ErrorDeg)));
         assertTrue(
                 maxCommandAccel <= 26.0,

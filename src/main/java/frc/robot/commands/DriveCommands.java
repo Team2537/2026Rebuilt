@@ -141,10 +141,12 @@ public final class DriveCommands {
 
         return Commands.run(
                 () -> {
+                    RobotState robotState = RobotState.getInstance();
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(
                             -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
                     double omega = alignController.calculate(
-                            RobotState.getInstance().getRotation().getRadians(),
+                            robotState.getRotation().getRadians(),
+                            robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
                             state.targetHeading,
                             0.0);
                     ChassisSpeeds speeds = new ChassisSpeeds(
@@ -273,6 +275,7 @@ public final class DriveCommands {
 
         return Commands.run(
                 () -> {
+                    RobotState robotState = RobotState.getInstance();
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(
                             -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
 
@@ -284,7 +287,10 @@ public final class DriveCommands {
                     fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
 
                     double omega = alignController.calculate(
-                            RobotState.getInstance().getRotation().getRadians(), targetHeading, fallbackOmega);
+                            robotState.getRotation().getRadians(),
+                            robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
+                            targetHeading,
+                            fallbackOmega);
 
                     boolean noDriverInput = linearVelocity.getNorm() <= 1e-6
                             && Math.abs(fallbackOmegaInput) <= 1e-6;

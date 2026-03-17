@@ -12,7 +12,7 @@ public final class IntakeConstants {
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
 
-    public static final double ROLLER_SENSOR_TO_MECHANISM_RATIO = 2.667;
+    public static final double ROLLER_SENSOR_TO_MECHANISM_RATIO = 1.92; // 23/12
     public static final double ROLLER_KP = 10.0;
     public static final double ROLLER_KI = 0.0;
     public static final double ROLLER_KD = 0.0;
