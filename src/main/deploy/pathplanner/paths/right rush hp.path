@@ -84,8 +84,8 @@
         "y": 0.6977180989583323
       },
       "prevControl": {
-        "x": 3.792837686586077,
-        "y": 0.6419045048875427
+        "x": 3.7928376865860787,
+        "y": 0.6419045048875424
       },
       "nextControl": {
         "x": 2.208776428406032,
@@ -116,7 +116,7 @@
         "y": 0.6977180989583323
       },
       "prevControl": {
-        "x": 0.819216067481404,
+        "x": 0.8192160674814049,
         "y": 0.6935871903653692
       },
       "nextControl": {
@@ -258,17 +258,6 @@
       }
     },
     {
-      "name": "IntakeRoller",
-      "waypointRelativePos": 5.9493178934010125,
-      "endWaypointRelativePos": 7.678220177664979,
-      "command": {
-        "type": "named",
-        "data": {
-          "name": "IntakeRoller"
-        }
-      }
-    },
-    {
       "name": "IntakeExtend",
       "waypointRelativePos": 6.020225253807105,
       "endWaypointRelativePos": null,
@@ -276,6 +265,17 @@
         "type": "named",
         "data": {
           "name": "IntakeExtend"
+        }
+      }
+    },
+    {
+      "name": "IntakeRoller",
+      "waypointRelativePos": 6.433454949238576,
+      "endWaypointRelativePos": 7.678220177664979,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "IntakeRoller"
         }
       }
     },

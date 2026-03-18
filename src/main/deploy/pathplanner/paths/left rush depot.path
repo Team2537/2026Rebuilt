@@ -116,7 +116,7 @@
         "y": 5.84147058174435
       },
       "prevControl": {
-        "x": 0.8731264682968348,
+        "x": 0.8731264682968349,
         "y": 5.7456530263426835
       },
       "nextControl": {
@@ -241,7 +241,7 @@
     {
       "name": "ShooterShootHubOnMove",
       "waypointRelativePos": 5.0254032258064525,
-      "endWaypointRelativePos": 6.360618279569893,
+      "endWaypointRelativePos": 6.092163705583758,
       "command": {
         "type": "named",
         "data": {
@@ -250,24 +250,24 @@
       }
     },
     {
-      "name": "IntakeRoller",
-      "waypointRelativePos": 5.84811230964467,
-      "endWaypointRelativePos": 7.678220177664979,
-      "command": {
-        "type": "named",
-        "data": {
-          "name": "IntakeRoller"
-        }
-      }
-    },
-    {
       "name": "IntakeExtend",
-      "waypointRelativePos": 6.380174731182801,
+      "waypointRelativePos": 6.102871192893404,
       "endWaypointRelativePos": null,
       "command": {
         "type": "named",
         "data": {
           "name": "IntakeExtend"
+        }
+      }
+    },
+    {
+      "name": "IntakeRoller",
+      "waypointRelativePos": 6.285136421319794,
+      "endWaypointRelativePos": 7.678220177664979,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "IntakeRoller"
         }
       }
     },
