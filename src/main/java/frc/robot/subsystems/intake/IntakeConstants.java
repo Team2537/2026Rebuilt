@@ -55,6 +55,14 @@ public final class IntakeConstants {
     public static final double DRIVER_TRIGGER_WIGGLE_PEAK_ROT =
             DRIVER_TRIGGER_WIGGLE_PEAK_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.15;
+
+    public static final double DRIVER_AGITATION_BASELINE_IN = FULL_TRAVEL_IN;
+    public static final double DRIVER_AGITATION_PEAK_IN = 12.1;
+    public static final double DRIVER_AGITATION_BASELINE_ROT =
+            DRIVER_AGITATION_BASELINE_IN * MOTOR_REV_PER_IN;
+    public static final double DRIVER_AGITATION_PEAK_ROT =
+            DRIVER_AGITATION_PEAK_IN * MOTOR_REV_PER_IN;
+    public static final double DRIVER_AGITATION_SWITCH_INTERVAL_SEC = 0.15;
     public static final double POSITION_TOLERANCE_ROT = 0.25;
     public static final double MOVE_TIMEOUT_SEC = 1.5;
     public static final double INTAKE_MAX_VOLTS = 12.0;

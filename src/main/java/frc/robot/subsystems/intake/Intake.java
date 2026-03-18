@@ -42,9 +42,11 @@ public class Intake extends SubsystemBase {
         }
     }
 
-    private static final class DriverTriggerWiggleSession {
+    private static final class RollerAgitationSession {
         private double startSec = Double.NaN;
     }
+
+    private record RollerAgitationProfile(String logStem, double baselineRot, double peakRot, double switchIntervalSec) {}
 
     private static final String DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY = "Intake/SmartRetract/EnableNibble";
     private static final String DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY =
@@ -371,17 +373,15 @@ public class Intake extends SubsystemBase {
     }
 
     public Command wiggleSpinRollerCommand() {
-        DriverTriggerWiggleSession session = new DriverTriggerWiggleSession();
-        return Commands.run(
-                        () -> executeDriverTriggerSpinRoller(session),
-                        this)
-                .beforeStarting(() -> session.startSec = Timer.getFPGATimestamp())
-                .finallyDo(interrupted -> endDriverTriggerSpinRoller())
-                .withName("IntakeSpinRoller");
+        return createRollerAgitationCommand(driverTriggerAgitationProfile(), "IntakeSpinRoller");
     }
 
     public Command driverTriggerSpinRollerCommand() {
         return wiggleSpinRollerCommand();
+    }
+
+    public Command driverAgitationCommand() {
+        return createRollerAgitationCommand(driverAgitationProfile(), "IntakeAgitate");
     }
 
     public Command backgroundCommand() {
@@ -531,37 +531,62 @@ public class Intake extends SubsystemBase {
                 IntakeConstants.SLOW_RETRACT_MAX_VOLTS);
     }
 
-    private void executeDriverTriggerSpinRoller(DriverTriggerWiggleSession session) {
+    private Command createRollerAgitationCommand(RollerAgitationProfile profile, String commandName) {
+        RollerAgitationSession session = new RollerAgitationSession();
+        return Commands.run(
+                        () -> executeRollerAgitation(session, profile),
+                        this)
+                .beforeStarting(() -> session.startSec = Timer.getFPGATimestamp())
+                .finallyDo(interrupted -> endRollerAgitation(profile))
+                .withName(commandName);
+    }
+
+    private static RollerAgitationProfile driverTriggerAgitationProfile() {
+        return new RollerAgitationProfile(
+                "Intake/DriverTriggerWiggle",
+                IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT,
+                IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT,
+                IntakeConstants.DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC);
+    }
+
+    private static RollerAgitationProfile driverAgitationProfile() {
+        return new RollerAgitationProfile(
+                "Intake/DriverAgitation",
+                IntakeConstants.DRIVER_AGITATION_BASELINE_ROT,
+                IntakeConstants.DRIVER_AGITATION_PEAK_ROT,
+                IntakeConstants.DRIVER_AGITATION_SWITCH_INTERVAL_SEC);
+    }
+
+    private void executeRollerAgitation(RollerAgitationSession session, RollerAgitationProfile profile) {
         io.setRollerRpm(IntakeConstants.ROLLER_RPM);
         if (!isGoalExtended() && !isExtended()) {
-            Logger.recordOutput("Intake/DriverTriggerWiggleActive", false);
-            Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", commandedLeftTargetRot);
+            recordRollerAgitation(profile, false, commandedLeftTargetRot);
             return;
         }
 
         double elapsedSec = Math.max(0.0, Timer.getFPGATimestamp() - session.startSec);
-        boolean highPhase =
-                ((int) Math.floor(elapsedSec / IntakeConstants.DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC)) % 2 == 1;
-        double wiggleTargetRot = highPhase
-                ? IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT
-                : IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT;
+        boolean highPhase = ((int) Math.floor(elapsedSec / profile.switchIntervalSec())) % 2 == 1;
+        double agitationTargetRot = highPhase ? profile.peakRot() : profile.baselineRot();
 
-        commandDriverTriggerTarget(wiggleTargetRot);
-        Logger.recordOutput("Intake/DriverTriggerWiggleActive", true);
-        Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", wiggleTargetRot);
+        commandRollerAgitationTarget(agitationTargetRot);
+        recordRollerAgitation(profile, true, agitationTargetRot);
     }
 
-    private void endDriverTriggerSpinRoller() {
+    private void endRollerAgitation(RollerAgitationProfile profile) {
         io.stopRoller();
-        Logger.recordOutput("Intake/DriverTriggerWiggleActive", false);
-        Logger.recordOutput("Intake/DriverTriggerWiggleTargetRot", IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT);
+        recordRollerAgitation(profile, false, profile.baselineRot());
         if (DriverStation.isDisabled() || (!isGoalExtended() && !isExtended())) {
             return;
         }
-        commandDriverTriggerTarget(IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT);
+        commandRollerAgitationTarget(profile.baselineRot());
     }
 
-    private void commandDriverTriggerTarget(double leftTargetRot) {
+    private static void recordRollerAgitation(RollerAgitationProfile profile, boolean active, double targetRot) {
+        Logger.recordOutput(profile.logStem() + "Active", active);
+        Logger.recordOutput(profile.logStem() + "TargetRot", targetRot);
+    }
+
+    private void commandRollerAgitationTarget(double leftTargetRot) {
         goalState = GoalState.EXTENDED;
         motionState = isAtTargetPosition(leftTargetRot) ? MotionState.EXTENDED : MotionState.MOVING_TO_EXTENDED;
         MotionProfile profile = standardMotionProfile();

@@ -341,6 +341,7 @@ public final class RobotContainer {
                 DriveCommands.resetOdometryAndHeading(drive).withName("DriveResetOdometryAndHeading"));
 
         Trigger intakeRollerTrigger = driverController.leftTrigger();
+        Trigger intakeAgitationTrigger = driverController.leftBumper();
         bindOnTrue(
                 driverController.a(),
                 "driver.a.onTrue",
@@ -362,6 +363,10 @@ public final class RobotContainer {
                 "driver.leftTrigger.onTrue",
                 createIntakeTriggerPressCommand());
         bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.driverTriggerSpinRollerCommand());
+        bindWhileTrue(
+                intakeAgitationTrigger,
+                "driver.leftBumper.whileTrue",
+                intake.driverAgitationCommand());
 
         bindOnTrue(
                 driverController.start(),
