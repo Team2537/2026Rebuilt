@@ -159,6 +159,17 @@
       }
     },
     {
+      "name": "ShooterHome",
+      "waypointRelativePos": 0.0,
+      "endWaypointRelativePos": null,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "ShooterHome"
+        }
+      }
+    },
+    {
       "name": "IntakeExtend",
       "waypointRelativePos": 1.0543760382059801,
       "endWaypointRelativePos": null,

@@ -86,7 +86,10 @@ public final class AutoCommands {
                     Rotation2d targetHeading = targetHeadingSupplier.get();
                     return targetHeading == null ? null : targetHeading.plus(Rotation2d.kPi);
                 });
-        BooleanSupplier aimReadySupplier = createAimReadySupplier(rawDesiredRobotHeadingSupplier);
+        BooleanSupplier aimReadySupplier = createAimReadySupplier(
+                rawDesiredRobotHeadingSupplier,
+                AutoAimHeadingConfig.AIM_TOLERANCE_RAD,
+                AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD);
 
         return Commands.parallel(
                 shootCoordinator.shootForDistance(distanceSupplier, aimReadySupplier),
@@ -139,8 +142,10 @@ public final class AutoCommands {
         Supplier<Rotation2d> profiledDesiredRobotHeadingSupplier =
                 createCycleCachedRotationSupplier(
                         () -> profiledHeadingTarget.calculate(rawDesiredRobotHeadingSupplier.get()));
-        BooleanSupplier aimReadySupplier =
-                createAimReadySupplier(profiledDesiredRobotHeadingSupplier);
+        BooleanSupplier aimReadySupplier = createAimReadySupplier(
+                profiledDesiredRobotHeadingSupplier,
+                AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_TOLERANCE_RAD,
+                AutoAimHeadingConfig.SHOT_ON_MOVE_AIM_RELEASE_TOLERANCE_RAD);
 
         return withPathRotationOverride(
                 shootCoordinator.shootForDistance(
@@ -173,11 +178,21 @@ public final class AutoCommands {
 
     private static BooleanSupplier createAimReadySupplier(
             Supplier<Rotation2d> desiredRobotHeadingSupplier) {
+        return createAimReadySupplier(
+                desiredRobotHeadingSupplier,
+                AutoAimHeadingConfig.AIM_TOLERANCE_RAD,
+                AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD);
+    }
+
+    private static BooleanSupplier createAimReadySupplier(
+            Supplier<Rotation2d> desiredRobotHeadingSupplier,
+            double aimToleranceRad,
+            double aimReleaseToleranceRad) {
         TargetHoldover<Rotation2d> holdover =
                 new TargetHoldover<>(AutoAimHeadingConfig.TARGET_HOLD_SEC, Timer::getFPGATimestamp);
         AimReadyLatch latch = new AimReadyLatch(
-                AutoAimHeadingConfig.AIM_TOLERANCE_RAD,
-                AutoAimHeadingConfig.AIM_RELEASE_TOLERANCE_RAD);
+                aimToleranceRad,
+                aimReleaseToleranceRad);
 
         return () -> {
             TargetHoldover.HoldResult<Rotation2d> holdResult =

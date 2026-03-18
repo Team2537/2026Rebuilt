@@ -7,7 +7,7 @@ public final class IntakeConstants {
     public static final int LEFT_MOTOR_ID = 23;
     public static final int RIGHT_MOTOR_ID = 24;
 
-    public static final double ROLLER_RPM = 4000.0;
+    public static final double ROLLER_RPM = 4800.0;
     public static final double SLOW_ROLLER_RPM = 0.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
@@ -45,16 +45,16 @@ public final class IntakeConstants {
 
     public static final double TRAVEL_IN_PER_MOTOR_REV = 0.5233;
     public static final double MOTOR_REV_PER_IN = 1.0 / TRAVEL_IN_PER_MOTOR_REV;
-    public static final double FULL_TRAVEL_IN = 11.0;
-    public static final double RETRACTED_POSITION_ROT = 6.0;
+    public static final double FULL_TRAVEL_IN = 10.7;
+    public static final double RETRACTED_POSITION_ROT = 6.75;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_BASELINE_IN = FULL_TRAVEL_IN;
-    public static final double DRIVER_TRIGGER_WIGGLE_PEAK_IN = 11.8;
+    public static final double DRIVER_TRIGGER_WIGGLE_PEAK_IN = 12.1;
     public static final double DRIVER_TRIGGER_WIGGLE_BASELINE_ROT =
             DRIVER_TRIGGER_WIGGLE_BASELINE_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_PEAK_ROT =
             DRIVER_TRIGGER_WIGGLE_PEAK_IN * MOTOR_REV_PER_IN;
-    public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.25;
+    public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.15;
     public static final double POSITION_TOLERANCE_ROT = 0.25;
     public static final double MOVE_TIMEOUT_SEC = 1.5;
     public static final double INTAKE_MAX_VOLTS = 12.0;
@@ -71,8 +71,8 @@ public final class IntakeConstants {
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
     public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.4;
 
-    public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 10.0;
-    public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 3;
+    public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 6.0;
+    public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 2;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 5.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;

@@ -18,22 +18,22 @@ import org.littletonrobotics.junction.Logger;
  * mild setpoint-velocity feedforward, a short target-loss hold window, and slew-limited output.
  */
 public class HubAlignController {
-    private static final double KP = 6.0;
-    private static final double YAW_RATE_DAMPING_GAIN = 0.85;
+    private static final double KP = 4.0;
+    private static final double YAW_RATE_DAMPING_GAIN = 0.90;
     private static final double TOLERANCE_RAD = Units.degreesToRadians(1.5);
     private static final double LOW_ERROR_FEEDBACK_ARM_RAD = Units.degreesToRadians(2.0);
     private static final double LOW_ERROR_FEEDBACK_FADE_END_RAD = Units.degreesToRadians(6.0);
     private static final double LOW_ERROR_FEEDBACK_DYNAMIC_TARGET_MAX_RAD_PER_SEC = Units.degreesToRadians(20.0);
     private static final double FEEDFORWARD_FADE_START_RAD = Units.degreesToRadians(1.0);
-    private static final double FEEDFORWARD_FADE_END_RAD = Units.degreesToRadians(10.0);
+    private static final double FEEDFORWARD_FADE_END_RAD = Units.degreesToRadians(3.0);
     private static final double PROFILED_SETTLED_VELOCITY_RAD_PER_SEC = Units.degreesToRadians(12.0);
     private static final double MIN_OMEGA_RAD_PER_SEC = 0.001;
     private static final double MAX_OMEGA_RAD_PER_SEC = 5.0;
     private static final double MAX_DAMPING_OMEGA_RAD_PER_SEC = 3.2;
     private static final double MAX_FEEDFORWARD_OMEGA_RAD_PER_SEC = 3.0;
     private static final double OMEGA_SLEW_RATE_RAD_PER_SEC_SQ = 16.0;
-    private static final double HEADING_FEEDFORWARD_GAIN = 0.9;
-    private static final double TARGET_VELOCITY_FEEDFORWARD_GAIN = 0.6;
+    private static final double HEADING_FEEDFORWARD_GAIN = 0.65;
+    private static final double TARGET_VELOCITY_FEEDFORWARD_GAIN = 0.3;
     private static final double MAX_TARGET_VELOCITY_RAD_PER_SEC = 3.0;
     private static final int TARGET_VELOCITY_FILTER_TAPS = 3;
     private static final double FEEDFORWARD_DEADBAND_RAD_PER_SEC = 0.05;
@@ -51,7 +51,7 @@ public class HubAlignController {
     public HubAlignController() {
         pidController = new ProfiledPIDController(
                 KP,
-                0.0,
+                0.15,
                 0.0,
                 AutoAimHeadingConfig.createHeadingProfileConstraints());
         pidController.enableContinuousInput(-Math.PI, Math.PI);
@@ -195,7 +195,7 @@ public class HubAlignController {
                         / (FEEDFORWARD_FADE_END_RAD - FEEDFORWARD_FADE_START_RAD),
                 0.0,
                 1.0);
-        feedforwardScale = 0.15 + 0.85 * feedforwardScale * feedforwardScale;
+        feedforwardScale = 1.0 * feedforwardScale * feedforwardScale;
         double feedforwardOmega = MathUtil.clamp(
                 (profileVelocityRadPerSec * HEADING_FEEDFORWARD_GAIN
                                 + targetVelocityRadPerSec * TARGET_VELOCITY_FEEDFORWARD_GAIN)

@@ -31,8 +31,8 @@ import org.littletonrobotics.junction.Logger;
 
 /** Encapsulates teleop shooting/aim logic and per-loop cached suppliers. */
 public final class ShootingTeleopController {
-    private static final double SHOT_ON_MOVE_LINEAR_ENGAGE_MPS = 0.35;
-    private static final double SHOT_ON_MOVE_LINEAR_RELEASE_MPS = 0.20;
+    private static final double SHOT_ON_MOVE_LINEAR_ENGAGE_MPS = 0.25;
+    private static final double SHOT_ON_MOVE_LINEAR_RELEASE_MPS = 0.15;
     private static final double SHOT_ON_MOVE_ANGULAR_ENGAGE_RAD_PER_SEC = Math.toRadians(35.0);
     private static final double SHOT_ON_MOVE_ANGULAR_RELEASE_RAD_PER_SEC = Math.toRadians(20.0);
 
