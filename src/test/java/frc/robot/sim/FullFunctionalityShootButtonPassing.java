@@ -11,8 +11,8 @@ import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import frc.robot.util.FieldConstants;
 import org.junit.jupiter.api.Test;
 
-final class FullFunctionalityRightTriggerPassing {
-    private static final String RIGHT_TRIGGER_TARGET_OBJECT_NAME = "Right Trigger Target";
+final class FullFunctionalityShootButtonPassing {
+    private static final String SHOOT_TARGET_OBJECT_NAME = "Shoot Target";
     private static final double POSE_EPSILON_METERS = 1e-6;
 
     @Test
@@ -33,18 +33,18 @@ final class FullFunctionalityRightTriggerPassing {
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
             Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
             FullFunctionalityHarness.CommandCounts shootBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
 
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             boolean shootModeStarted = context.runUntil(
                     () -> context.recorder
-                            .getCounts("ShooterTriggerSelectedMode")
+                            .getCounts("ShooterSelectedShootMode")
                             .minus(shootBefore)
                             .starts() >= 1,
                     180);
             assertTrue(shootModeStarted, "Blue neutral-lane shoot button should schedule shoot mode.");
 
-            Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
+            Pose2d publishedTarget = dashboardField.getObject(SHOOT_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
             assertEquals(expectedPassTarget.getY(), publishedTarget.getY(), POSE_EPSILON_METERS);
             assertTrue(
@@ -54,7 +54,7 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getY() > FieldConstants.getHubTargetTranslation().getY(),
                     "Blue pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
         }
     }
@@ -80,18 +80,18 @@ final class FullFunctionalityRightTriggerPassing {
                     FullFunctionalityHarness.getPrivateField(context.container, "dashboardField", Field2d.class);
             Pose2d expectedPassTarget = FieldConstants.getPassTargetPose(passPose);
             FullFunctionalityHarness.CommandCounts shootBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
 
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             boolean shootModeStarted = context.runUntil(
                     () -> context.recorder
-                            .getCounts("ShooterTriggerSelectedMode")
+                            .getCounts("ShooterSelectedShootMode")
                             .minus(shootBefore)
                             .starts() >= 1,
                     180);
             assertTrue(shootModeStarted, "Red neutral-lane shoot button should schedule shoot mode.");
 
-            Pose2d publishedTarget = dashboardField.getObject(RIGHT_TRIGGER_TARGET_OBJECT_NAME).getPose();
+            Pose2d publishedTarget = dashboardField.getObject(SHOOT_TARGET_OBJECT_NAME).getPose();
             assertEquals(expectedPassTarget.getX(), publishedTarget.getX(), POSE_EPSILON_METERS);
             assertEquals(expectedPassTarget.getY(), publishedTarget.getY(), POSE_EPSILON_METERS);
             assertTrue(
@@ -101,7 +101,7 @@ final class FullFunctionalityRightTriggerPassing {
                     publishedTarget.getY() < FieldConstants.getHubTargetTranslation().getY(),
                     "Red pass target should avoid the hub lane.");
 
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
         }
     }

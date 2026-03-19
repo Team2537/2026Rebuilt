@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
-final class RightTriggerTargetPoseLogSimTest {
+final class ShootTargetPoseLogSimTest {
     private static final double POSE_EPSILON_METERS = 1e-6;
 
     private Path outputDir;
@@ -30,12 +30,12 @@ final class RightTriggerTargetPoseLogSimTest {
     @BeforeEach
     void setUp() throws IOException {
         HAL.initialize(500, 0);
-        outputDir = Path.of("build/right-trigger-target-log-sim").toAbsolutePath();
+        outputDir = Path.of("build/shoot-target-log-sim").toAbsolutePath();
         Files.createDirectories(outputDir);
     }
 
     @Test
-    void rightTriggerTargetPoseIsPublishedToAdvantageKit() throws IOException {
+    void shootTargetPoseIsPublishedToAdvantageKit() throws IOException {
         Pose2d expectedPassTarget;
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
@@ -118,9 +118,9 @@ final class RightTriggerTargetPoseLogSimTest {
                     || start.name.equals("/AdvantageKit/Shooting/TargetPoseY")
                     || start.name.equals("/RealOutputs/Shooting/TargetPoseY")) {
                 targetYEntry = start.entry;
-            } else if (start.name.equals("/AdvantageKit/RealOutputs/Shooting/RightTriggerMode")
-                    || start.name.equals("/AdvantageKit/Shooting/RightTriggerMode")
-                    || start.name.equals("/RealOutputs/Shooting/RightTriggerMode")) {
+            } else if (start.name.equals("/AdvantageKit/RealOutputs/Shooting/ShootTargetMode")
+                    || start.name.equals("/AdvantageKit/Shooting/ShootTargetMode")
+                    || start.name.equals("/RealOutputs/Shooting/ShootTargetMode")) {
                 modeEntry = start.entry;
             }
         }

@@ -58,7 +58,7 @@ Use SmartDashboard/NetworkTables keys:
    - `SHOT_MAP_LEFT_RPM`
    - `SHOT_MAP_RIGHT_RPM`
    - `SHOT_MAP_HOOD_ANGLE_DEG`
-8. Set `Shooter/Tuning/Enabled = false` to return right trigger to normal shoot mode.
+8. Set `Shooter/Tuning/Enabled = false` to return right bumper to normal shoot/pass mode.
 
 ## FUEL simulation outputs
 

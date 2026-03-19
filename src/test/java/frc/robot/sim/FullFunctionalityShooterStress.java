@@ -21,7 +21,7 @@ final class FullFunctionalityShooterStress {
     private static final String TUNING_ENABLED_KEY = "Shooter/Tuning/Enabled";
     private static final String TUNING_FEED_KEY = "Shooter/Tuning/FeedKicker";
     private static final List<String> SHOOT_MODE_CANDIDATE_NAMES = List.of(
-            "ShooterTriggerSelectedMode",
+            "ShooterSelectedShootMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot");
 
@@ -68,7 +68,7 @@ final class FullFunctionalityShooterStress {
                 }
             }
             if (!shootStarted || activeShootModeName == null) {
-                activeShootModeName = "ShooterTriggerSelectedMode";
+                activeShootModeName = "ShooterSelectedShootMode";
                 final String fallbackShootName = activeShootModeName;
                 Command fallbackShoot = new ShootCoordinator(context.shooter, context.transfer)
                         .shootForDistance(() -> 3.0, () -> true)
@@ -252,7 +252,7 @@ final class FullFunctionalityShooterStress {
             FullFunctionalityHarness.CommandCounts transferTuneBefore =
                     context.recorder.getCounts("TransferDashboardTune");
             FullFunctionalityHarness.CommandCounts shootModeBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
 
             context.driverControllerSim.setRightBumperButton(true);
             boolean tuneStarted = context.runUntil(
@@ -338,7 +338,7 @@ final class FullFunctionalityShooterStress {
             FullFunctionalityHarness.CommandCounts transferTuneDelta =
                     context.recorder.getCounts("TransferDashboardTune").minus(transferTuneBefore);
             FullFunctionalityHarness.CommandCounts shootModeDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootModeBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(shootModeBefore);
 
             assertEquals(
                     0,

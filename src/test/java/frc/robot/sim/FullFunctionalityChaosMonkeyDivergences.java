@@ -30,7 +30,7 @@ final class FullFunctionalityChaosMonkeyDivergences {
             "DriverIntakeHome",
             "StopManipulators",
             "DriveSetOdometryFromUnifiedVision",
-            "ShooterTriggerSelectedMode",
+            "ShooterSelectedShootMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot",
             "ShooterHubShot",
@@ -41,7 +41,7 @@ final class FullFunctionalityChaosMonkeyDivergences {
 
     private static final List<String> HELD_COMMANDS = List.of(
             "IntakeSpinRoller",
-            "ShooterTriggerSelectedMode",
+            "ShooterSelectedShootMode",
             "ShooterTriggerAimAndShoot",
             "ShooterTriggerOverrideAutoAimShoot",
             "ShooterHubShot",

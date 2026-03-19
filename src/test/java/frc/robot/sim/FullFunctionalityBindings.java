@@ -499,7 +499,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts aimOnlyBefore =
                     context.recorder.getCounts("ShooterDriverAim");
             FullFunctionalityHarness.CommandCounts shootBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightTriggerAxis(1.0);
             context.runCycles(80);
             assertTrue(
@@ -513,7 +513,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts aimOnlyDelta =
                     context.recorder.getCounts("ShooterDriverAim").minus(aimOnlyBefore);
             FullFunctionalityHarness.CommandCounts shootDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(shootBefore);
             assertTrue(
                     aimOnlyDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -530,7 +530,7 @@ final class FullFunctionalityBindings {
                     0,
                     shootDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right trigger aim-only mode should not start ShooterTriggerSelectedMode",
+                            "Right trigger aim-only mode should not start ShooterSelectedShootMode",
                             "starts=0",
                             shootDelta));
             assertTrue(
@@ -553,11 +553,11 @@ final class FullFunctionalityBindings {
             SmartDashboard.putBoolean("Overrides/DisableFeeding", true);
             context.runCycles(6);
             FullFunctionalityHarness.CommandCounts feedDisabledShootBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightBumperButton(true);
             context.runCycles(140);
             assertTrue(
-                    context.recorder.runningCount("ShooterTriggerSelectedMode") >= 1,
+                    context.recorder.runningCount("ShooterSelectedShootMode") >= 1,
                     "Expected right bumper auto-feed mode to keep aiming/spinning while feed disable override is enabled.");
             assertTrue(
                     !context.shooter.isKickerActive(),
@@ -571,7 +571,7 @@ final class FullFunctionalityBindings {
             context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts feedDisabledShootDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(feedDisabledShootBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(feedDisabledShootBefore);
             assertTrue(
                     feedDisabledShootDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -584,7 +584,7 @@ final class FullFunctionalityBindings {
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
             context.runCycles(4);
             FullFunctionalityHarness.CommandCounts autoFeedBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightBumperButton(true);
             boolean shootSpunShooter =
                     context.runUntil(
@@ -606,7 +606,7 @@ final class FullFunctionalityBindings {
             context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts autoFeedDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(autoFeedBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(autoFeedBefore);
             assertTrue(
                     autoFeedDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -621,7 +621,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts aimBeforeCombined =
                     context.recorder.getCounts("ShooterDriverAim");
             FullFunctionalityHarness.CommandCounts shootBeforeCombined =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightBumperButton(true);
             context.driverControllerSim.setRightTriggerAxis(1.0);
             context.runCycles(30);
@@ -631,7 +631,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts aimCombinedDelta =
                     context.recorder.getCounts("ShooterDriverAim").minus(aimBeforeCombined);
             FullFunctionalityHarness.CommandCounts shootCombinedDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootBeforeCombined);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(shootBeforeCombined);
             assertEquals(
                     0,
                     aimCombinedDelta.starts(),
@@ -642,27 +642,27 @@ final class FullFunctionalityBindings {
             assertTrue(
                     shootCombinedDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper + right trigger together should start ShooterTriggerSelectedMode",
+                            "Right bumper + right trigger together should start ShooterSelectedShootMode",
                             "starts>=1",
                             shootCombinedDelta));
 
             FullFunctionalityHarness.CommandCounts aimTransitionBefore =
                     context.recorder.getCounts("ShooterDriverAim");
             FullFunctionalityHarness.CommandCounts shootTransitionBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightTriggerAxis(1.0);
             boolean aimStarted = context.runUntil(() -> context.recorder.runningCount("ShooterDriverAim") >= 1, 120);
             assertTrue(aimStarted, "Right trigger should start aim-only before bumper is added.");
             context.driverControllerSim.setRightBumperButton(true);
             boolean shootTookOver = context.runUntil(
-                    () -> context.recorder.runningCount("ShooterTriggerSelectedMode") >= 1
+                    () -> context.recorder.runningCount("ShooterSelectedShootMode") >= 1
                             && context.recorder.runningCount("ShooterDriverAim") == 0,
                     120);
             assertTrue(shootTookOver, "Pressing right bumper while right trigger is held should switch into auto-feed mode.");
             context.driverControllerSim.setRightBumperButton(false);
             boolean aimResumed = context.runUntil(
                     () -> context.recorder.runningCount("ShooterDriverAim") >= 1
-                            && context.recorder.runningCount("ShooterTriggerSelectedMode") == 0,
+                            && context.recorder.runningCount("ShooterSelectedShootMode") == 0,
                     120);
             assertTrue(aimResumed, "Releasing right bumper while right trigger stays held should fall back to aim-only mode.");
             context.driverControllerSim.setRightTriggerAxis(0.0);
@@ -670,7 +670,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts aimTransitionDelta =
                     context.recorder.getCounts("ShooterDriverAim").minus(aimTransitionBefore);
             FullFunctionalityHarness.CommandCounts shootTransitionDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootTransitionBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(shootTransitionBefore);
             assertTrue(aimTransitionDelta.starts() >= 2,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Aim-only should start before bumper takeover and again after bumper release",
@@ -686,7 +686,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts tuneTransferBefore =
                     context.recorder.getCounts("TransferDashboardTune");
             FullFunctionalityHarness.CommandCounts shootDuringTuneBefore =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+                    context.recorder.getCounts("ShooterSelectedShootMode");
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", true);
             SmartDashboard.putBoolean("Shooter/Tuning/FeedKicker", true);
             context.runCycles(8);
@@ -705,7 +705,7 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts tuneTransferDelta =
                     context.recorder.getCounts("TransferDashboardTune").minus(tuneTransferBefore);
             FullFunctionalityHarness.CommandCounts shootDuringTuneDelta =
-                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootDuringTuneBefore);
+                    context.recorder.getCounts("ShooterSelectedShootMode").minus(shootDuringTuneBefore);
             assertTrue(
                     tuneDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
@@ -720,7 +720,7 @@ final class FullFunctionalityBindings {
                     0,
                     shootDuringTuneDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "ShooterTriggerSelectedMode should not start while dashboard tuning is enabled",
+                            "ShooterSelectedShootMode should not start while dashboard tuning is enabled",
                             "starts=0",
                             shootDuringTuneDelta));
 
@@ -784,7 +784,7 @@ final class FullFunctionalityBindings {
                     "DriverIntakeHome",
                     "StopManipulators",
                     "DriveSetOdometryFromUnifiedVision",
-                    "ShooterTriggerSelectedMode",
+                    "ShooterSelectedShootMode",
                     "ShooterDriverAim",
                     "ShooterDashboardTune",
                     "TransferDashboardTune");
