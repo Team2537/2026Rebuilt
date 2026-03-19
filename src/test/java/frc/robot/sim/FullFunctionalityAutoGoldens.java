@@ -29,7 +29,7 @@ final class FullFunctionalityAutoGoldens {
     static final Map<String, AutoGolden> BY_NAME = Map.ofEntries(
             Map.entry(
                     "Along Alliance Moving Shot",
-                    new AutoGolden(7.120, 13.537406, 8.000063, 5.012921, 22.234247, true, true, false)));
+                    new AutoGolden(7.120, 13.537406, 8.000063, 5.012921, 22.234247, true, true, true)));
 
     static void assertExpectedAutoSet(Set<String> autoNames) {
         Set<String> missingTrackedAutos = new HashSet<>(BY_NAME.keySet());

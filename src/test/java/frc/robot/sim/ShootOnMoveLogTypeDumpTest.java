@@ -3,6 +3,9 @@ package frc.robot.sim;
 import edu.wpi.first.util.datalog.DataLogReader;
 import edu.wpi.first.util.datalog.DataLogRecord;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ShootOnMoveLogTypeDumpTest {
@@ -10,7 +13,7 @@ class ShootOnMoveLogTypeDumpTest {
     void dumpSelectedEntryTypes() throws Exception {
         Path wpilog = Path.of("logs/akit_26-03-18_22-40-46.wpilog").toAbsolutePath();
         DataLogReader reader = new DataLogReader(wpilog.toString());
-        for (DataLogRecord record : reader) {
+        for (DataLogRecord record : recordsUntilFailure(reader)) {
             if (!record.isStart()) {
                 continue;
             }
@@ -29,5 +32,21 @@ class ShootOnMoveLogTypeDumpTest {
                 System.out.println(start.entry + " | " + start.type + " | " + name);
             }
         }
+    }
+
+    private static List<DataLogRecord> recordsUntilFailure(DataLogReader reader) {
+        List<DataLogRecord> records = new ArrayList<>();
+        Iterator<DataLogRecord> iterator = reader.iterator();
+        while (true) {
+            try {
+                if (!iterator.hasNext()) {
+                    break;
+                }
+                records.add(iterator.next());
+            } catch (IllegalArgumentException exception) {
+                break;
+            }
+        }
+        return records;
     }
 }
