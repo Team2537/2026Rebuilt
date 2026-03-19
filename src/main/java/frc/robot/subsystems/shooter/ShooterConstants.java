@@ -74,13 +74,13 @@ public final class ShooterConstants {
      */
 
     private static final double[] SHOT_MAP_DISTANCE_METERS_SIM = {0.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0};
-    private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0};
-    private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1400.0, 1400.0, 1600.0, 1600.0, 1800.0, 1975.0, 2200.0 };
+    private static final double[] SHOT_MAP_LEFT_RPM_SIM = { 1428.0, 1428.0, 1632.0, 1632.0, 1836.0, 2014.5, 2244.0};
+    private static final double[] SHOT_MAP_RIGHT_RPM_SIM = { 1428.0, 1428.0, 1632.0, 1632.0, 1836.0, 2014.5, 2244.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_SIM = {86.0, 76.5, 70.2, 60.2, 62.1, 53.7, 51.9};
     // Physically computed from sim ballistic physics:
     // t_descent = (vz + sqrt(vz^2 - 2*g*(1.83 - 0.68))) / g
     // where vz = muzzle_speed * sin(hood_angle), muzzle_speed = RPM * 2pi/60 * 0.0508m * 0.85
-    private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.24, 1.204, 1.211, 1.09, 1.315, 1.328, 1.481};
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.19, 1.156, 1.163, 1.046, 1.262, 1.275, 1.422};
 
     private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0 };
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3350.0, 3550.0, 3875.0, 4250.0, 4300.0, 4650.0 };
