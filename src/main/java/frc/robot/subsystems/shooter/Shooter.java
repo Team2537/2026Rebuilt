@@ -326,6 +326,16 @@ public class Shooter extends SubsystemBase {
         return result;
     }
 
+    public LaunchCalculator.MotionCompensation getMotionCompensationToHub(
+            Pose2d robotPose,
+            ChassisSpeeds robotRelativeSpeeds,
+            LaunchCalculator.CompensationTracker compensationTracker) {
+        LaunchCalculator.MotionCompensation result =
+                launchCalculator.calculate(robotPose, robotRelativeSpeeds, compensationTracker);
+        logMotionCompensation(result, robotPose);
+        return result;
+    }
+
     private void logMotionCompensation(LaunchCalculator.MotionCompensation result, Pose2d robotPose) {
         Logger.recordOutput("Shooter/MotionCompTimeScale", ShooterConstants.MOTION_COMP_TIME_SCALE);
         Logger.recordOutput(
@@ -338,6 +348,9 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/TimeInAirSec", result.timeInAirSec());
         Logger.recordOutput("Shooter/CompensatedHubHeadingDeg",
                 result.compensatedHeading() != null ? result.compensatedHeading().getDegrees() : Double.NaN);
+        Logger.recordOutput("Shooter/DesiredRobotHeadingDeg",
+                result.desiredRobotHeading() != null ? result.desiredRobotHeading().getDegrees() : Double.NaN);
+        Logger.recordOutput("Shooter/DesiredRobotHeadingRateRadPerSec", result.desiredHeadingRateRadPerSec());
 
         // Publish shooter pose for AdvantageKit visualization
         if (robotPose != null) {
@@ -354,11 +367,19 @@ public class Shooter extends SubsystemBase {
     /** Rebuilds the LaunchCalculator after shot map or time-in-air map changes. */
     private void rebuildLaunchCalculator() {
         launchCalculator = new LaunchCalculator(
-                timeInAirSecondsByDistance,
+                this::getTimeInAirSecondsForDistance,
                 ShooterConstants.ROBOT_TO_SHOOTER_OFFSET,
                 ShooterConstants.PHASE_DELAY_SEC,
                 ShooterConstants.MOTION_COMP_TIME_SCALE,
                 ShooterConstants.MOTION_COMP_DISTANCE_TIME_SCALE);
+    }
+
+    private double getTimeInAirSecondsForDistance(double distanceMeters) {
+        if (!Double.isFinite(distanceMeters) || distanceMeters < 0.0) {
+            return 0.0;
+        }
+        double time = timeInAirSecondsByDistance.get(distanceMeters);
+        return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
     }
 
     private static double requireInRange(double value, double minInclusive, double maxInclusive, String name) {

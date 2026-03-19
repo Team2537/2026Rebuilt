@@ -53,6 +53,11 @@ public final class RobotState {
         return drive.getMeasuredChassisSpeeds();
     }
 
+    /** Returns the latest commanded chassis-speed setpoint in robot-relative coordinates. */
+    public ChassisSpeeds getSetpointChassisSpeeds() {
+        return drive.getSetpointChassisSpeeds();
+    }
+
     /**
      * Returns the estimator pose sampled at a historical timestamp.
      * Falls back to current pose if the buffer does not contain that sample.

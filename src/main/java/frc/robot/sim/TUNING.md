@@ -27,9 +27,12 @@ public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
 ## Driver controls
 
 - `driverController.rightTrigger`:
-  - If `Shooter/Tuning/Enabled = false`: normal distance-based shoot command.
+  - If `Shooter/Tuning/Enabled = false`: aim/spin only, no automatic feed.
+- `driverController.rightBumper`:
+  - If `Shooter/Tuning/Enabled = false`: aim/spin and automatic feed.
   - If `Shooter/Tuning/Enabled = true`: dashboard tuning command.
-- `driverController.leftTrigger`: normal aim-for-distance behavior (when not shooting).
+- If both `rightTrigger` and `rightBumper` are held, `rightBumper` behavior wins.
+- `driverController.leftTrigger`: intake roller.
 
 ## Dashboard keys for tuning
 
@@ -47,7 +50,7 @@ Use SmartDashboard/NetworkTables keys:
 1. Start sim (`./gradlew simulateJava`).
 2. Set `Shooter/Tuning/Enabled = true`.
 3. Set initial values for `LeftRPM`, `RightRPM`, and `HoodDeg`.
-4. Hold `driverController.rightTrigger` to run tuning.
+4. Hold `driverController.rightBumper` to run tuning.
 5. If you want to fire while tuning, set `Shooter/Tuning/FeedKicker = true`.
 6. Adjust RPM/hood until shots land in the hub from your test distance.
 7. Record final values and copy them into `ShooterConstants` shot map arrays:

@@ -496,28 +496,42 @@ final class FullFunctionalityBindings {
             SmartDashboard.putBoolean("Shooter/Tuning/FeedKicker", false);
             context.runCycles(6);
 
+            FullFunctionalityHarness.CommandCounts aimOnlyBefore =
+                    context.recorder.getCounts("ShooterDriverAim");
             FullFunctionalityHarness.CommandCounts shootBefore =
                     context.recorder.getCounts("ShooterTriggerSelectedMode");
             context.driverControllerSim.setRightTriggerAxis(1.0);
             context.runCycles(80);
             assertTrue(
                     !context.shooter.isKickerActive(),
-                    "Expected right trigger override auto-aim mode to keep automatic feeding disabled without manual override.");
+                    "Expected right trigger aim-only mode to block automatic feeding.");
+            assertTrue(
+                    Math.abs(context.transferInputs.appliedVolts) < 1e-6,
+                    "Expected right trigger aim-only mode to keep transfer stopped.");
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(10);
+            FullFunctionalityHarness.CommandCounts aimOnlyDelta =
+                    context.recorder.getCounts("ShooterDriverAim").minus(aimOnlyBefore);
             FullFunctionalityHarness.CommandCounts shootDelta =
                     context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootBefore);
             assertTrue(
-                    shootDelta.starts() >= 1,
+                    aimOnlyDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right trigger should schedule ShooterTriggerSelectedMode when tuning disabled",
+                            "Right trigger should schedule ShooterDriverAim when tuning disabled",
                             "starts>=1",
-                            shootDelta));
+                            aimOnlyDelta));
             assertTrue(
-                    shootDelta.interrupts() >= 1,
+                    aimOnlyDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Releasing right trigger should interrupt ShooterTriggerSelectedMode",
+                            "Releasing right trigger should interrupt ShooterDriverAim",
                             "interrupts>=1",
+                            aimOnlyDelta));
+            assertEquals(
+                    0,
+                    shootDelta.starts(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Right trigger aim-only mode should not start ShooterTriggerSelectedMode",
+                            "starts=0",
                             shootDelta));
             assertTrue(
                     context.recorder.runningCount("ShooterBackground") >= 1,
@@ -540,11 +554,11 @@ final class FullFunctionalityBindings {
             context.runCycles(6);
             FullFunctionalityHarness.CommandCounts feedDisabledShootBefore =
                     context.recorder.getCounts("ShooterTriggerSelectedMode");
-            context.driverControllerSim.setRightTriggerAxis(1.0);
+            context.driverControllerSim.setRightBumperButton(true);
             context.runCycles(140);
             assertTrue(
                     context.recorder.runningCount("ShooterTriggerSelectedMode") >= 1,
-                    "Expected right trigger to keep aiming/spinning while feed disable override is enabled.");
+                    "Expected right bumper auto-feed mode to keep aiming/spinning while feed disable override is enabled.");
             assertTrue(
                     !context.shooter.isKickerActive(),
                     "Expected feed disable override to block automatic kicker feed.");
@@ -554,14 +568,14 @@ final class FullFunctionalityBindings {
                             "Feed disable override should keep transfer stopped until manual override is used",
                             "transferAppliedVolts=0",
                             String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
-            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts feedDisabledShootDelta =
                     context.recorder.getCounts("ShooterTriggerSelectedMode").minus(feedDisabledShootBefore);
             assertTrue(
                     feedDisabledShootDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Feed disable override should still run the normal shoot command wrapper",
+                            "Feed disable override should still run the right-bumper auto-feed command wrapper",
                             "starts>=1",
                             feedDisabledShootDelta));
             SmartDashboard.putBoolean("Overrides/DisableFeeding", false);
@@ -569,40 +583,45 @@ final class FullFunctionalityBindings {
 
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
             context.runCycles(4);
-            FullFunctionalityHarness.CommandCounts aimBefore =
-                    context.recorder.getCounts("ShooterDriverAim");
+            FullFunctionalityHarness.CommandCounts autoFeedBefore =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
             context.driverControllerSim.setRightBumperButton(true);
-            boolean aimSpunShooter =
+            boolean shootSpunShooter =
                     context.runUntil(
                             () -> context.shooter.getTargetAverageShooterRpm() > ShooterConstants.SLOW_SHOOTER_RPM + 100.0,
                             240);
             assertTrue(
-                    aimSpunShooter,
-                    "Expected right bumper aim mode to spin the shooter above its background target.");
-            assertTrue(!context.shooter.isKickerActive(), "Right bumper aim should not activate the kicker.");
+                    shootSpunShooter,
+                    "Expected right bumper auto-feed mode to spin the shooter above its background target.");
+            boolean bumperFed = context.runUntil(
+                    () -> context.shooter.isKickerActive() && context.transferInputs.appliedVolts > 1.0,
+                    260);
+            assertTrue(bumperFed, "Right bumper auto-feed should eventually activate kicker and transfer.");
             assertTrue(
-                    Math.abs(context.transferInputs.appliedVolts) < 1e-6,
+                    context.transferInputs.appliedVolts > 1.0,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper aim should not feed the transfer",
-                            "transferAppliedVolts=0",
+                            "Right bumper auto-feed should drive the transfer",
+                            "transferAppliedVolts>1.0",
                             String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
             context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);
-            FullFunctionalityHarness.CommandCounts aimDelta =
-                    context.recorder.getCounts("ShooterDriverAim").minus(aimBefore);
+            FullFunctionalityHarness.CommandCounts autoFeedDelta =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(autoFeedBefore);
             assertTrue(
-                    aimDelta.starts() >= 1,
+                    autoFeedDelta.starts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper should schedule aim mode", "starts>=1", aimDelta));
+                            "Right bumper should schedule auto-feed shoot mode", "starts>=1", autoFeedDelta));
             assertTrue(
-                    aimDelta.interrupts() >= 1,
+                    autoFeedDelta.interrupts() >= 1,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Releasing right bumper should interrupt aim mode",
+                            "Releasing right bumper should interrupt auto-feed shoot mode",
                             "interrupts>=1",
-                            aimDelta));
+                            autoFeedDelta));
 
             FullFunctionalityHarness.CommandCounts aimBeforeCombined =
                     context.recorder.getCounts("ShooterDriverAim");
+            FullFunctionalityHarness.CommandCounts shootBeforeCombined =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
             context.driverControllerSim.setRightBumperButton(true);
             context.driverControllerSim.setRightTriggerAxis(1.0);
             context.runCycles(30);
@@ -611,13 +630,57 @@ final class FullFunctionalityBindings {
             context.runCycles(10);
             FullFunctionalityHarness.CommandCounts aimCombinedDelta =
                     context.recorder.getCounts("ShooterDriverAim").minus(aimBeforeCombined);
+            FullFunctionalityHarness.CommandCounts shootCombinedDelta =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootBeforeCombined);
             assertEquals(
                     0,
                     aimCombinedDelta.starts(),
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Right bumper + right trigger together should keep right trigger priority over aim",
+                            "Right bumper + right trigger together should prioritize right bumper auto-feed over aim-only",
                             "starts=0",
                             aimCombinedDelta));
+            assertTrue(
+                    shootCombinedDelta.starts() >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Right bumper + right trigger together should start ShooterTriggerSelectedMode",
+                            "starts>=1",
+                            shootCombinedDelta));
+
+            FullFunctionalityHarness.CommandCounts aimTransitionBefore =
+                    context.recorder.getCounts("ShooterDriverAim");
+            FullFunctionalityHarness.CommandCounts shootTransitionBefore =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode");
+            context.driverControllerSim.setRightTriggerAxis(1.0);
+            boolean aimStarted = context.runUntil(() -> context.recorder.runningCount("ShooterDriverAim") >= 1, 120);
+            assertTrue(aimStarted, "Right trigger should start aim-only before bumper is added.");
+            context.driverControllerSim.setRightBumperButton(true);
+            boolean shootTookOver = context.runUntil(
+                    () -> context.recorder.runningCount("ShooterTriggerSelectedMode") >= 1
+                            && context.recorder.runningCount("ShooterDriverAim") == 0,
+                    120);
+            assertTrue(shootTookOver, "Pressing right bumper while right trigger is held should switch into auto-feed mode.");
+            context.driverControllerSim.setRightBumperButton(false);
+            boolean aimResumed = context.runUntil(
+                    () -> context.recorder.runningCount("ShooterDriverAim") >= 1
+                            && context.recorder.runningCount("ShooterTriggerSelectedMode") == 0,
+                    120);
+            assertTrue(aimResumed, "Releasing right bumper while right trigger stays held should fall back to aim-only mode.");
+            context.driverControllerSim.setRightTriggerAxis(0.0);
+            context.runCycles(10);
+            FullFunctionalityHarness.CommandCounts aimTransitionDelta =
+                    context.recorder.getCounts("ShooterDriverAim").minus(aimTransitionBefore);
+            FullFunctionalityHarness.CommandCounts shootTransitionDelta =
+                    context.recorder.getCounts("ShooterTriggerSelectedMode").minus(shootTransitionBefore);
+            assertTrue(aimTransitionDelta.starts() >= 2,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Aim-only should start before bumper takeover and again after bumper release",
+                            "starts>=2",
+                            aimTransitionDelta));
+            assertTrue(shootTransitionDelta.starts() >= 1,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Auto-feed should start when bumper is added during an aim-only hold",
+                            "starts>=1",
+                            shootTransitionDelta));
 
             FullFunctionalityHarness.CommandCounts tuneBefore = context.recorder.getCounts("ShooterDashboardTune");
             FullFunctionalityHarness.CommandCounts tuneTransferBefore =

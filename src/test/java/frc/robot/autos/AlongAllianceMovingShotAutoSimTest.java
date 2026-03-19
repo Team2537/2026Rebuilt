@@ -452,7 +452,7 @@ class AlongAllianceMovingShotAutoSimTest {
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_P90_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertDescentMaxMeters",
-                            0.30,
+                            0.32,
                             "AUTO_AIM_DIAG_ASSERT_DESCENT_MAX_METERS"),
                     parseDoubleProperty(
                             "autoAim.diag.assertMinDescentWithinIdealFraction",

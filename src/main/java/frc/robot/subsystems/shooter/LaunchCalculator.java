@@ -1,11 +1,14 @@
 package frc.robot.subsystems.shooter;
 
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.LinearFilter;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
-import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import frc.robot.util.FieldConstants;
+import frc.robot.util.LoggedTunableNumber;
+import java.util.function.DoubleUnaryOperator;
 
 /**
  * Computes motion-compensated launch parameters for shooting while moving.
@@ -17,6 +20,15 @@ import frc.robot.util.FieldConstants;
  */
 public final class LaunchCalculator {
 
+    private static final LoggedTunableNumber maxHeadingRateDegPerSec =
+            new LoggedTunableNumber("ShotSolution/MaxHeadingRateDegPerSec", 300.0);
+    private static final LoggedTunableNumber headingRateFilterTaps =
+            new LoggedTunableNumber("ShotSolution/HeadingRateFilterTaps", 7.0);
+    private static final LoggedTunableNumber translationVelocityFilterTaps =
+            new LoggedTunableNumber("ShotSolution/TranslationVelocityFilterTaps", 1.0);
+    private static final LoggedTunableNumber omegaCompensationScale =
+            new LoggedTunableNumber("ShotSolution/OmegaCompensationScale", 0.15);
+
     /** Result of a motion compensation calculation. */
     public record MotionCompensation(
             double rawDistanceMeters,
@@ -24,7 +36,9 @@ public final class LaunchCalculator {
             double timeInAirSec,
             double velocityTowardHubMps,
             double velocityPerpendicularHubMps,
-            Rotation2d compensatedHeading) {}
+            Rotation2d compensatedHeading,
+            Rotation2d desiredRobotHeading,
+            double desiredHeadingRateRadPerSec) {}
 
     /**
      * Maximum number of iterations for the time/distance convergence loop.
@@ -33,19 +47,19 @@ public final class LaunchCalculator {
     private static final int MAX_ITERATIONS = 3;
     private static final double TIME_CONVERGENCE_THRESHOLD_SEC = 0.001;
 
-    private final InterpolatingDoubleTreeMap timeInAirSecondsByDistance;
+    private final DoubleUnaryOperator timeInAirSecondsForDistance;
     private final Translation2d shooterOffset;
     private final double phaseDelaySec;
     private final double motionCompTimeScale;
     private final double motionCompDistanceTimeScale;
 
     public LaunchCalculator(
-            InterpolatingDoubleTreeMap timeInAirSecondsByDistance,
+            DoubleUnaryOperator timeInAirSecondsForDistance,
             Translation2d shooterOffset,
             double phaseDelaySec,
             double motionCompTimeScale,
             double motionCompDistanceTimeScale) {
-        this.timeInAirSecondsByDistance = timeInAirSecondsByDistance;
+        this.timeInAirSecondsForDistance = timeInAirSecondsForDistance;
         this.shooterOffset = shooterOffset;
         this.phaseDelaySec = phaseDelaySec;
         this.motionCompTimeScale = motionCompTimeScale;
@@ -60,8 +74,18 @@ public final class LaunchCalculator {
      * @return compensation result with raw/compensated distance, heading, and diagnostics
      */
     public MotionCompensation calculate(Pose2d robotPose, ChassisSpeeds robotRelativeSpeeds) {
+        return calculate(robotPose, robotRelativeSpeeds, null);
+    }
+
+    public MotionCompensation calculate(
+            Pose2d robotPose,
+            ChassisSpeeds robotRelativeSpeeds,
+            CompensationTracker compensationTracker) {
         Translation2d hubTarget = FieldConstants.getHubTargetTranslation();
         if (hubTarget == null || robotPose == null || robotRelativeSpeeds == null || shooterOffset == null) {
+            if (compensationTracker != null) {
+                compensationTracker.reset();
+            }
             return invalid();
         }
 
@@ -71,24 +95,47 @@ public final class LaunchCalculator {
                 : Double.NaN;
         Translation2d toHubVector = shooterFieldPosition != null ? hubTarget.minus(shooterFieldPosition) : null;
         if (toHubVector == null) {
+            if (compensationTracker != null) {
+                compensationTracker.reset();
+            }
             return invalid();
         }
         double rangeMeters = toHubVector.getNorm();
         if (!Double.isFinite(rawDistanceMeters) || !Double.isFinite(rangeMeters) || rangeMeters <= 1e-6) {
-            return new MotionCompensation(rawDistanceMeters, rawDistanceMeters, 0.0, 0.0, 0.0, null);
+            if (compensationTracker != null) {
+                compensationTracker.reset();
+            }
+            return new MotionCompensation(rawDistanceMeters, rawDistanceMeters, 0.0, 0.0, 0.0, null, null, 0.0);
         }
 
-        // Transform robot velocity to shooter velocity to account for angular velocity.
-        // v_shooter = v_center + omega x r (2D cross: omega_z x (x,y) = (-omega*y, omega*x))
-        double shooterVxRobot = robotRelativeSpeeds.vxMetersPerSecond
-                - robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getY();
-        double shooterVyRobot = robotRelativeSpeeds.vyMetersPerSecond
-                + robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getX();
-        ChassisSpeeds shooterFieldSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
-                new ChassisSpeeds(shooterVxRobot, shooterVyRobot, robotRelativeSpeeds.omegaRadiansPerSecond),
-                robotPose.getRotation());
-        Translation2d shooterFieldVelocity = new Translation2d(
-                shooterFieldSpeeds.vxMetersPerSecond, shooterFieldSpeeds.vyMetersPerSecond);
+        Translation2d shooterFieldVelocity;
+        if (compensationTracker != null) {
+            // Stable closed-loop aiming path: heavily favor translation-only velocity so the
+            // target generator does not chase our own yaw control. A small scaled omega term
+            // preserves some shooter-offset realism without reintroducing large target jitter.
+            double scaledShooterVxRobot = robotRelativeSpeeds.vxMetersPerSecond
+                    - robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getY() * omegaCompensationScale.get();
+            double scaledShooterVyRobot = robotRelativeSpeeds.vyMetersPerSecond
+                    + robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getX() * omegaCompensationScale.get();
+            ChassisSpeeds fieldRelativeLinearSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+                    new ChassisSpeeds(scaledShooterVxRobot, scaledShooterVyRobot, 0.0),
+                    robotPose.getRotation());
+            shooterFieldVelocity = new Translation2d(
+                    fieldRelativeLinearSpeeds.vxMetersPerSecond,
+                    fieldRelativeLinearSpeeds.vyMetersPerSecond);
+            shooterFieldVelocity = compensationTracker.filterFieldVelocity(shooterFieldVelocity);
+        } else {
+            // Stateless/raw compensation path for diagnostics and utility helpers.
+            double shooterVxRobot = robotRelativeSpeeds.vxMetersPerSecond
+                    - robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getY();
+            double shooterVyRobot = robotRelativeSpeeds.vyMetersPerSecond
+                    + robotRelativeSpeeds.omegaRadiansPerSecond * shooterOffset.getX();
+            ChassisSpeeds shooterFieldSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+                    new ChassisSpeeds(shooterVxRobot, shooterVyRobot, robotRelativeSpeeds.omegaRadiansPerSecond),
+                    robotPose.getRotation());
+            shooterFieldVelocity = new Translation2d(
+                    shooterFieldSpeeds.vxMetersPerSecond, shooterFieldSpeeds.vyMetersPerSecond);
+        }
 
         // Velocity decomposition for diagnostics
         Translation2d towardUnit = new Translation2d(toHubVector.getX() / rangeMeters, toHubVector.getY() / rangeMeters);
@@ -146,6 +193,10 @@ public final class LaunchCalculator {
         Rotation2d rawHeading = toHubVector.getAngle();
         Rotation2d compensatedHeading =
                 compensatedVector.getNorm() > 1e-6 ? compensatedVector.getAngle() : rawHeading;
+        Rotation2d desiredRobotHeading = compensatedHeading.plus(Rotation2d.kPi);
+        double desiredHeadingRateRadPerSec = compensationTracker != null
+                ? computeDesiredHeadingRateRadPerSec(compensatedVector, shooterFieldVelocity)
+                : 0.0;
 
         return new MotionCompensation(
                 rawDistanceMeters,
@@ -153,7 +204,28 @@ public final class LaunchCalculator {
                 timeInAirSec,
                 velocityTowardHub,
                 velocityPerpendicularHub,
-                compensatedHeading);
+                compensatedHeading,
+                desiredRobotHeading,
+                desiredHeadingRateRadPerSec);
+    }
+
+    private double computeDesiredHeadingRateRadPerSec(
+            Translation2d compensatedVector,
+            Translation2d fieldLinearVelocity) {
+        if (compensatedVector == null || fieldLinearVelocity == null) {
+            return 0.0;
+        }
+        double normSq = compensatedVector.getNorm() * compensatedVector.getNorm();
+        if (!Double.isFinite(normSq) || normSq <= 1e-9) {
+            return 0.0;
+        }
+
+        double x = compensatedVector.getX();
+        double y = compensatedVector.getY();
+        double vx = fieldLinearVelocity.getX();
+        double vy = fieldLinearVelocity.getY();
+        double rawRateRadPerSec = (y * vx - x * vy) / normSq;
+        return MathUtil.clamp(rawRateRadPerSec, -currentMaxHeadingRateRadPerSec(), currentMaxHeadingRateRadPerSec());
     }
 
     private Translation2d getShooterFieldPosition(Pose2d robotPose) {
@@ -165,7 +237,7 @@ public final class LaunchCalculator {
 
     private double lookupTimeInAir(double distanceMeters) {
         double scaledDistanceMeters = distanceMeters * motionCompDistanceTimeScale;
-        double time = timeInAirSecondsByDistance.get(scaledDistanceMeters);
+        double time = timeInAirSecondsForDistance.applyAsDouble(scaledDistanceMeters);
         return Double.isFinite(time) && time >= 0.0 ? time : 0.0;
     }
 
@@ -181,7 +253,47 @@ public final class LaunchCalculator {
         return shooterFieldPosition.getDistance(hubTarget);
     }
 
+    public static double currentMaxHeadingRateRadPerSec() {
+        return Math.toRadians(maxHeadingRateDegPerSec.get());
+    }
+
+    public static int currentHeadingRateFilterTaps() {
+        return Math.max(1, (int) Math.round(headingRateFilterTaps.get()));
+    }
+
+    public static int currentTranslationVelocityFilterTaps() {
+        return Math.max(1, (int) Math.round(translationVelocityFilterTaps.get()));
+    }
+
+    /** Filters translational field velocity used by motion compensation. */
+    public static final class CompensationTracker {
+        private LinearFilter fieldVxFilter = LinearFilter.movingAverage(currentTranslationVelocityFilterTaps());
+        private LinearFilter fieldVyFilter = LinearFilter.movingAverage(currentTranslationVelocityFilterTaps());
+        private int lastFilterTaps = currentTranslationVelocityFilterTaps();
+
+        public Translation2d filterFieldVelocity(Translation2d fieldVelocity) {
+            if (fieldVelocity == null) {
+                reset();
+                return new Translation2d();
+            }
+            int desiredFilterTaps = currentTranslationVelocityFilterTaps();
+            if (desiredFilterTaps != lastFilterTaps) {
+                fieldVxFilter = LinearFilter.movingAverage(desiredFilterTaps);
+                fieldVyFilter = LinearFilter.movingAverage(desiredFilterTaps);
+                lastFilterTaps = desiredFilterTaps;
+            }
+            return new Translation2d(
+                    fieldVxFilter.calculate(fieldVelocity.getX()),
+                    fieldVyFilter.calculate(fieldVelocity.getY()));
+        }
+
+        public void reset() {
+            fieldVxFilter.reset();
+            fieldVyFilter.reset();
+        }
+    }
+
     private static MotionCompensation invalid() {
-        return new MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null);
+        return new MotionCompensation(Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, null, null, 0.0);
     }
 }

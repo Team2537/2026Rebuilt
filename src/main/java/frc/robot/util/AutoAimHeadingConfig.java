@@ -13,9 +13,9 @@ public final class AutoAimHeadingConfig {
     private static final LoggedTunableNumber aimReleaseToleranceDeg =
             new LoggedTunableNumber("AutoAim/AimReleaseToleranceDeg", 2.5);
     private static final LoggedTunableNumber shotOnMoveAimToleranceDeg =
-            new LoggedTunableNumber("AutoAim/MovingAimToleranceDeg", 4.0);
+            new LoggedTunableNumber("AutoAim/MovingAimToleranceDeg", 4.5);
     private static final LoggedTunableNumber shotOnMoveAimReleaseToleranceDeg =
-            new LoggedTunableNumber("AutoAim/MovingAimReleaseToleranceDeg", 5.0);
+            new LoggedTunableNumber("AutoAim/MovingAimReleaseToleranceDeg", 5.5);
     private static final LoggedTunableNumber passAimToleranceDeg =
             new LoggedTunableNumber("AutoAim/PassAimToleranceDeg", 8.0);
     private static final LoggedTunableNumber passAimReleaseToleranceDeg =

@@ -110,6 +110,7 @@ test {
     [
             'shooter.sim.motionCompTimeScale',
             'shooter.sim.motionCompDistanceTimeScale',
+            'shooter.sim.phaseDelaySec',
             'autoAim.headingProfile.maxVelocityDegPerSec',
             'autoAim.headingProfile.maxAccelerationDegPerSec2',
             'autoAim.aimToleranceDeg',

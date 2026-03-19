@@ -6,7 +6,6 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj.Timer;
-import frc.robot.util.LoggedTunableNumber;
 import frc.robot.subsystems.shooter.LaunchCalculator;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterConstants;
@@ -14,11 +13,6 @@ import frc.robot.util.FieldConstants;
 
 /** Builds unified shot solutions from score/pass target geometry and motion compensation. */
 public final class ShotSolutionCalculator {
-    private static final LoggedTunableNumber maxHeadingRateDegPerSec =
-            new LoggedTunableNumber("ShotSolution/MaxHeadingRateDegPerSec", 540.0);
-    private static final LoggedTunableNumber headingRateFilterTaps =
-            new LoggedTunableNumber("ShotSolution/HeadingRateFilterTaps", 3.0);
-
     private final Shooter shooter;
 
     public ShotSolutionCalculator(Shooter shooter) {
@@ -31,14 +25,12 @@ public final class ShotSolutionCalculator {
 
     public ShotSolution createHubScoreSolution(
             LaunchCalculator.MotionCompensation compensation,
-            HeadingRateTracker headingRateTracker,
             boolean movingShot,
             double headingToleranceRad,
             double headingReleaseToleranceRad,
             double shooterRpmTolerance) {
         Pose2d targetPose = new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero);
         if (compensation == null) {
-            headingRateTracker.reset();
             return ShotSolution.invalid(targetPose);
         }
         return createScoreLikeSolution(
@@ -47,7 +39,8 @@ public final class ShotSolutionCalculator {
                 targetPose,
                 compensation.compensatedDistanceMeters(),
                 compensation.compensatedHeading(),
-                headingRateTracker,
+                compensation.desiredRobotHeading(),
+                compensation.desiredHeadingRateRadPerSec(),
                 headingToleranceRad,
                 headingReleaseToleranceRad,
                 shooterRpmTolerance);
@@ -68,7 +61,8 @@ public final class ShotSolutionCalculator {
                 targetPose,
                 distanceMeters,
                 targetHeading,
-                headingRateTracker,
+                targetHeading != null ? targetHeading.plus(Rotation2d.kPi) : null,
+                headingRateTracker.update(targetHeading != null ? targetHeading.plus(Rotation2d.kPi) : null),
                 headingToleranceRad,
                 headingReleaseToleranceRad,
                 shooterRpmTolerance);
@@ -89,7 +83,8 @@ public final class ShotSolutionCalculator {
                 targetPose,
                 distanceMeters,
                 targetHeading,
-                headingRateTracker,
+                targetHeading != null ? targetHeading.plus(Rotation2d.kPi) : null,
+                headingRateTracker.update(targetHeading != null ? targetHeading.plus(Rotation2d.kPi) : null),
                 headingToleranceRad,
                 headingReleaseToleranceRad,
                 shooterRpmTolerance);
@@ -101,12 +96,12 @@ public final class ShotSolutionCalculator {
             Pose2d targetPose,
             double distanceMeters,
             Rotation2d targetHeading,
-            HeadingRateTracker headingRateTracker,
+            Rotation2d desiredRobotHeading,
+            double desiredHeadingRateRadPerSec,
             double headingToleranceRad,
             double headingReleaseToleranceRad,
             double shooterRpmTolerance) {
-        if (!Double.isFinite(distanceMeters) || targetHeading == null) {
-            headingRateTracker.reset();
+        if (!Double.isFinite(distanceMeters) || targetHeading == null || desiredRobotHeading == null) {
             return ShotSolution.invalid(targetPose);
         }
 
@@ -115,12 +110,9 @@ public final class ShotSolutionCalculator {
                 || !Double.isFinite(shooterSetpoint.leftRpm())
                 || !Double.isFinite(shooterSetpoint.rightRpm())
                 || !Double.isFinite(shooterSetpoint.hoodAngleRad())) {
-            headingRateTracker.reset();
             return ShotSolution.invalid(targetPose);
         }
 
-        Rotation2d desiredRobotHeading = targetHeading.plus(Rotation2d.kPi);
-        double desiredHeadingRateRadPerSec = headingRateTracker.update(desiredRobotHeading);
         return new ShotSolution(
                 true,
                 intent,
@@ -147,8 +139,8 @@ public final class ShotSolutionCalculator {
 
     /** Tracks heading rate from successive desired-heading samples. */
     public static final class HeadingRateTracker {
-        private LinearFilter headingRateFilter = LinearFilter.movingAverage(currentHeadingRateFilterTaps());
-        private int lastFilterTaps = currentHeadingRateFilterTaps();
+        private LinearFilter headingRateFilter = LinearFilter.movingAverage(LaunchCalculator.currentHeadingRateFilterTaps());
+        private int lastFilterTaps = LaunchCalculator.currentHeadingRateFilterTaps();
         private Rotation2d lastHeading = null;
         private double lastTimestampSec = Double.NaN;
 
@@ -157,7 +149,7 @@ public final class ShotSolutionCalculator {
                 reset();
                 return 0.0;
             }
-            int desiredFilterTaps = currentHeadingRateFilterTaps();
+            int desiredFilterTaps = LaunchCalculator.currentHeadingRateFilterTaps();
             if (desiredFilterTaps != lastFilterTaps) {
                 headingRateFilter = LinearFilter.movingAverage(desiredFilterTaps);
                 lastFilterTaps = desiredFilterTaps;
@@ -168,11 +160,10 @@ public final class ShotSolutionCalculator {
                 double dtSec = nowSec - lastTimestampSec;
                 if (dtSec > 1e-6 && dtSec < 0.1) {
                     double rawRateRadPerSec = MathUtil.angleModulus(heading.minus(lastHeading).getRadians()) / dtSec;
-                    double maxHeadingRateRadPerSec = Math.toRadians(maxHeadingRateDegPerSec.get());
                     headingRateRadPerSec = MathUtil.clamp(
                             headingRateFilter.calculate(rawRateRadPerSec),
-                            -maxHeadingRateRadPerSec,
-                            maxHeadingRateRadPerSec);
+                            -LaunchCalculator.currentMaxHeadingRateRadPerSec(),
+                            LaunchCalculator.currentMaxHeadingRateRadPerSec());
                 }
             } else {
                 headingRateFilter.reset();
@@ -187,9 +178,5 @@ public final class ShotSolutionCalculator {
             lastHeading = null;
             lastTimestampSec = Double.NaN;
         }
-    }
-
-    private static int currentHeadingRateFilterTaps() {
-        return Math.max(1, (int) Math.round(headingRateFilterTaps.get()));
     }
 }

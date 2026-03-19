@@ -45,9 +45,9 @@ public final class ShooterConstants {
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 85.0;
     public static final double MOTION_COMP_TIME_SCALE =
-            simOverrideDouble("shooter.sim.motionCompTimeScale", 1.0);
+            simOverrideDouble("shooter.sim.motionCompTimeScale", 1.26);
     public static final double MOTION_COMP_DISTANCE_TIME_SCALE =
-            simOverrideDouble("shooter.sim.motionCompDistanceTimeScale", 1.0);
+            simOverrideDouble("shooter.sim.motionCompDistanceTimeScale", 0.92);
 
     /**
      * Shooter position relative to robot center, in robot coordinates (x=forward, y=left).
@@ -65,7 +65,8 @@ public final class ShooterConstants {
      * network transmission, actuator response). Applied before the iterative
      * time-distance convergence loop to project the robot pose forward.
      */
-    public static final double PHASE_DELAY_SEC = 0.03;
+    public static final double PHASE_DELAY_SEC =
+            simOverrideDouble("shooter.sim.phaseDelaySec", 0.01);
 
     /**
      * Seed shot map for interpolation.

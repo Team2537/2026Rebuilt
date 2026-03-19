@@ -471,6 +471,11 @@ public class Drive extends SubsystemBase {
         return getChassisSpeeds();
     }
 
+    /** Returns the latest commanded robot-relative chassis-speed setpoint. */
+    public ChassisSpeeds getSetpointChassisSpeeds() {
+        return previousSetpoint != null ? previousSetpoint.robotRelativeSpeeds() : new ChassisSpeeds();
+    }
+
     /** Returns the position of each module in radians. */
     public double[] getWheelRadiusCharacterizationPositions() {
         double[] values = new double[4];

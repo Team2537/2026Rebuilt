@@ -32,7 +32,7 @@ class LaunchCalculatorTest {
         }
 
         calculator = new LaunchCalculator(
-                timeMap,
+                timeMap::get,
                 ShooterConstants.ROBOT_TO_SHOOTER_OFFSET,
                 ShooterConstants.PHASE_DELAY_SEC,
                 ShooterConstants.MOTION_COMP_TIME_SCALE,

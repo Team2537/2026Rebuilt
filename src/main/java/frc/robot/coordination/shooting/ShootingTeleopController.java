@@ -19,6 +19,7 @@ import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.util.AutoAimHeadingConfig;
 import frc.robot.util.CycleCache;
 import frc.robot.util.FieldConstants;
+import frc.robot.util.LoggedTunableNumber;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
@@ -26,6 +27,9 @@ import org.littletonrobotics.junction.Logger;
 
 /** Encapsulates teleop shooting/aim logic around a unified {@link ShotSolution}. */
 public final class ShootingTeleopController {
+    private static final LoggedTunableNumber movingShotMinTranslationSpeedMps =
+            new LoggedTunableNumber("Shooting/MovingShotMinTranslationSpeedMps", 0.25);
+
     private final Drive drive;
     private final Shooter shooter;
     private final Intake intake;
@@ -37,7 +41,8 @@ public final class ShootingTeleopController {
     public record AimingContext(
             DoubleSupplier hubDistanceSupplier,
             Supplier<Rotation2d> hubHeadingSupplier,
-            BooleanSupplier aimReadySupplier) {}
+            BooleanSupplier aimReadySupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier) {}
 
     public enum RightTriggerMode {
         SHOOT,
@@ -69,24 +74,29 @@ public final class ShootingTeleopController {
     }
 
     public AimingContext createAimingContext() {
-        Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
-        Supplier<LaunchCalculator.MotionCompensation> motionCompensationSupplier =
-                createTeleopMotionCompensationSupplier(shootingPoseSupplier);
-        ShotSolutionCalculator.HeadingRateTracker headingRateTracker = shotSolutionCalculator.createHeadingRateTracker();
-        CycleCache<ShotSolution> cycleCache = new CycleCache<>();
-        Supplier<ShotSolution> scoreSolutionSupplier = () -> cycleCache.get(commandTelemetry.getCycle(), () ->
-                shotSolutionCalculator.createHubScoreSolution(
-                        motionCompensationSupplier.get(),
-                        headingRateTracker,
-                        false,
-                        AutoAimHeadingConfig.aimToleranceRad(),
-                        AutoAimHeadingConfig.aimReleaseToleranceRad(),
-                        ShooterConstants.scoreShooterRpmTolerance()));
-        ShotAimReadiness aimReadiness = new ShotAimReadiness();
+        Supplier<ShotSolution> scoreSolutionSupplier = createTeleopHubShotSolutionSupplier();
         return new AimingContext(
                 () -> scoreSolutionSupplier.get().distanceMeters(),
                 () -> scoreSolutionSupplier.get().targetHeading(),
-                () -> aimReadiness.update(scoreSolutionSupplier.get(), RobotState.getInstance().getRotation()));
+                createAimReadySupplier(scoreSolutionSupplier),
+                scoreSolutionSupplier);
+    }
+
+    public Command createSelectedShootCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return createSelectedShootCommand(
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                null,
+                null,
+                hubShotSolutionSupplier,
+                null,
+                manualFeedOverrideSupplier);
     }
 
     /** Publishes the current right-trigger target selection for driver verification. */
@@ -110,6 +120,7 @@ public final class ShootingTeleopController {
                 distanceMetersSupplier,
                 targetHeadingSupplier,
                 null,
+                null,
                 manualFeedOverrideSupplier);
     }
 
@@ -119,6 +130,26 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier distanceMetersSupplier,
             Supplier<Rotation2d> targetHeadingSupplier,
+            BooleanSupplier aimReadyOverrideSupplier,
+            BooleanSupplier manualFeedOverrideSupplier) {
+        return createSelectedShootCommand(
+                xSupplier,
+                ySupplier,
+                omegaFallbackSupplier,
+                distanceMetersSupplier,
+                targetHeadingSupplier,
+                null,
+                aimReadyOverrideSupplier,
+                manualFeedOverrideSupplier);
+    }
+
+    Command createSelectedShootCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            DoubleSupplier distanceMetersSupplier,
+            Supplier<Rotation2d> targetHeadingSupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier,
             BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
         return withShootingConstraintProfile(
@@ -134,12 +165,36 @@ public final class ShootingTeleopController {
                                 omegaFallbackSupplier,
                                 distanceMetersSupplier,
                                 targetHeadingSupplier,
+                                hubShotSolutionSupplier,
                                 aimReadyOverrideSupplier,
                                 manualFeedOverrideSupplier,
-                                () -> false),
+                                () -> !dashboardOverrides.isFeedingDisabled()),
                         () -> dashboardOverrides.isAutoAimEnabled()
                                 && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
                         .withName("ShooterTriggerSelectedMode"));
+    }
+
+    public Command createSelectedAimCommand(
+            DoubleSupplier xSupplier,
+            DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier) {
+        return withShootingConstraintProfile(
+                Commands.either(
+                        createOverrideAutoAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier),
+                        createZoneAwareAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                null,
+                                null,
+                                hubShotSolutionSupplier),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterDriverAim"));
     }
 
     public Command createSelectedAimCommand(
@@ -159,7 +214,8 @@ public final class ShootingTeleopController {
                                 ySupplier,
                                 omegaFallbackSupplier,
                                 hubDistanceMetersSupplier,
-                                hubTargetHeadingSupplier),
+                                hubTargetHeadingSupplier,
+                                null),
                         () -> dashboardOverrides.isAutoAimEnabled()
                                 && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
                         .withName("ShooterDriverAim"));
@@ -199,19 +255,45 @@ public final class ShootingTeleopController {
     private Supplier<LaunchCalculator.MotionCompensation> createTeleopMotionCompensationSupplier(
             Supplier<Pose2d> shootingPoseSupplier) {
         CycleCache<LaunchCalculator.MotionCompensation> cycleCache = new CycleCache<>();
+        LaunchCalculator.CompensationTracker compensationTracker =
+                new LaunchCalculator.CompensationTracker();
         LaunchCalculator.MotionCompensation emptyCompensation = new LaunchCalculator.MotionCompensation(
                 Double.NaN,
                 Double.NaN,
                 Double.NaN,
                 Double.NaN,
                 Double.NaN,
-                null);
+                null,
+                null,
+                0.0);
 
         return () -> cycleCache.get(commandTelemetry.getCycle(), () -> {
+            ChassisSpeeds compensationSpeeds = RobotState.getInstance().getSetpointChassisSpeeds();
             LaunchCalculator.MotionCompensation compensation = shooter.getMotionCompensationToHub(
                     shootingPoseSupplier.get(),
-                    RobotState.getInstance().getMeasuredChassisSpeeds());
+                    compensationSpeeds,
+                    compensationTracker);
             return compensation != null ? compensation : emptyCompensation;
+        });
+    }
+
+    private Supplier<ShotSolution> createTeleopHubShotSolutionSupplier() {
+        Supplier<Pose2d> shootingPoseSupplier = createShootingPoseSupplier();
+        Supplier<LaunchCalculator.MotionCompensation> motionCompensationSupplier =
+                createTeleopMotionCompensationSupplier(shootingPoseSupplier);
+        CycleCache<ShotSolution> cycleCache = new CycleCache<>();
+        return () -> cycleCache.get(commandTelemetry.getCycle(), () -> {
+            boolean movingShot = isMovingShot();
+            return shotSolutionCalculator.createHubScoreSolution(
+                    motionCompensationSupplier.get(),
+                    movingShot,
+                    movingShot ? AutoAimHeadingConfig.movingAimToleranceRad() : AutoAimHeadingConfig.aimToleranceRad(),
+                    movingShot
+                            ? AutoAimHeadingConfig.movingAimReleaseToleranceRad()
+                            : AutoAimHeadingConfig.aimReleaseToleranceRad(),
+                    movingShot
+                            ? ShooterConstants.movingShooterRpmTolerance()
+                            : ShooterConstants.scoreShooterRpmTolerance());
         });
     }
 
@@ -228,22 +310,38 @@ public final class ShootingTeleopController {
             Supplier<Rotation2d> scoreTargetHeadingSupplier,
             double scoreHeadingToleranceRad,
             double scoreHeadingReleaseToleranceRad,
-            double scoreShooterRpmTolerance) {
+            double scoreShooterRpmTolerance,
+            Supplier<ShotSolution> allianceZoneScoreSolutionSupplier) {
         ShotSolutionCalculator.HeadingRateTracker scoreTracker = shotSolutionCalculator.createHeadingRateTracker();
         ShotSolutionCalculator.HeadingRateTracker passTracker = shotSolutionCalculator.createHeadingRateTracker();
         CycleCache<ShotSolution> cycleCache = new CycleCache<>();
         return () -> cycleCache.get(commandTelemetry.getCycle(), () -> {
             Pose2d robotPose = RobotState.getInstance().getPose();
             if (FieldConstants.isInAllianceZone(robotPose)) {
-                ShotSolution solution = shotSolutionCalculator.createScoreSolution(
-                        new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero),
-                        scoreDistanceMetersSupplier.getAsDouble(),
-                        scoreTargetHeadingSupplier.get(),
-                        scoreTracker,
-                        false,
-                        scoreHeadingToleranceRad,
-                        scoreHeadingReleaseToleranceRad,
-                        scoreShooterRpmTolerance);
+                ShotSolution solution;
+                if (allianceZoneScoreSolutionSupplier != null) {
+                    solution = allianceZoneScoreSolutionSupplier.get();
+                } else {
+                    boolean movingShot = isMovingShot();
+                    double headingToleranceRad = movingShot
+                            ? AutoAimHeadingConfig.movingAimToleranceRad()
+                            : scoreHeadingToleranceRad;
+                    double headingReleaseToleranceRad = movingShot
+                            ? AutoAimHeadingConfig.movingAimReleaseToleranceRad()
+                            : scoreHeadingReleaseToleranceRad;
+                    double shooterRpmTolerance = movingShot
+                            ? ShooterConstants.movingShooterRpmTolerance()
+                            : scoreShooterRpmTolerance;
+                    solution = shotSolutionCalculator.createScoreSolution(
+                            new Pose2d(FieldConstants.getHubTargetTranslation(), Rotation2d.kZero),
+                            scoreDistanceMetersSupplier != null ? scoreDistanceMetersSupplier.getAsDouble() : Double.NaN,
+                            scoreTargetHeadingSupplier != null ? scoreTargetHeadingSupplier.get() : null,
+                            scoreTracker,
+                            movingShot,
+                            headingToleranceRad,
+                            headingReleaseToleranceRad,
+                            shooterRpmTolerance);
+                }
                 logTargetSelection(toTargetSelection(solution));
                 return solution;
             }
@@ -267,6 +365,15 @@ public final class ShootingTeleopController {
         });
     }
 
+    private static boolean isMovingShot() {
+        ChassisSpeeds measuredSpeeds = RobotState.getInstance().getMeasuredChassisSpeeds();
+        if (measuredSpeeds == null) {
+            return false;
+        }
+        return Math.hypot(measuredSpeeds.vxMetersPerSecond, measuredSpeeds.vyMetersPerSecond)
+                >= movingShotMinTranslationSpeedMps.get();
+    }
+
     private BooleanSupplier createAimReadySupplier(Supplier<ShotSolution> shotSolutionSupplier) {
         ShotAimReadiness aimReadiness = new ShotAimReadiness();
         return () -> aimReadiness.update(shotSolutionSupplier.get(), RobotState.getInstance().getRotation());
@@ -278,6 +385,7 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaSupplier,
             DoubleSupplier hubDistanceMetersSupplier,
             Supplier<Rotation2d> hubTargetHeadingSupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier,
             BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
             BooleanSupplier automaticFeedEnabledSupplier) {
@@ -286,7 +394,8 @@ public final class ShootingTeleopController {
                 hubTargetHeadingSupplier,
                 AutoAimHeadingConfig.aimToleranceRad(),
                 AutoAimHeadingConfig.aimReleaseToleranceRad(),
-                ShooterConstants.scoreShooterRpmTolerance());
+                ShooterConstants.scoreShooterRpmTolerance(),
+                hubShotSolutionSupplier);
         return Commands.either(
                 createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaSupplier),
                 createShootCommand(
@@ -304,13 +413,15 @@ public final class ShootingTeleopController {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaSupplier,
             DoubleSupplier hubDistanceMetersSupplier,
-            Supplier<Rotation2d> hubTargetHeadingSupplier) {
+            Supplier<Rotation2d> hubTargetHeadingSupplier,
+            Supplier<ShotSolution> hubShotSolutionSupplier) {
         Supplier<ShotSolution> shotSolutionSupplier = createSelectedShotSolutionSupplier(
                 hubDistanceMetersSupplier,
                 hubTargetHeadingSupplier,
                 AutoAimHeadingConfig.aimToleranceRad(),
                 AutoAimHeadingConfig.aimReleaseToleranceRad(),
-                ShooterConstants.scoreShooterRpmTolerance());
+                ShooterConstants.scoreShooterRpmTolerance(),
+                hubShotSolutionSupplier);
         return Commands.either(
                 createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaSupplier),
                 createAimCommand(xSupplier, ySupplier, shotSolutionSupplier),
@@ -339,7 +450,8 @@ public final class ShootingTeleopController {
                 hubTargetHeadingSupplier,
                 AutoAimHeadingConfig.aimToleranceRad(),
                 AutoAimHeadingConfig.aimReleaseToleranceRad(),
-                ShooterConstants.scoreShooterRpmTolerance());
+                ShooterConstants.scoreShooterRpmTolerance(),
+                null);
         return Commands.either(
                 createBlockedRightTriggerCommand(xSupplier, ySupplier, omegaSupplier),
                 createShootWithoutAimCommand(
@@ -440,7 +552,7 @@ public final class ShootingTeleopController {
                                 dashboardOverrides::getAimDistanceMeters,
                                 () -> true,
                                 manualFeedOverrideSupplier,
-                                () -> false)
+                                () -> !dashboardOverrides.isFeedingDisabled())
                         .withName("ShooterShootOverrideDistance"),
                 intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
                 .withName("ShooterTriggerOverrideAutoAimShoot");

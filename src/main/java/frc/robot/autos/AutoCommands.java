@@ -146,7 +146,8 @@ public final class AutoCommands {
             double shooterRpmTolerance) {
         RobotState robotState = RobotState.getInstance();
         ShotSolutionCalculator shotSolutionCalculator = new ShotSolutionCalculator(shooter);
-        ShotSolutionCalculator.HeadingRateTracker headingRateTracker = shotSolutionCalculator.createHeadingRateTracker();
+        LaunchCalculator.CompensationTracker compensationTracker =
+                new LaunchCalculator.CompensationTracker();
         CycleCache<LaunchCalculator.MotionCompensation> compensationCache = new CycleCache<>();
         CycleCache<ShotSolution> shotSolutionCache = new CycleCache<>();
 
@@ -154,10 +155,10 @@ public final class AutoCommands {
             LaunchCalculator.MotionCompensation compensation = compensationCache.get(loopCycleKey(), () ->
                     shooter.getMotionCompensationToHub(
                             robotState.getPose(),
-                            robotState.getMeasuredChassisSpeeds()));
+                            robotState.getSetpointChassisSpeeds(),
+                            compensationTracker));
             return shotSolutionCalculator.createHubScoreSolution(
                     compensation,
-                    headingRateTracker,
                     movingShot,
                     headingToleranceRad,
                     headingReleaseToleranceRad,
