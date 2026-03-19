@@ -3,6 +3,7 @@ package frc.robot.subsystems.shooter;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.RobotBase;
+import frc.robot.util.LoggedTunableNumber;
 
 /** Constants for the shooter hardware implementation. */
 public final class ShooterConstants {
@@ -35,10 +36,12 @@ public final class ShooterConstants {
 
     public static final double STATUS_UPDATE_HZ = 50.0;
 
-    public static final double STATIONARY_SHOOTER_RPM_TOLERANCE = 50.0;
-    public static final double SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE = 100.0;
-    public static final double PASSING_SHOOTER_RPM_TOLERANCE = 250.0;
-    public static final double SHOOTER_RPM_TOLERANCE = SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE;
+    private static final LoggedTunableNumber scoreShooterRpmTolerance =
+            new LoggedTunableNumber("Shooter/ScoreRpmTolerance", 50.0);
+    private static final LoggedTunableNumber movingShooterRpmTolerance =
+            new LoggedTunableNumber("Shooter/MovingRpmTolerance", 100.0);
+    private static final LoggedTunableNumber passingShooterRpmTolerance =
+            new LoggedTunableNumber("Shooter/PassingRpmTolerance", 250.0);
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 85.0;
     public static final double MOTION_COMP_TIME_SCALE =
@@ -83,6 +86,22 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3350.0, 3550.0, 3875.0, 4250.0, 4300.0, 4650.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {6.0, 14.5, 17.5, 21.5, 24.5, 27.0, 30.0};
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.24, 1.14, 1.13, 1.20, 1.24, 1.36, 1.41};
+
+    public static double scoreShooterRpmTolerance() {
+        return scoreShooterRpmTolerance.get();
+    }
+
+    public static double movingShooterRpmTolerance() {
+        return movingShooterRpmTolerance.get();
+    }
+
+    public static double passingShooterRpmTolerance() {
+        return passingShooterRpmTolerance.get();
+    }
+
+    public static double shooterRpmTolerance() {
+        return movingShooterRpmTolerance();
+    }
 
     public static final double[] SHOT_MAP_DISTANCE_METERS =
         isReal ? SHOT_MAP_DISTANCE_METERS_REAL : SHOT_MAP_DISTANCE_METERS_SIM;

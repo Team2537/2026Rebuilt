@@ -9,12 +9,12 @@ import edu.wpi.first.wpilibj.simulation.DriverStationSim;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.subsystems.shooter.Shooter;
-import frc.robot.subsystems.shooter.Shooter.ReadinessMode;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterConstants;
 import frc.robot.subsystems.transfer.Transfer;
 import frc.robot.subsystems.transfer.TransferConstants;
 import frc.robot.subsystems.transfer.TransferIO;
+import frc.robot.util.AutoAimHeadingConfig;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,7 +91,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(() -> 4.0, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES);
+        runSchedulerCycles(ShootCoordinatorConstants.gateReadyDebounceCycles());
         assertFalse(shooter.isKickerActive());
         assertEquals(0.0, transferIO.percent, EPSILON);
 
@@ -113,7 +113,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
+        runSchedulerCycles(ShootCoordinatorConstants.gateReadyDebounceCycles() + 1);
         assertTrue(shooter.isKickerActive());
         assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
 
@@ -142,7 +142,7 @@ class ShootCoordinatorTest {
 
         Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
         CommandScheduler.getInstance().schedule(command);
-        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
+        runSchedulerCycles(ShootCoordinatorConstants.gateReadyDebounceCycles() + 1);
         assertTrue(shooter.isKickerActive());
 
         distanceMeters.set(Double.POSITIVE_INFINITY);
@@ -168,7 +168,6 @@ class ShootCoordinatorTest {
 
         Command command = coordinator.shootForDistance(
                 distanceMeters::get,
-                () -> false,
                 () -> false,
                 () -> true,
                 () -> true);
@@ -227,7 +226,7 @@ class ShootCoordinatorTest {
         Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get);
         CommandScheduler.getInstance().schedule(command);
 
-        boolean gateOpened = runUntil(shooter::isKickerActive, ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 3);
+        boolean gateOpened = runUntil(shooter::isKickerActive, ShootCoordinatorConstants.gateReadyDebounceCycles() + 3);
         assertTrue(gateOpened);
 
         aimReady.set(false);
@@ -236,7 +235,7 @@ class ShootCoordinatorTest {
         assertEquals(0.0, transferIO.percent, EPSILON);
 
         aimReady.set(true);
-        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES - 1);
+        runSchedulerCycles(ShootCoordinatorConstants.gateReadyDebounceCycles() - 1);
         assertFalse(
                 shooter.isKickerActive(),
                 "Debounce should require a full fresh ready window after aim drop.");
@@ -246,7 +245,7 @@ class ShootCoordinatorTest {
     }
 
     @Test
-    void shotOnMoveReadinessDropDebounceKeepsFeedAliveForOneFlicker() {
+    void movingShotReadinessDropDebounceKeepsFeedAliveForOneFlicker() {
         TestShooterIO shooterIO = new TestShooterIO();
         TestTransferIO transferIO = new TestTransferIO();
         Shooter shooter = new Shooter(shooterIO);
@@ -255,56 +254,72 @@ class ShootCoordinatorTest {
                 new ShootCoordinator(shooter, transfer, ShootCoordinatorConstants.FeedGateMode.SHOOTER_AND_AIM);
         AtomicReference<Boolean> aimReady = new AtomicReference<>(true);
 
-        Command command = coordinator.shootForDistance(() -> 4.0, aimReady::get, () -> true, () -> false, () -> true);
+        Command command = coordinator.shootForShot(
+                () -> new ShotSolution(
+                        true,
+                        ShotIntent.SCORE,
+                        true,
+                        new edu.wpi.first.math.geometry.Pose2d(),
+                        4.0,
+                        null,
+                        null,
+                        0.0,
+                        AutoAimHeadingConfig.movingAimToleranceRad(),
+                        AutoAimHeadingConfig.movingAimReleaseToleranceRad(),
+                        ShooterConstants.movingShooterRpmTolerance(),
+                        shooter.calculateSetpointForDistance(4.0)),
+                aimReady::get,
+                () -> false,
+                () -> true);
         CommandScheduler.getInstance().schedule(command);
 
-        runSchedulerCycles(ShootCoordinatorConstants.GATE_READY_DEBOUNCE_CYCLES + 1);
+        runSchedulerCycles(ShootCoordinatorConstants.gateReadyDebounceCycles() + 1);
         assertTrue(shooter.isKickerActive());
 
         aimReady.set(false);
         runSchedulerCycles(1);
-        assertTrue(shooter.isKickerActive(), "Shot-on-move drop debounce should mask a one-cycle readiness flicker.");
+        assertTrue(shooter.isKickerActive());
         assertEquals(TransferConstants.RUN_TRANSFER_PERCENT, transferIO.percent, EPSILON);
 
         runSchedulerCycles(1);
-        assertFalse(shooter.isKickerActive(), "A sustained readiness loss should still close the gate.");
+        assertFalse(shooter.isKickerActive());
         assertEquals(0.0, transferIO.percent, EPSILON);
     }
 
     @Test
-    void shotOnMoveToleranceIsLooserThanStationaryTolerance() {
-        double rpmError = (ShooterConstants.STATIONARY_SHOOTER_RPM_TOLERANCE
-                + ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE) / 2.0;
+    void higherToleranceMarksReadinessEarlier() {
+        double rpmError = (ShooterConstants.scoreShooterRpmTolerance()
+                + ShooterConstants.movingShooterRpmTolerance()) / 2.0;
         OffsetShooterIO shooterIO = new OffsetShooterIO(rpmError);
         Shooter shooter = new Shooter(shooterIO);
 
         shooter.setTargetsForDistance(4.0);
         runSchedulerCycles(1);
 
-        var stationaryReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.STATIONARY);
-        var shotOnMoveReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.SHOT_ON_MOVE);
+        var tighterReadiness = shooter.getReadinessDiagnosticsNow(ShooterConstants.scoreShooterRpmTolerance());
+        var looserReadiness = shooter.getReadinessDiagnosticsNow(ShooterConstants.movingShooterRpmTolerance());
 
-        assertFalse(stationaryReadiness.leftVelocityAtSetpoint());
-        assertFalse(stationaryReadiness.rightVelocityAtSetpoint());
-        assertTrue(shotOnMoveReadiness.leftVelocityAtSetpoint());
-        assertTrue(shotOnMoveReadiness.rightVelocityAtSetpoint());
+        assertFalse(tighterReadiness.leftVelocityAtSetpoint());
+        assertFalse(tighterReadiness.rightVelocityAtSetpoint());
+        assertTrue(looserReadiness.leftVelocityAtSetpoint());
+        assertTrue(looserReadiness.rightVelocityAtSetpoint());
     }
 
     @Test
-    void passingToleranceIsLooserThanShotOnMoveTolerance() {
-        double rpmError = (ShooterConstants.SHOT_ON_MOVE_SHOOTER_RPM_TOLERANCE
-                + ShooterConstants.PASSING_SHOOTER_RPM_TOLERANCE) / 2.0;
+    void passingToleranceIsLooserThanScoreTolerance() {
+        double rpmError = (ShooterConstants.movingShooterRpmTolerance()
+                + ShooterConstants.passingShooterRpmTolerance()) / 2.0;
         OffsetShooterIO shooterIO = new OffsetShooterIO(rpmError);
         Shooter shooter = new Shooter(shooterIO);
 
         shooter.setTargetsForDistance(4.0);
         runSchedulerCycles(1);
 
-        var shotOnMoveReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.SHOT_ON_MOVE);
-        var passingReadiness = shooter.getReadinessDiagnosticsNow(ReadinessMode.PASSING);
+        var scoreReadiness = shooter.getReadinessDiagnosticsNow(ShooterConstants.movingShooterRpmTolerance());
+        var passingReadiness = shooter.getReadinessDiagnosticsNow(ShooterConstants.passingShooterRpmTolerance());
 
-        assertFalse(shotOnMoveReadiness.leftVelocityAtSetpoint());
-        assertFalse(shotOnMoveReadiness.rightVelocityAtSetpoint());
+        assertFalse(scoreReadiness.leftVelocityAtSetpoint());
+        assertFalse(scoreReadiness.rightVelocityAtSetpoint());
         assertTrue(passingReadiness.leftVelocityAtSetpoint());
         assertTrue(passingReadiness.rightVelocityAtSetpoint());
     }
@@ -336,6 +351,26 @@ class ShootCoordinatorTest {
         AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
 
         Command command = coordinator.aimForDistance(distanceMeters::get);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(2);
+        assertTrue(shooter.getTargetAverageShooterRpm() > 0.0);
+
+        distanceMeters.set(Double.NaN);
+        runSchedulerCycles(2);
+
+        assertEquals(0.0, shooter.getTargetAverageShooterRpm(), EPSILON);
+    }
+
+    @Test
+    void shootForDistanceClearsTargetsWhenDistanceBecomesInvalid() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(new TestTransferIO());
+        ShootCoordinator coordinator = new ShootCoordinator(shooter, transfer);
+        AtomicReference<Double> distanceMeters = new AtomicReference<>(4.0);
+
+        Command command = coordinator.shootForDistance(distanceMeters::get, () -> true);
         CommandScheduler.getInstance().schedule(command);
 
         runSchedulerCycles(2);

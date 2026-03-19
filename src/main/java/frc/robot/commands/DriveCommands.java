@@ -20,8 +20,8 @@ import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.RobotState;
+import frc.robot.coordination.shooting.ShotYawController;
 import frc.robot.subsystems.drive.Drive;
-import frc.robot.util.FieldConstants;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.function.BooleanSupplier;
@@ -30,10 +30,6 @@ import java.util.function.Supplier;
 
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
-    private static final Rotation2d HUB_AUTO_ALIGN_HEADING_OFFSET = Rotation2d.kPi;
-    // Keep the snap command's finish threshold aligned with HubAlignController's
-    // internal tolerance. If snap demands a tighter threshold than the controller
-    // will actively correct to, the command can remain scheduled with zero output.
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
@@ -134,7 +130,7 @@ public final class DriveCommands {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaSupplier,
             Supplier<Rotation2d> targetHeadingSupplier) {
-        HubAlignController alignController = new HubAlignController();
+        ShotYawController yawController = new ShotYawController();
         HeadingSnapState state = new HeadingSnapState();
         BooleanSupplier turningStickActiveSupplier =
                 () -> Math.abs(MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND)) > 1e-6;
@@ -144,11 +140,12 @@ public final class DriveCommands {
                     RobotState robotState = RobotState.getInstance();
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(
                             -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
-                    double omega = alignController.calculate(
-                            robotState.getRotation().getRadians(),
+                    double omega = yawController.calculate(
+                            robotState.getRotation(),
                             robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
                             state.targetHeading,
-                            0.0);
+                            0.0,
+                            drive.getMaxAngularSpeedRadPerSec());
                     ChassisSpeeds speeds = new ChassisSpeeds(
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
                             linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
@@ -165,7 +162,6 @@ public final class DriveCommands {
                         snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
                     }
                     state.targetHeading = snappedHeading;
-                    alignController.reset(RobotState.getInstance().getRotation().getRadians(), snappedHeading);
                 })
                 .until(() -> turningStickActiveSupplier.getAsBoolean()
                         || Math.abs(MathUtil.angleModulus(
@@ -222,78 +218,31 @@ public final class DriveCommands {
                 .withName("DriveWheelRadiusCharacterization");
     }
 
-    /**
-     * Drive command that keeps translational joystick control and auto-rotates to
-     * face the hub using odometry + field layout.
-     */
-    public static Command autoAlignToHubPose(
-            Drive drive,
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier) {
-        return autoAlignToHubPose(
-                drive,
-                xSupplier,
-                ySupplier,
-                omegaFallbackSupplier,
-                () -> FieldConstants.getHubFacingHeading(RobotState.getInstance().getPose()));
-    }
 
-    /**
-     * Drive command that keeps translational joystick control and auto-rotates to
-     * a supplied field heading.
-     */
-    public static Command autoAlignToHubPose(
+    /** Keeps driver translation while yaw is owned by a supplied heading target. */
+    public static Command driveWhileAiming(
             Drive drive,
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            Supplier<Rotation2d> headingSupplier) {
-        return autoAlignToHubPose(
-                drive,
-                xSupplier,
-                ySupplier,
-                omegaFallbackSupplier,
-                headingSupplier,
-                () -> false);
-    }
-
-    /**
-     * Drive command that keeps translational joystick control and auto-rotates to
-     * a supplied field heading.
-     * Optionally turns the modules to an X arrangement when the robot is idle and
-     * the supplied lock condition is true.
-     */
-    public static Command autoAlignToHubPose(
-            Drive drive,
-            DoubleSupplier xSupplier,
-            DoubleSupplier ySupplier,
-            DoubleSupplier omegaFallbackSupplier,
-            Supplier<Rotation2d> headingSupplier,
+            Supplier<Rotation2d> desiredHeadingSupplier,
+            DoubleSupplier desiredHeadingRateSupplier,
             BooleanSupplier xLockConditionSupplier) {
-        HubAlignController alignController = new HubAlignController();
+        ShotYawController yawController = new ShotYawController();
 
         return Commands.run(
                 () -> {
                     RobotState robotState = RobotState.getInstance();
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(
                             -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
-
-                    Rotation2d targetHeading = applyHubAutoAlignHeadingOffset(headingSupplier.get());
-
-                    double fallbackOmegaInput = MathUtil.applyDeadband(
-                            omegaFallbackSupplier.getAsDouble(), DEADBAND);
-                    double fallbackOmega = getCubicScaledOmega(fallbackOmegaInput);
-                    fallbackOmega *= drive.getMaxAngularSpeedRadPerSec();
-
-                    double omega = alignController.calculate(
-                            robotState.getRotation().getRadians(),
+                    Rotation2d desiredHeading = desiredHeadingSupplier.get();
+                    double omega = yawController.calculate(
+                            robotState.getRotation(),
                             robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
-                            targetHeading,
-                            fallbackOmega);
+                            desiredHeading,
+                            desiredHeadingRateSupplier.getAsDouble(),
+                            drive.getMaxAngularSpeedRadPerSec());
 
-                    boolean noDriverInput = linearVelocity.getNorm() <= 1e-6
-                            && Math.abs(fallbackOmegaInput) <= 1e-6;
+                    boolean noDriverInput = linearVelocity.getNorm() <= 1e-6;
                     if (noDriverInput && xLockConditionSupplier.getAsBoolean()) {
                         drive.stopWithX();
                         return;
@@ -303,23 +252,13 @@ public final class DriveCommands {
                             linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
                             linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
                             omega);
-
                     ChassisSpeeds commandSpeeds = drive.isFieldOriented()
                             ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
                             : speeds;
-
                     drive.runDriverVelocity(commandSpeeds);
                 },
                 drive)
-                .beforeStarting(() -> {
-                    Rotation2d initialTarget = applyHubAutoAlignHeadingOffset(headingSupplier.get());
-                    alignController.reset(RobotState.getInstance().getRotation().getRadians(), initialTarget);
-                })
-                .withName("DriveAutoAlignToHubPose");
-    }
-
-    private static Rotation2d applyHubAutoAlignHeadingOffset(Rotation2d heading) {
-        return heading == null ? null : heading.plus(HUB_AUTO_ALIGN_HEADING_OFFSET);
+                .withName("DriveWhileAiming");
     }
 
     private static Rotation2d snapToNearestCardinal(Rotation2d heading) {

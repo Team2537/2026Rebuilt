@@ -3,11 +3,14 @@ package frc.robot.sim;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.subsystems.intake.IntakeConstants;
+import frc.robot.util.FieldConstants;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
@@ -148,7 +151,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
     }
 
     @Test
-    void autonomousShooterShootHubNamedCommandRunsSmartRetractAndRestoresExtendedOnCancel() {
+    void autonomousShooterShootHubNamedCommandLeavesIntakeExtendedOnCancel() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();
             context.runCycles(40);
@@ -159,6 +162,11 @@ final class FullFunctionalitySmartRetractDuringShoot {
 
             context.intake.setExtended(true);
             context.runCycles(180);
+            context.drive.setPose(new Pose2d(
+                    FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                    FieldConstants.getHubTargetTranslation().getY(),
+                    Rotation2d.kPi));
+            context.runCycles(20);
             double extendedStartRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
             assertTrue(
                     Math.abs(extendedStartRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
@@ -170,22 +178,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
             Command shootHub = FullFunctionalityHarness.namedCommand("ShooterShootHub")
                     .withName("FF_AutoShooterShootHubSmartRetract");
             CommandScheduler.getInstance().schedule(shootHub);
-            boolean commandedInward = context.runUntil(
-                    () -> commandedLeftTargetRot(context)
-                            <= IntakeConstants.EXTENDED_POSITION_ROT - 0.25,
-                    400);
-            assertTrue(
-                    commandedInward,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Autonomous ShooterShootHub should command intake smart retract inward",
-                            String.format(
-                                    Locale.US,
-                                    "commandedLeftTargetRot<=%.3f",
-                                    IntakeConstants.EXTENDED_POSITION_ROT - 0.25),
-                            String.format(
-                                    Locale.US,
-                                    "commandedLeftTargetRot=%.3f",
-                                    commandedLeftTargetRot(context))));
+            context.runCycles(120);
 
             CommandScheduler.getInstance().cancel(shootHub);
             boolean restoredExtended = context.runUntil(

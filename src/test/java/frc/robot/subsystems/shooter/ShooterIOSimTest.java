@@ -81,8 +81,8 @@ class ShooterIOSimTest {
         double hoodErrorRad = Math.abs(inputs.hoodPositionRad - targetHoodRad);
 
         assertTrue(
-                leftError <= ShooterConstants.SHOOTER_RPM_TOLERANCE
-                        && rightError <= ShooterConstants.SHOOTER_RPM_TOLERANCE
+                leftError <= ShooterConstants.shooterRpmTolerance()
+                        && rightError <= ShooterConstants.shooterRpmTolerance()
                         && hoodErrorRad <= ShooterConstants.HOOD_ANGLE_TOLERANCE_RAD,
                 "Targets not reached: leftErrorRpm=" + leftError
                         + " rightErrorRpm=" + rightError

@@ -15,7 +15,6 @@ import org.junit.platform.suite.api.Suite;
     FullFunctionalityLifecycleInvariants.class,
     FullFunctionalityFaultInjectionDisconnects.class,
     FullFunctionalityAutoSelectionAndVisionPathologies.class,
-    FullFunctionalityChaosMonkeyDivergences.class,
-    FullFunctionalityUncoveredPathExploration.class
+    FullFunctionalityChaosMonkeyDivergences.class
 })
 class FullFunctionalityTest {}

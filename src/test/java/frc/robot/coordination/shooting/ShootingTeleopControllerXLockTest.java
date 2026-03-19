@@ -187,6 +187,27 @@ class ShootingTeleopControllerXLockTest {
     }
 
     @Test
+    void blockedNeutralBandStillAllowsManualRotationWhileAiming() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+
+        Command command = fixture.controller.createSelectedAimCommand(
+                () -> 0.0,
+                () -> 0.0,
+                () -> 0.65,
+                () -> 4.0,
+                () -> Rotation2d.kZero);
+        CommandScheduler.getInstance().schedule(command);
+
+        fixture.runSchedulerCycles(3);
+
+        assertTrue(fixture.hasAnyDriveVelocityCommanded(), "Blocked aim should still pass driver omega through.");
+    }
+
+    @Test
     void enteringBlockedNeutralBandStopsManualFeed() {
         fixture.setAlliance(AllianceStationID.Blue1);
         fixture.setPose(new Pose2d(
@@ -440,6 +461,15 @@ class ShootingTeleopControllerXLockTest {
                 }
             }
             return true;
+        }
+
+        private boolean hasAnyDriveVelocityCommanded() {
+            for (TestModuleIO moduleIO : moduleIOs) {
+                if (Math.abs(moduleIO.driveVelocityRadPerSec) > 1e-6) {
+                    return true;
+                }
+            }
+            return false;
         }
 
     }

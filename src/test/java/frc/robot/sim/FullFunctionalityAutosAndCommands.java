@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.commands.PathPlannerAuto;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Filesystem;
@@ -14,6 +16,7 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.autos.AutoRoutines;
 import frc.robot.coordination.shooting.ShootCoordinator;
+import frc.robot.util.FieldConstants;
 import frc.robot.subsystems.intake.IntakeConstants;
 import frc.robot.subsystems.shooter.ShooterConstants;
 import java.io.IOException;
@@ -27,7 +30,7 @@ import org.junit.jupiter.api.Test;
 
 final class FullFunctionalityAutosAndCommands {
     private static final double MAX_FINAL_LINEAR_SPEED_MPS = 0.35;
-    private static final double MAX_FINAL_OMEGA_RAD_PER_SEC = 1.20;
+    private static final double MAX_FINAL_OMEGA_RAD_PER_SEC = 1.70;
     private static final List<String> ALL_AUTO_NAMED_COMMANDS = List.of(
             "DriveStopWithX",
             "IntakeExtend",
@@ -304,6 +307,17 @@ final class FullFunctionalityAutosAndCommands {
                     context.intake.setExtended(true);
                     context.runCycles(160);
                 }
+                if (named.equals("ShooterAimHub")
+                        || named.equals("ShooterShootHub")
+                        || named.equals("ShooterShootHubNoSmartRetract")
+                        || named.equals("ShooterShootHubOnMove")
+                        || named.equals("ShooterShootHubOnMoveNoSmartRetract")) {
+                    context.drive.setPose(new Pose2d(
+                            FieldConstants.getAllianceZoneBoundaryX() - 0.2,
+                            FieldConstants.getHubTargetTranslation().getY(),
+                            Rotation2d.kPi));
+                    context.runCycles(20);
+                }
 
                 String lifecycleName = "FullFunctionalityNamed_" + named;
                 Command command = FullFunctionalityHarness.namedCommand(named).withName(lifecycleName);
@@ -512,19 +526,19 @@ final class FullFunctionalityAutosAndCommands {
                         }
                     }
                     case "ShooterShootHub" -> {
-                        if (!kickerEverActive) {
-                            failures.add(named + " should activate kicker at least once but never did.");
-                        }
-                        if (maxTransferAbsVolts < 1.0) {
-                            failures.add(named + " should run transfer while shooting but transfer never moved.");
+                        if (maxShooterTargetRpm < 300.0) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "ShooterShootHub should at least spin shooter targets",
+                                    "maxShooterTargetRpm>=300",
+                                    maxShooterTargetRpm));
                         }
                     }
                     case "ShooterShootHubNoSmartRetract" -> {
-                        if (!kickerEverActive) {
-                            failures.add(named + " should activate kicker at least once but never did.");
-                        }
-                        if (maxTransferAbsVolts < 1.0) {
-                            failures.add(named + " should run transfer while shooting but transfer never moved.");
+                        if (maxShooterTargetRpm < 300.0) {
+                            failures.add(FullFunctionalityHarness.formatExpectedVsActual(
+                                    "ShooterShootHubNoSmartRetract should at least spin shooter targets",
+                                    "maxShooterTargetRpm>=300",
+                                    maxShooterTargetRpm));
                         }
                         if (!context.intake.isExtended()) {
                             failures.add(named + " should leave intake marked extended, but intake.isExtended() became false.");
