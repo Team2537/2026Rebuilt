@@ -208,6 +208,34 @@ class ShootingTeleopControllerXLockTest {
     }
 
     @Test
+    void enteringBlockedNeutralBandStillAllowsManualRotationWhileHoldingAim() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockUpperY() + 0.2,
+                Rotation2d.kZero));
+
+        Command command = fixture.controller.createSelectedAimCommand(
+                () -> 0.0,
+                () -> 0.0,
+                () -> 0.65,
+                () -> 4.0,
+                () -> Rotation2d.kZero);
+        CommandScheduler.getInstance().schedule(command);
+
+        fixture.runSchedulerCycles(2);
+        fixture.setPose(new Pose2d(
+                8.0,
+                (FieldConstants.getHubBackBlockLowerY() + FieldConstants.getHubBackBlockUpperY()) * 0.5,
+                Rotation2d.kZero));
+        fixture.runSchedulerCycles(3);
+
+        assertTrue(
+                fixture.hasAnyDriveVelocityCommanded(),
+                "Losing the target while holding aim should still pass driver omega through.");
+    }
+
+    @Test
     void enteringBlockedNeutralBandStopsManualFeed() {
         fixture.setAlliance(AllianceStationID.Blue1);
         fixture.setPose(new Pose2d(

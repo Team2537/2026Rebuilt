@@ -386,6 +386,7 @@ public final class ShootingTeleopController {
                 createShootCommand(
                         xSupplier,
                         ySupplier,
+                        omegaSupplier,
                         shotSolutionSupplier,
                         aimReadyOverrideSupplier,
                         manualFeedOverrideSupplier,
@@ -409,16 +410,17 @@ public final class ShootingTeleopController {
                 hubShotSolutionSupplier);
         return Commands.either(
                 createBlockedShootDriveCommand(xSupplier, ySupplier, omegaSupplier),
-                createAimCommand(xSupplier, ySupplier, shotSolutionSupplier),
+                createAimCommand(xSupplier, ySupplier, omegaSupplier, shotSolutionSupplier),
                 () -> shotSolutionSupplier.get().intent() == ShotIntent.NONE);
     }
 
     private Command createAimCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
             Supplier<ShotSolution> shotSolutionSupplier) {
         return Commands.parallel(
-                createDriveWhileAimingCommand(xSupplier, ySupplier, shotSolutionSupplier, () -> false),
+                createDriveWhileAimingCommand(xSupplier, ySupplier, omegaSupplier, shotSolutionSupplier, () -> false),
                 shootCoordinator.aimForShot(shotSolutionSupplier))
                 .withName("ShooterTriggerAimOnly");
     }
@@ -434,6 +436,7 @@ public final class ShootingTeleopController {
     private Command createShootCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
             Supplier<ShotSolution> shotSolutionSupplier,
             BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier,
@@ -449,7 +452,7 @@ public final class ShootingTeleopController {
                 };
 
         return Commands.parallel(
-                createDriveWhileAimingCommand(xSupplier, ySupplier, shotSolutionSupplier, readyToFeedSupplier),
+                createDriveWhileAimingCommand(xSupplier, ySupplier, omegaSupplier, shotSolutionSupplier, readyToFeedSupplier),
                 shootCoordinator.shootForShot(
                         shotSolutionSupplier,
                         cachedAimReadySupplier,
@@ -462,12 +465,14 @@ public final class ShootingTeleopController {
     private Command createDriveWhileAimingCommand(
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
+            DoubleSupplier omegaSupplier,
             Supplier<ShotSolution> shotSolutionSupplier,
             BooleanSupplier xLockConditionSupplier) {
         return DriveCommands.driveWhileAiming(
                 drive,
                 xSupplier,
                 ySupplier,
+                omegaSupplier,
                 () -> shotSolutionSupplier.get().desiredRobotHeading(),
                 () -> shotSolutionSupplier.get().desiredHeadingRateRadPerSec(),
                 xLockConditionSupplier);

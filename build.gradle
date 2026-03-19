@@ -107,18 +107,19 @@ test {
         html.required = false
     }
     systemProperty 'junit.jupiter.extensions.autodetection.enabled', 'true'
-    [
+
+    // Forward selected developer-facing overrides into the forked test JVM.
+    def forwardedSystemProperties = [
             'shooter.sim.motionCompTimeScale',
             'shooter.sim.motionCompDistanceTimeScale',
             'shooter.sim.phaseDelaySec',
-            'autoAim.headingProfile.maxVelocityDegPerSec',
-            'autoAim.headingProfile.maxAccelerationDegPerSec2',
-            'autoAim.aimToleranceDeg',
-            'autoAim.aimReleaseToleranceDeg',
-            'autoAim.diag.autoName'
-    ].each { propertyKey ->
-        if (System.getProperty(propertyKey) != null) {
-            systemProperty propertyKey, System.getProperty(propertyKey)
+            'autoAim.diag.autoName',
+            'test.nt.enabled'
+    ]
+    forwardedSystemProperties.each { propertyKey ->
+        def propertyValue = System.getProperty(propertyKey)
+        if (propertyValue != null) {
+            systemProperty propertyKey, propertyValue
         }
     }
 }

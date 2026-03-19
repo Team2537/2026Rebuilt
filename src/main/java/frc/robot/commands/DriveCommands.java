@@ -243,6 +243,7 @@ public final class DriveCommands {
             Drive drive,
             DoubleSupplier xSupplier,
             DoubleSupplier ySupplier,
+            DoubleSupplier omegaFallbackSupplier,
             Supplier<Rotation2d> desiredHeadingSupplier,
             DoubleSupplier desiredHeadingRateSupplier,
             BooleanSupplier xLockConditionSupplier) {
@@ -254,12 +255,18 @@ public final class DriveCommands {
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(
                             -xSupplier.getAsDouble(), -ySupplier.getAsDouble());
                     Rotation2d desiredHeading = desiredHeadingSupplier.get();
-                    double omega = yawController.calculate(
-                            robotState.getRotation(),
-                            robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
-                            desiredHeading,
-                            desiredHeadingRateSupplier.getAsDouble(),
-                            drive.getMaxAngularSpeedRadPerSec());
+                    double omega;
+                    if (desiredHeading == null) {
+                        omega = getAngularVelocityFromJoystick(omegaFallbackSupplier.getAsDouble())
+                                * drive.getMaxAngularSpeedRadPerSec();
+                    } else {
+                        omega = yawController.calculate(
+                                robotState.getRotation(),
+                                robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond,
+                                desiredHeading,
+                                desiredHeadingRateSupplier.getAsDouble(),
+                                drive.getMaxAngularSpeedRadPerSec());
+                    }
 
                     boolean noDriverInput = linearVelocity.getNorm() <= 1e-6;
                     if (noDriverInput && xLockConditionSupplier.getAsBoolean()) {

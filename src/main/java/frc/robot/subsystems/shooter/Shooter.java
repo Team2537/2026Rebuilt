@@ -26,6 +26,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.util.ElasticNotifications;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
@@ -62,7 +63,7 @@ public class Shooter extends SubsystemBase {
     private final ShooterIOInputsAutoLogged inputs = new ShooterIOInputsAutoLogged();
     private final SysIdRoutine sysId;
     private StringLogEntry sysIdStateLogEntry;
-    private final Debouncer atSetpointDropDebouncer =
+    private Debouncer atSetpointDropDebouncer =
             new Debouncer(AT_SETPOINT_FALLING_DEBOUNCE_SECONDS, Debouncer.DebounceType.kFalling);
 
     private final InterpolatingDoubleTreeMap leftRpmByDistance = new InterpolatingDoubleTreeMap();
@@ -80,6 +81,8 @@ public class Shooter extends SubsystemBase {
     private double kickerOutput = 0.0;
     private KickerControlMode kickerControlMode = KickerControlMode.OFF;
     private ReadinessDiagnostics cachedReadiness = new ReadinessDiagnostics(0, 0, 0, false, false, false, false, false);
+    private double activeReadinessTolerance = ShooterConstants.scoreShooterRpmTolerance();
+    private String activeReadinessLabel = "SCORE";
     private boolean cachedDashboardTuningEnabled = false;
     private boolean cachedDashboardFeedKickerEnabled = false;
     private boolean cachedDashboardSysIdEnabled = false;
@@ -139,8 +142,8 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/TargetHoodDeg", Units.radiansToDegrees(targetHoodAngleRad));
         Logger.recordOutput("Shooter/KickerTorqueAmps", kickerControlMode == KickerControlMode.TORQUE ? kickerOutput : 0.0);
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
-        cachedReadiness = computeReadinessDiagnostics(ShooterConstants.scoreShooterRpmTolerance());
-        logReadinessOutputs(cachedReadiness, ShooterConstants.scoreShooterRpmTolerance(), "SCORE");
+        cachedReadiness = computeReadinessDiagnostics(activeReadinessTolerance);
+        logReadinessOutputs(cachedReadiness, activeReadinessTolerance, activeReadinessLabel);
         // Cache SmartDashboard reads once per cycle to avoid repeated NT lookups
         cachedDashboardTuningEnabled = SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
         cachedDashboardFeedKickerEnabled = SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
@@ -230,6 +233,7 @@ public class Shooter extends SubsystemBase {
     }
 
     public void stopAll() {
+        resetActiveReadinessProfile();
         setIdleTargets();
         stopKicker();
         io.stop();
@@ -267,6 +271,29 @@ public class Shooter extends SubsystemBase {
         return computeReadinessDiagnostics(shooterRpmTolerance);
     }
 
+    public void setActiveReadinessProfile(double shooterRpmTolerance, String readinessLabel) {
+        String normalizedLabel = normalizeReadinessLabel(readinessLabel);
+        if (Double.compare(activeReadinessTolerance, shooterRpmTolerance) == 0
+                && Objects.equals(activeReadinessLabel, normalizedLabel)) {
+            return;
+        }
+        activeReadinessTolerance = shooterRpmTolerance;
+        activeReadinessLabel = normalizedLabel;
+        atSetpointDropDebouncer =
+                new Debouncer(AT_SETPOINT_FALLING_DEBOUNCE_SECONDS, Debouncer.DebounceType.kFalling);
+    }
+
+    public void resetActiveReadinessProfile() {
+        setActiveReadinessProfile(ShooterConstants.scoreShooterRpmTolerance(), "SCORE");
+    }
+
+    public void publishActiveReadiness(
+            ReadinessDiagnostics readiness, double shooterRpmTolerance, String readinessLabel) {
+        setActiveReadinessProfile(shooterRpmTolerance, readinessLabel);
+        cachedReadiness = readiness;
+        logReadinessOutputs(cachedReadiness, activeReadinessTolerance, activeReadinessLabel);
+    }
+
     private ReadinessDiagnostics computeReadinessDiagnostics(double shooterRpmTolerance) {
         double leftVelocityErrorRpm = targetLeftRpm - inputs.shooterLeftVelocityRpm;
         double rightVelocityErrorRpm = targetRightRpm - inputs.shooterRightVelocityRpm;
@@ -293,6 +320,10 @@ public class Shooter extends SubsystemBase {
                 hoodAngleAtSetpoint,
                 atSetpoint,
                 readyToFire);
+    }
+
+    private static String normalizeReadinessLabel(String readinessLabel) {
+        return readinessLabel == null || readinessLabel.isBlank() ? "SCORE" : readinessLabel;
     }
 
     public boolean isKickerActive() {

@@ -86,6 +86,7 @@ public final class AutoCommands {
                         drive,
                         () -> 0.0,
                         () -> 0.0,
+                        () -> 0.0,
                         () -> shotSolutionSupplier.get().desiredRobotHeading(),
                         () -> shotSolutionSupplier.get().desiredHeadingRateRadPerSec(),
                         () -> false));

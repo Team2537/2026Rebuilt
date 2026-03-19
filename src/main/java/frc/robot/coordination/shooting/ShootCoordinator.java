@@ -113,8 +113,19 @@ public class ShootCoordinator {
         ShotSolution solution = Objects.requireNonNullElse(shotSolutionSupplier.get(), ShotSolution.invalid(new Pose2d()));
         if (solution.valid() && solution.shooterSetpoint() != null) {
             shooter.setTargets(solution.shooterSetpoint());
+            shooter.setActiveReadinessProfile(solution.shooterRpmTolerance(), readinessLabelFor(solution));
+            Shooter.ReadinessDiagnostics readiness = shooter.getReadinessDiagnosticsNow(solution.shooterRpmTolerance());
+            shooter.publishActiveReadiness(
+                    readiness,
+                    solution.shooterRpmTolerance(),
+                    readinessLabelFor(solution));
         } else {
+            shooter.resetActiveReadinessProfile();
             shooter.stopAll();
+            shooter.publishActiveReadiness(
+                    shooter.getReadinessDiagnosticsNow(),
+                    ShooterConstants.scoreShooterRpmTolerance(),
+                    "SCORE");
         }
 
         Logger.recordOutput("Shooting/Intent", solution.intent().name());
@@ -132,13 +143,25 @@ public class ShootCoordinator {
         ShotSolution solution = Objects.requireNonNullElse(shotSolutionSupplier.get(), ShotSolution.invalid(new Pose2d()));
         if (solution.valid() && solution.shooterSetpoint() != null) {
             shooter.setTargets(solution.shooterSetpoint());
+            shooter.setActiveReadinessProfile(solution.shooterRpmTolerance(), readinessLabelFor(solution));
         } else {
+            shooter.resetActiveReadinessProfile();
             shooter.stopAll();
+            shooter.publishActiveReadiness(
+                    shooter.getReadinessDiagnosticsNow(),
+                    ShooterConstants.scoreShooterRpmTolerance(),
+                    "SCORE");
         }
 
         ReadinessDiagnostics readiness = solution.valid()
                 ? shooter.getReadinessDiagnosticsNow(solution.shooterRpmTolerance())
                 : shooter.getReadinessDiagnosticsNow();
+        if (solution.valid()) {
+            shooter.publishActiveReadiness(
+                    readiness,
+                    solution.shooterRpmTolerance(),
+                    readinessLabelFor(solution));
+        }
         boolean aimReady = aimReadySupplier.getAsBoolean();
         boolean manualFeedOverride = manualFeedOverrideSupplier.getAsBoolean();
         boolean automaticFeedEnabled = automaticFeedEnabledSupplier.getAsBoolean();
@@ -251,5 +274,15 @@ public class ShootCoordinator {
 
     public boolean isActivelyFeeding() {
         return activelyFeeding;
+    }
+
+    private static String readinessLabelFor(ShotSolution solution) {
+        if (solution == null || solution.intent() == ShotIntent.NONE) {
+            return "SCORE";
+        }
+        if (solution.intent() == ShotIntent.PASS) {
+            return "PASS";
+        }
+        return solution.movingShot() ? "MOVING_SCORE" : "SCORE";
     }
 }

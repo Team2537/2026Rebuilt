@@ -287,6 +287,40 @@ class ShootCoordinatorTest {
     }
 
     @Test
+    void movingShotUpdatesCachedReadinessToMatchGateTolerance() {
+        double rpmError = (ShooterConstants.scoreShooterRpmTolerance()
+                + ShooterConstants.movingShooterRpmTolerance()) / 2.0;
+        OffsetShooterIO shooterIO = new OffsetShooterIO(rpmError);
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(new TestTransferIO());
+        ShootCoordinator coordinator = new ShootCoordinator(shooter, transfer);
+
+        Command command = coordinator.shootForShot(
+                () -> new ShotSolution(
+                        true,
+                        ShotIntent.SCORE,
+                        true,
+                        new edu.wpi.first.math.geometry.Pose2d(),
+                        4.0,
+                        null,
+                        null,
+                        0.0,
+                        AutoAimHeadingConfig.movingAimToleranceRad(),
+                        AutoAimHeadingConfig.movingAimReleaseToleranceRad(),
+                        ShooterConstants.movingShooterRpmTolerance(),
+                        shooter.calculateSetpointForDistance(4.0)),
+                () -> true,
+                () -> false,
+                () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        runSchedulerCycles(2);
+
+        assertTrue(shooter.atSetpoint(), "Cached readiness should use the active moving-shot tolerance.");
+        assertTrue(shooter.readyToFire(), "readyToFire should match the active moving-shot gate tolerance.");
+    }
+
+    @Test
     void higherToleranceMarksReadinessEarlier() {
         double rpmError = (ShooterConstants.scoreShooterRpmTolerance()
                 + ShooterConstants.movingShooterRpmTolerance()) / 2.0;
