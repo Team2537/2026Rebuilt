@@ -18,7 +18,7 @@ public final class FuelSim {
     private static final double GRAVITY_METERS_PER_SEC2 = 9.80665;
     private static final double FUEL_DIAMETER_METERS = Units.inchesToMeters(5.9);
 
-    private static final double SPAWN_PERIOD_SEC = 0.2;
+    private static final double SPAWN_PERIOD_SEC = 0.16;
     private static final double SHOOTER_WHEEL_RADIUS_METERS = Units.inchesToMeters(2.0);
     private static final double SHOOTER_SPEED_EFFICIENCY = 0.85;
     private static final double MIN_MUZZLE_SPEED_METERS_PER_SEC = 7.0;

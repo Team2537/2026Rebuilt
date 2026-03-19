@@ -17,6 +17,7 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.RobotState;
@@ -31,6 +32,8 @@ import java.util.function.Supplier;
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
+    private static final double HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC = 0.5;
+    private static final double HEADING_SNAP_SETTLE_TIME_SEC = 0.05;
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
 
@@ -134,6 +137,24 @@ public final class DriveCommands {
         HeadingSnapState state = new HeadingSnapState();
         BooleanSupplier turningStickActiveSupplier =
                 () -> Math.abs(MathUtil.applyDeadband(omegaSupplier.getAsDouble(), DEADBAND)) > 1e-6;
+        BooleanSupplier headingSettledSupplier = () -> {
+            RobotState robotState = RobotState.getInstance();
+            boolean angleSettled = Math.abs(MathUtil.angleModulus(
+                            state.targetHeading.minus(robotState.getRotation()).getRadians()))
+                    <= HEADING_SNAP_TOLERANCE_RAD;
+            boolean omegaSettled = Math.abs(robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond)
+                    <= HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC;
+            double nowSec = Timer.getFPGATimestamp();
+            if (angleSettled && omegaSettled) {
+                if (Double.isNaN(state.settledSinceSec)) {
+                    state.settledSinceSec = nowSec;
+                }
+            } else {
+                state.settledSinceSec = Double.NaN;
+            }
+            return !Double.isNaN(state.settledSinceSec)
+                    && nowSec - state.settledSinceSec >= HEADING_SNAP_SETTLE_TIME_SEC;
+        };
 
         return Commands.run(
                 () -> {
@@ -162,11 +183,9 @@ public final class DriveCommands {
                         snappedHeading = snapToNearestCardinal(RobotState.getInstance().getRotation());
                     }
                     state.targetHeading = snappedHeading;
+                    state.settledSinceSec = Double.NaN;
                 })
-                .until(() -> turningStickActiveSupplier.getAsBoolean()
-                        || Math.abs(MathUtil.angleModulus(
-                                state.targetHeading.minus(RobotState.getInstance().getRotation()).getRadians()))
-                                <= HEADING_SNAP_TOLERANCE_RAD)
+                .until(() -> turningStickActiveSupplier.getAsBoolean() || headingSettledSupplier.getAsBoolean())
                 .withName("DriveHeadingSnap");
     }
 
@@ -275,6 +294,7 @@ public final class DriveCommands {
 
     private static class HeadingSnapState {
         Rotation2d targetHeading = Rotation2d.kZero;
+        double settledSinceSec = Double.NaN;
     }
 
 }
