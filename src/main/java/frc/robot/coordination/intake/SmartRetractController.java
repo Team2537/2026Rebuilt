@@ -26,6 +26,7 @@ public final class SmartRetractController {
         private int feedTrueCycles = 0;
         private int feedFalseCycles = 0;
         private boolean halfRetractReached = false;
+        private boolean fullRetractReached = false;
 
         public Mode mode() {
             return mode;
@@ -66,6 +67,10 @@ public final class SmartRetractController {
         public boolean nibbleBackoffActive() {
             return nibbleBackoffActive;
         }
+
+        public boolean fullRetractReached() {
+            return fullRetractReached;
+        }
     }
 
     public record Update(
@@ -93,6 +98,7 @@ public final class SmartRetractController {
         session.feedTrueCycles = 0;
         session.feedFalseCycles = 0;
         session.halfRetractReached = false;
+        session.fullRetractReached = false;
     }
 
     public Update update(
@@ -122,7 +128,11 @@ public final class SmartRetractController {
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
-        if (session.mode == Mode.NIBBLE && atRetractedTarget) {
+        boolean atSmartRetractTarget = leftPositionRot
+                <= IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.POSITION_TOLERANCE_ROT;
+
+        if (session.mode == Mode.NIBBLE && atSmartRetractTarget) {
+            session.fullRetractReached = true;
             session.commandedLeftTargetRot = IntakeConstants.smartRetractRetractedPositionRot();
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
@@ -143,6 +153,9 @@ public final class SmartRetractController {
             boolean disabled,
             boolean atRetractedTarget) {
         if (!session.active || disabled) {
+            return false;
+        }
+        if (session.fullRetractReached) {
             return false;
         }
         return session.startedExtended && !atRetractedTarget;
