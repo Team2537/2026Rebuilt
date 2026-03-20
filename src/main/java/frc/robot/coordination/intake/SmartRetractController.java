@@ -27,6 +27,7 @@ public final class SmartRetractController {
         private int feedFalseCycles = 0;
         private boolean halfRetractReached = false;
         private boolean fullRetractReached = false;
+        private boolean seenAboveSmartRetractThreshold = false;
 
         public Mode mode() {
             return mode;
@@ -99,6 +100,8 @@ public final class SmartRetractController {
         session.feedFalseCycles = 0;
         session.halfRetractReached = false;
         session.fullRetractReached = false;
+        session.seenAboveSmartRetractThreshold =
+                initialLeftPositionRot > smartRetractCompletionThresholdRot();
     }
 
     public Update update(
@@ -129,9 +132,15 @@ public final class SmartRetractController {
         }
 
         boolean atSmartRetractTarget = leftPositionRot
-                <= IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.POSITION_TOLERANCE_ROT;
+                <= smartRetractCompletionThresholdRot();
 
-        if (session.mode == Mode.NIBBLE && atSmartRetractTarget) {
+        if (!atSmartRetractTarget) {
+            session.seenAboveSmartRetractThreshold = true;
+        }
+
+        if (session.mode == Mode.NIBBLE
+                && atSmartRetractTarget
+                && session.seenAboveSmartRetractThreshold) {
             session.fullRetractReached = true;
             session.commandedLeftTargetRot = IntakeConstants.smartRetractRetractedPositionRot();
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
@@ -238,5 +247,9 @@ public final class SmartRetractController {
                 targetRot,
                 IntakeConstants.smartRetractRetractedPositionRot(),
                 IntakeConstants.EXTENDED_POSITION_ROT);
+    }
+
+    private static double smartRetractCompletionThresholdRot() {
+        return IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.POSITION_TOLERANCE_ROT;
     }
 }

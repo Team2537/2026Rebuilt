@@ -284,6 +284,41 @@ class SmartRetractControllerTest {
     }
 
     @Test
+    void startingInsideSmartRetractThresholdDoesNotLatchCompletionWithoutCrossingIntoIt() {
+        double smartRetractTargetRot = IntakeConstants.smartRetractRetractedPositionRot();
+        controller.initialize(
+                session,
+                SmartRetractController.Mode.NIBBLE,
+                true,
+                smartRetractTargetRot,
+                0.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, smartRetractTargetRot, 0.0, true, false);
+        }
+
+        SmartRetractController.Update holdUpdate = controller.update(
+                session,
+                true,
+                smartRetractTargetRot,
+                0.0,
+                true,
+                false);
+
+        assertFalse(
+                session.fullRetractReached(),
+                "Starting a session already inside the smart-retract threshold should not count as completing full retract.");
+        assertTrue(
+                controller.shouldRestoreExtendedOnExit(session, false, false),
+                "If this session never crossed into the smart-retract threshold from above, it should still restore extension on exit.");
+        assertEquals(
+                smartRetractTargetRot,
+                holdUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "Without crossing the threshold from above, the controller should hold the baseline target instead of latching completion.");
+    }
+
+    @Test
     void currentFilteringAppliesExponentialSmoothing() {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
 
