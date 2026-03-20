@@ -42,12 +42,16 @@ public final class ShooterConstants {
             new LoggedTunableNumber("Shooter/MovingRpmTolerance", 100.0);
     private static final LoggedTunableNumber passingShooterRpmTolerance =
             new LoggedTunableNumber("Shooter/PassingRpmTolerance", 250.0);
+    private static final LoggedTunableNumber motionCompTimeScale =
+            new LoggedTunableNumber(
+                    "Shooter/MotionCompTimeScale",
+                    simOverrideDouble("shooter.sim.motionCompTimeScale", 1.0));
+    private static final LoggedTunableNumber motionCompDistanceTimeScale =
+            new LoggedTunableNumber(
+                    "Shooter/MotionCompDistanceTimeScale",
+                    simOverrideDouble("shooter.sim.motionCompDistanceTimeScale", 1.0));
     public static final double HOOD_ANGLE_TOLERANCE_RAD = Units.degreesToRadians(1.0);
     public static final double DEFAULT_KICKER_TORQUE_AMPS = 85.0;
-    public static final double MOTION_COMP_TIME_SCALE =
-            simOverrideDouble("shooter.sim.motionCompTimeScale", 1.26);
-    public static final double MOTION_COMP_DISTANCE_TIME_SCALE =
-            simOverrideDouble("shooter.sim.motionCompDistanceTimeScale", 0.92);
 
     /**
      * Shooter position relative to robot center, in robot coordinates (x=forward, y=left).
@@ -86,7 +90,7 @@ public final class ShooterConstants {
     private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 3250.0, 3350.0, 3550.0, 3875.0, 4250.0, 4300.0, 4650.0 };
     private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 3250.0, 3350.0, 3550.0, 3875.0, 4250.0, 4300.0, 4650.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {6.0, 14.5, 17.5, 21.5, 24.5, 27.0, 30.0};
-    private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.24, 1.14, 1.13, 1.20, 1.24, 1.36, 1.41};
+    private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.24, 1.17, 1.15, 1.22, 1.26, 1.38, 1.43};
 
     public static double scoreShooterRpmTolerance() {
         return scoreShooterRpmTolerance.get();
@@ -102,6 +106,22 @@ public final class ShooterConstants {
 
     public static double shooterRpmTolerance() {
         return movingShooterRpmTolerance();
+    }
+
+    public static double motionCompTimeScale() {
+        return motionCompTimeScale.get();
+    }
+
+    public static boolean motionCompTimeScaleHasChanged(int id) {
+        return motionCompTimeScale.hasChanged(id);
+    }
+
+    public static double motionCompDistanceTimeScale() {
+        return motionCompDistanceTimeScale.get();
+    }
+
+    public static boolean motionCompDistanceTimeScaleHasChanged(int id) {
+        return motionCompDistanceTimeScale.hasChanged(id);
     }
 
     public static final double[] SHOT_MAP_DISTANCE_METERS =

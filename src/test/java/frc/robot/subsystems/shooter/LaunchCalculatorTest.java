@@ -35,8 +35,8 @@ class LaunchCalculatorTest {
                 timeMap::get,
                 ShooterConstants.ROBOT_TO_SHOOTER_OFFSET,
                 ShooterConstants.PHASE_DELAY_SEC,
-                ShooterConstants.MOTION_COMP_TIME_SCALE,
-                ShooterConstants.MOTION_COMP_DISTANCE_TIME_SCALE);
+                ShooterConstants.motionCompTimeScale(),
+                ShooterConstants.motionCompDistanceTimeScale());
     }
 
     @Test

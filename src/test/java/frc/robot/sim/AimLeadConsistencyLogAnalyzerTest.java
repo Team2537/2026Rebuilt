@@ -73,7 +73,7 @@ class AimLeadConsistencyLogAnalyzerTest {
                 if (s.t - last < 0.08) continue;
                 Rotation2d rawHeading = FieldConstants.getHubFacingHeading(s.pose);
                 double observedLeadDeg = wrapDeg(s.compHeading - rawHeading.getDegrees());
-                double effectiveTimeSec = s.time * ShooterConstants.MOTION_COMP_TIME_SCALE + ShooterConstants.PHASE_DELAY_SEC;
+                double effectiveTimeSec = s.time * ShooterConstants.motionCompTimeScale() + ShooterConstants.PHASE_DELAY_SEC;
                 double predictedLeadDeg = Math.toDegrees(Math.atan2(-s.vCross * effectiveTimeSec, s.rawDist - s.vTow * effectiveTimeSec));
                 double leadErrorDeg = wrapDeg(observedLeadDeg - predictedLeadDeg);
                 double lateralDisplacementMeters = s.vCross * effectiveTimeSec;

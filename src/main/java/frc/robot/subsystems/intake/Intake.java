@@ -293,7 +293,7 @@ public class Intake extends SubsystemBase {
         io.stopRoller();
 
         boolean atSmartRetractTarget = getLeftPositionRotations()
-                <= IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT + IntakeConstants.POSITION_TOLERANCE_ROT;
+                <= IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.POSITION_TOLERANCE_ROT;
         boolean restoreExtended = smartRetractController.shouldRestoreExtendedOnExit(
                 session,
                 DriverStation.isDisabled(),
@@ -459,7 +459,7 @@ public class Intake extends SubsystemBase {
     private static double clampSmartRetractTargetRot(double targetRot) {
         return MathUtil.clamp(
                 targetRot,
-                IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT,
+                IntakeConstants.smartRetractRetractedPositionRot(),
                 IntakeConstants.EXTENDED_POSITION_ROT);
     }
 

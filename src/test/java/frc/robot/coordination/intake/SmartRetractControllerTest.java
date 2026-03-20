@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.subsystems.intake.IntakeConstants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,36 @@ class SmartRetractControllerTest {
 
     @BeforeEach
     void setUp() {
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/RetractedPositionRot",
+                IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/HalfRetractPositionRot",
+                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/CurrentFilterAlpha",
+                IntakeConstants.SMART_RETRACT_CURRENT_FILTER_ALPHA);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/FeedEngageCycles",
+                IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/FeedStartDelaySec",
+                IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/NibbleCurrentThresholdAmps",
+                IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/NibbleDetectCycles",
+                IntakeConstants.SMART_RETRACT_NIBBLE_DETECT_CYCLES);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/NibbleStepRot",
+                IntakeConstants.SMART_RETRACT_NIBBLE_STEP_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/NibbleBackoffRot",
+                IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/NibbleBackoffDwellSec",
+                IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
         controller = new SmartRetractController();
         session = new SmartRetractController.Session();
     }
@@ -259,9 +290,61 @@ class SmartRetractControllerTest {
         assertFalse(session.nibbleBackoffActive(), "Currents below the fixed threshold should not trigger nibble backoff.");
     }
 
+    @Test
+    void nibbleSettingsCanBeTunedFromDashboard() {
+        SmartDashboard.putNumber("Intake/SmartRetract/RetractedPositionRot", 3.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/HalfRetractPositionRot", 12.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/CurrentFilterAlpha", 1.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/FeedEngageCycles", 5.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/FeedStartDelaySec", 0.02);
+        SmartDashboard.putNumber("Intake/SmartRetract/NibbleCurrentThresholdAmps", 8.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/NibbleDetectCycles", 3.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/NibbleStepRot", 1.25);
+        SmartDashboard.putNumber("Intake/SmartRetract/NibbleBackoffRot", 2.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/NibbleBackoffDwellSec", 0.6);
+
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, 0.0, 0.0);
+        assertEquals(8.5, session.nibbleCurrentThresholdAmps(), 1e-9);
+        assertEquals(3.5, session.commandedLeftTargetRot(), 1e-9);
+
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
+        for (int i = 0; i < 4; i++) {
+            SmartRetractController.Update preLatchUpdate =
+                    controller.update(session, true, MID_POSITION, 50.0, true, false);
+            assertFalse(preLatchUpdate.commandRetractTarget(), "Feed engage cycles tuning should delay latching.");
+        }
+
+        SmartRetractController.Update stepUpdate =
+                controller.update(session, true, MID_POSITION, 0.0, true, false);
+        assertEquals(MID_POSITION - 1.25, stepUpdate.commandedLeftTargetRot(), 1e-9);
+        assertEquals(0.0, session.filteredSignalCurrentAmps(), 1e-9);
+
+        controller.update(session, true, MID_POSITION, 50.0, true, false);
+        controller.update(session, true, MID_POSITION, 50.0, true, false);
+        assertFalse(session.nibbleBackoffActive(), "Detect cycles tuning should delay backoff until the configured count.");
+
+        SmartRetractController.Update backoffUpdate =
+                controller.update(session, true, MID_POSITION, 50.0, true, false);
+        assertTrue(session.nibbleBackoffActive(), "Third spike should trigger backoff when detect cycles is tuned to 3.");
+        assertEquals(MID_POSITION + 2.5, backoffUpdate.commandedLeftTargetRot(), 1e-9);
+
+        controller.initialize(
+                session,
+                SmartRetractController.Mode.HALF_RETRACT_RETURN,
+                true,
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                0.0);
+        for (int i = 0; i < 4; i++) {
+            controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 0.0, true, false);
+        }
+        SmartRetractController.Update halfRetractUpdate =
+                controller.update(session, true, IntakeConstants.EXTENDED_POSITION_ROT, 0.0, true, false);
+        assertEquals(12.0, halfRetractUpdate.commandedLeftTargetRot(), 1e-9);
+    }
+
     private static int feedStartDelayCycles() {
         int configuredDelayCycles =
-                (int) Math.ceil(IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC * IntakeConstants.STATUS_UPDATE_HZ);
-        return Math.max(IntakeConstants.SMART_RETRACT_FEED_ENGAGE_CYCLES, Math.max(1, configuredDelayCycles));
+                (int) Math.ceil(IntakeConstants.smartRetractFeedStartDelaySec() * IntakeConstants.STATUS_UPDATE_HZ);
+        return Math.max(IntakeConstants.smartRetractFeedEngageCycles(), Math.max(1, configuredDelayCycles));
     }
 }

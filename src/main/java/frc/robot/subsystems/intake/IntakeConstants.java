@@ -1,5 +1,8 @@
 package frc.robot.subsystems.intake;
 
+import edu.wpi.first.math.MathUtil;
+import frc.robot.util.LoggedTunableNumber;
+
 public final class IntakeConstants {
     private IntakeConstants() {}
 
@@ -79,9 +82,94 @@ public final class IntakeConstants {
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
     public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.4;
 
-    public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 6.0;
+    public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 4.0;
     public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 2;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
-    public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 5.0;
+    public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
+
+    private static final LoggedTunableNumber smartRetractRetractedPositionRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/RetractedPositionRot",
+                    SMART_RETRACT_RETRACTED_POSITION_ROT);
+    private static final LoggedTunableNumber smartRetractHalfRetractPositionRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/HalfRetractPositionRot",
+                    SMART_RETRACT_HALF_RETRACT_POSITION_ROT);
+    private static final LoggedTunableNumber smartRetractCurrentFilterAlpha =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/CurrentFilterAlpha",
+                    SMART_RETRACT_CURRENT_FILTER_ALPHA);
+    private static final LoggedTunableNumber smartRetractFeedEngageCycles =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/FeedEngageCycles",
+                    SMART_RETRACT_FEED_ENGAGE_CYCLES);
+    private static final LoggedTunableNumber smartRetractFeedStartDelaySec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/FeedStartDelaySec",
+                    SMART_RETRACT_FEED_START_DELAY_SEC);
+
+    private static final LoggedTunableNumber smartRetractNibbleCurrentThresholdAmps =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/NibbleCurrentThresholdAmps",
+                    SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS);
+    private static final LoggedTunableNumber smartRetractNibbleDetectCycles =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/NibbleDetectCycles",
+                    SMART_RETRACT_NIBBLE_DETECT_CYCLES);
+    private static final LoggedTunableNumber smartRetractNibbleStepRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/NibbleStepRot",
+                    SMART_RETRACT_NIBBLE_STEP_ROT);
+    private static final LoggedTunableNumber smartRetractNibbleBackoffRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/NibbleBackoffRot",
+                    SMART_RETRACT_NIBBLE_BACKOFF_ROT);
+    private static final LoggedTunableNumber smartRetractNibbleBackoffDwellSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/NibbleBackoffDwellSec",
+                    SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
+
+    public static double smartRetractRetractedPositionRot() {
+        return MathUtil.clamp(smartRetractRetractedPositionRot.get(), 0.0, EXTENDED_POSITION_ROT);
+    }
+
+    public static double smartRetractHalfRetractPositionRot() {
+        return MathUtil.clamp(
+                smartRetractHalfRetractPositionRot.get(),
+                smartRetractRetractedPositionRot(),
+                EXTENDED_POSITION_ROT);
+    }
+
+    public static double smartRetractCurrentFilterAlpha() {
+        return MathUtil.clamp(smartRetractCurrentFilterAlpha.get(), 0.0, 1.0);
+    }
+
+    public static int smartRetractFeedEngageCycles() {
+        return Math.max(1, (int) Math.round(smartRetractFeedEngageCycles.get()));
+    }
+
+    public static double smartRetractFeedStartDelaySec() {
+        return Math.max(0.0, smartRetractFeedStartDelaySec.get());
+    }
+
+    public static double smartRetractNibbleCurrentThresholdAmps() {
+        return Math.max(0.0, smartRetractNibbleCurrentThresholdAmps.get());
+    }
+
+    public static int smartRetractNibbleDetectCycles() {
+        return Math.max(1, (int) Math.round(smartRetractNibbleDetectCycles.get()));
+    }
+
+    public static double smartRetractNibbleStepRot() {
+        return Math.max(0.0, smartRetractNibbleStepRot.get());
+    }
+
+    public static double smartRetractNibbleBackoffRot() {
+        return Math.max(0.0, smartRetractNibbleBackoffRot.get());
+    }
+
+    public static double smartRetractNibbleBackoffDwellSec() {
+        return Math.max(0.0, smartRetractNibbleBackoffDwellSec.get());
+    }
 }

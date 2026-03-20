@@ -13,7 +13,7 @@ import org.littletonrobotics.junction.Logger;
  */
 public final class ShotYawController {
     private static final LoggedTunableNumber kP = new LoggedTunableNumber("ShotYaw/kP", 8.0);
-    private static final LoggedTunableNumber kD = new LoggedTunableNumber("ShotYaw/kD", 0.15);
+    private static final LoggedTunableNumber kD = new LoggedTunableNumber("ShotYaw/kD", 0.5);
     private static final LoggedTunableNumber maxFeedbackOmegaRadPerSec =
             new LoggedTunableNumber("ShotYaw/MaxFeedbackOmegaRadPerSec", Math.toRadians(540.0));
 
