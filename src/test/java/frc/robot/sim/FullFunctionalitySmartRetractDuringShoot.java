@@ -291,6 +291,208 @@ final class FullFunctionalitySmartRetractDuringShoot {
         }
     }
 
+    @Test
+    void directSmartRetractSessionWigglesAfterFullRetraction() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setTeleopEnabled();
+            context.container.teleopInit();
+            context.runCycles(50);
+
+            configureNibbleWiggleMode(context);
+            extendAndSettle(context);
+
+            boolean[] feeding = {true};
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+                    .withName("FF_DirectSmartRetractWiggle");
+            CommandScheduler.getInstance().schedule(smartRetract);
+
+            double retractBaselineRot = expectedSmartRetractBaselineRot();
+            double retractPeakRot = expectedSmartRetractPeakRot();
+            boolean reachedFullRetract = context.runUntil(
+                    () -> leftPositionRot(context) <= retractBaselineRot + 0.30,
+                    400);
+            assertTrue(
+                    reachedFullRetract,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Smart retract should physically reach the tuned full-retract target before wiggle validation",
+                            String.format(Locale.US, "leftRot<=%.3f", retractBaselineRot + 0.30),
+                            String.format(Locale.US, "leftRot=%.3f", leftPositionRot(context))));
+
+            double minTargetRot = Double.POSITIVE_INFINITY;
+            double maxTargetRot = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < 40; i++) {
+                context.runCycles(1);
+                double commandedTargetRot = commandedLeftTargetRot(context);
+                minTargetRot = Math.min(minTargetRot, commandedTargetRot);
+                maxTargetRot = Math.max(maxTargetRot, commandedTargetRot);
+            }
+
+            assertTrue(
+                    minTargetRot <= retractBaselineRot + 0.15,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Smart retract wiggle should return to the retract baseline after full retraction",
+                            String.format(Locale.US, "minTargetRot<=%.3f", retractBaselineRot + 0.15),
+                            String.format(Locale.US, "minTargetRot=%.3f", minTargetRot)));
+            assertTrue(
+                    maxTargetRot >= retractPeakRot - 0.15,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Smart retract wiggle should reach its configured outward peak after full retraction",
+                            String.format(
+                                    Locale.US,
+                                    "maxTargetRot>=%.3f",
+                                    retractPeakRot - 0.15),
+                            String.format(Locale.US, "maxTargetRot=%.3f", maxTargetRot)));
+
+            CommandScheduler.getInstance().cancel(smartRetract);
+            context.runCycles(10);
+        }
+    }
+
+    @Test
+    void cancelingAfterRetractWigglePeakDoesNotRestoreExtended() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setTeleopEnabled();
+            context.container.teleopInit();
+            context.runCycles(50);
+
+            configureNibbleWiggleMode(context);
+            extendAndSettle(context);
+
+            boolean[] feeding = {true};
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+                    .withName("FF_DirectSmartRetractCancelAfterWiggle");
+            CommandScheduler.getInstance().schedule(smartRetract);
+
+            double retractBaselineRot = expectedSmartRetractBaselineRot();
+            double retractPeakRot = expectedSmartRetractPeakRot();
+            boolean reachedFullRetract = context.runUntil(
+                    () -> leftPositionRot(context) <= retractBaselineRot + 0.30,
+                    400);
+            assertTrue(reachedFullRetract, "Expected smart retract to reach its inward target before cancellation edge-case validation.");
+
+            boolean reachedWigglePeak = context.runUntil(
+                    () -> commandedLeftTargetRot(context) >= retractPeakRot - 0.15,
+                    120);
+            assertTrue(
+                    reachedWigglePeak,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Smart retract should enter the post-retract wiggle before cancellation",
+                            String.format(
+                                    Locale.US,
+                                    "commandedTargetRot>=%.3f",
+                                    retractPeakRot - 0.15),
+                            String.format(Locale.US, "commandedTargetRot=%.3f", commandedLeftTargetRot(context))));
+
+            CommandScheduler.getInstance().cancel(smartRetract);
+            context.runCycles(140);
+
+            assertFalse(
+                    context.intake.isExtended(),
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "Ending smart retract after full retract wiggle must not restore extension",
+                            "intake.isExtended()=false",
+                            context.intake.isExtended()));
+            assertTrue(
+                    leftPositionRot(context) <= retractBaselineRot + 0.55,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "After cancellation, the intake should settle back near the smart retract baseline instead of extending",
+                            String.format(Locale.US, "leftRot<=%.3f", retractBaselineRot + 0.55),
+                            String.format(Locale.US, "leftRot=%.3f", leftPositionRot(context))));
+        }
+    }
+
+    @Test
+    void pausingFeedStopsRetractWiggleAndResumingFeedRestartsIt() {
+        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
+            context.setTeleopEnabled();
+            context.container.teleopInit();
+            context.runCycles(50);
+
+            configureNibbleWiggleMode(context);
+            extendAndSettle(context);
+
+            boolean[] feeding = {true};
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+                    .withName("FF_DirectSmartRetractPauseResumeWiggle");
+            CommandScheduler.getInstance().schedule(smartRetract);
+
+            double retractBaselineRot = expectedSmartRetractBaselineRot();
+            double retractPeakRot = expectedSmartRetractPeakRot();
+            boolean reachedFullRetract = context.runUntil(
+                    () -> leftPositionRot(context) <= retractBaselineRot + 0.30,
+                    400);
+            assertTrue(reachedFullRetract, "Expected smart retract to reach full retract before pause/resume validation.");
+
+            boolean reachedInitialWigglePeak = context.runUntil(
+                    () -> commandedLeftTargetRot(context) >= retractPeakRot - 0.15,
+                    120);
+            assertTrue(reachedInitialWigglePeak, "Expected smart retract to enter wiggle before feed pause.");
+
+            feeding[0] = false;
+            double pausedMinTargetRot = Double.POSITIVE_INFINITY;
+            double pausedMaxTargetRot = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < 20; i++) {
+                context.runCycles(1);
+                double commandedTargetRot = commandedLeftTargetRot(context);
+                pausedMinTargetRot = Math.min(pausedMinTargetRot, commandedTargetRot);
+                pausedMaxTargetRot = Math.max(pausedMaxTargetRot, commandedTargetRot);
+            }
+
+            assertTrue(
+                    pausedMaxTargetRot - pausedMinTargetRot <= IntakeConstants.smartRetractWiggleOutRot() * 0.55,
+                    FullFunctionalityHarness.formatExpectedVsActual(
+                            "When feed drops, smart retract should stop oscillating instead of continuing the wiggle",
+                            String.format(
+                                    Locale.US,
+                                    "pausedRange<=%.3f",
+                                    IntakeConstants.smartRetractWiggleOutRot() * 0.55),
+                            String.format(
+                                    Locale.US,
+                                    "pausedRange=%.3f (min=%.3f max=%.3f)",
+                                    pausedMaxTargetRot - pausedMinTargetRot,
+                                    pausedMinTargetRot,
+                                    pausedMaxTargetRot)));
+
+            feeding[0] = true;
+            boolean reachedResumedWigglePeak = context.runUntil(
+                    () -> commandedLeftTargetRot(context) >= retractPeakRot - 0.15,
+                    120);
+            assertTrue(
+                    reachedResumedWigglePeak,
+                    "Expected smart retract wiggle to resume after feed resumes without restarting the session.");
+
+            CommandScheduler.getInstance().cancel(smartRetract);
+            context.runCycles(10);
+        }
+    }
+
+    private static void configureNibbleWiggleMode(FullFunctionalityHarness.Context context) {
+        SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
+        SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
+        context.runCycles(8);
+    }
+
+    private static double expectedSmartRetractBaselineRot() {
+        return IntakeConstants.smartRetractRetractedPositionRot();
+    }
+
+    private static double expectedSmartRetractPeakRot() {
+        return IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.smartRetractWiggleOutRot();
+    }
+
+    private static void extendAndSettle(FullFunctionalityHarness.Context context) {
+        context.intake.setExtended(true);
+        boolean settled = context.runUntil(
+                () -> Math.abs(leftPositionRot(context) - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.10,
+                220);
+        assertTrue(settled, "Expected intake to settle near extended before direct smart retract testing.");
+        context.runCycles(8);
+    }
+
+    private static double leftPositionRot(FullFunctionalityHarness.Context context) {
+        return Units.radiansToRotations(context.intakeInputs.leftPositionRad);
+    }
+
     private static double commandedLeftTargetRot(FullFunctionalityHarness.Context context) {
         return FullFunctionalityHarness.getPrivateField(context.intake, "commandedLeftTargetRot", Double.class);
     }

@@ -48,6 +48,12 @@ class SmartRetractControllerTest {
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/NibbleBackoffDwellSec",
                 IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/WiggleOutRot",
+                IntakeConstants.SMART_RETRACT_WIGGLE_OUT_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/WiggleSwitchIntervalSec",
+                IntakeConstants.SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC);
         controller = new SmartRetractController();
         session = new SmartRetractController.Session();
     }
@@ -227,6 +233,54 @@ class SmartRetractControllerTest {
     void shouldNotRestoreOnExitWhenAtRetractedTarget() {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 5.0);
         assertFalse(controller.shouldRestoreExtendedOnExit(session, false, true));
+    }
+
+    @Test
+    void reachingFullSmartRetractLatchesCompletionAndSuppressesRestore() {
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, MID_POSITION, 0.0, true, false);
+        }
+
+        SmartRetractController.Update update = controller.update(
+                session,
+                true,
+                IntakeConstants.smartRetractRetractedPositionRot(),
+                0.0,
+                false,
+                false);
+
+        assertTrue(session.fullRetractReached(), "Expected full smart retract to latch once the inward target is reached.");
+        assertEquals(
+                IntakeConstants.smartRetractRetractedPositionRot(),
+                update.commandedLeftTargetRot(),
+                1e-9,
+                "Once full smart retract is reached, the controller should park its base target at the retract baseline.");
+        assertFalse(
+                controller.shouldRestoreExtendedOnExit(session, false, false),
+                "A session that already completed full smart retract must not restore extension on exit.");
+    }
+
+    @Test
+    void regularRetractedPositionDoesNotCountAsFullSmartRetractCompletion() {
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, MID_POSITION, 0.0, true, false);
+        }
+
+        controller.update(
+                session,
+                true,
+                IntakeConstants.RETRACTED_POSITION_ROT,
+                0.0,
+                false,
+                true);
+
+        assertFalse(
+                session.fullRetractReached(),
+                "Crossing only the normal retract target must not be treated as completing smart retract.");
     }
 
     @Test

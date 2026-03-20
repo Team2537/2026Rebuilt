@@ -87,6 +87,9 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
+    public static final double SMART_RETRACT_WIGGLE_OUT_ROT =
+            DRIVER_TRIGGER_WIGGLE_PEAK_ROT - DRIVER_TRIGGER_WIGGLE_BASELINE_ROT;
+    public static final double SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC = DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC;
 
     private static final LoggedTunableNumber smartRetractRetractedPositionRot =
             new LoggedTunableNumber(
@@ -129,6 +132,14 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/NibbleBackoffDwellSec",
                     SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
+    private static final LoggedTunableNumber smartRetractWiggleOutRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/WiggleOutRot",
+                    SMART_RETRACT_WIGGLE_OUT_ROT);
+    private static final LoggedTunableNumber smartRetractWiggleSwitchIntervalSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/WiggleSwitchIntervalSec",
+                    SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC);
 
     public static double smartRetractRetractedPositionRot() {
         return MathUtil.clamp(smartRetractRetractedPositionRot.get(), 0.0, EXTENDED_POSITION_ROT);
@@ -171,5 +182,13 @@ public final class IntakeConstants {
 
     public static double smartRetractNibbleBackoffDwellSec() {
         return Math.max(0.0, smartRetractNibbleBackoffDwellSec.get());
+    }
+
+    public static double smartRetractWiggleOutRot() {
+        return Math.max(0.0, smartRetractWiggleOutRot.get());
+    }
+
+    public static double smartRetractWiggleSwitchIntervalSec() {
+        return Math.max(1.0 / STATUS_UPDATE_HZ, smartRetractWiggleSwitchIntervalSec.get());
     }
 }
