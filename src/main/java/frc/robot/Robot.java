@@ -22,6 +22,7 @@ import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
+import com.ctre.phoenix6.CANBus;
 import com.pathplanner.lib.commands.FollowPathCommand;
 
 public final class Robot extends LoggedRobot {
@@ -30,6 +31,7 @@ public final class Robot extends LoggedRobot {
     private final RobotContainer robotContainer;
     private PowerDistribution powerDistribution = null;
     private boolean lowBatteryNotified = false;
+    private final CANBus canivore = new CANBus(Constants.DRIVETRAIN_CAN_BUS);
 
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
@@ -91,8 +93,23 @@ public final class Robot extends LoggedRobot {
     public void robotPeriodic() {
         logRobotState();
         logPowerDistribution();
+        logCANivore();
         CommandScheduler.getInstance().run();
         robotContainer.robotPeriodic();
+    }
+
+    private void logCANivore() {
+        if(canivore == null) {
+            return;
+        }
+
+        var status = canivore.getStatus();
+        Logger.recordOutput("CAN/CANivore/BusUtilization", status.BusUtilization);
+        Logger.recordOutput("CAN/CANivore/BusOffCount", status.BusOffCount);
+        Logger.recordOutput("CAN/CANivore/Status", status.Status.toString());
+        Logger.recordOutput("CAN/CANivore/RecieveErrorCount", status.REC);
+        Logger.recordOutput("CAN/CANivore/TransmitErrorCount", status.TEC);
+        Logger.recordOutput("CAN/CANivore/TxFullCount", status.TxFullCount);
     }
 
     private void logPowerDistribution() {
