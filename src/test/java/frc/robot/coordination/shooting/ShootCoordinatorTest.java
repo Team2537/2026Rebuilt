@@ -340,6 +340,27 @@ class ShootCoordinatorTest {
     }
 
     @Test
+    void handoffBetweenAimAndShootPreservesShooterTarget() {
+        TestShooterIO shooterIO = new TestShooterIO();
+        Shooter shooter = new Shooter(shooterIO);
+        Transfer transfer = new Transfer(new TestTransferIO());
+        ShootCoordinator coordinator = new ShootCoordinator(shooter, transfer);
+
+        Command aim = coordinator.aimForDistance(() -> 4.0);
+        Command shoot = coordinator.shootForDistance(() -> 4.0, () -> true);
+
+        CommandScheduler.getInstance().schedule(aim);
+        runSchedulerCycles(2);
+        assertTrue(shooter.getTargetAverageShooterRpm() > 0.0);
+
+        CommandScheduler.getInstance().schedule(shoot);
+
+        assertTrue(
+                shooter.getTargetAverageShooterRpm() > 0.0,
+                "Switching from aim to shoot should not briefly zero the shooter target during command handoff.");
+    }
+
+    @Test
     void passingToleranceIsLooserThanScoreTolerance() {
         double rpmError = (ShooterConstants.movingShooterRpmTolerance()
                 + ShooterConstants.passingShooterRpmTolerance()) / 2.0;
@@ -417,7 +438,7 @@ class ShootCoordinatorTest {
     }
 
     @Test
-    void cancelStopsShooterAndTransferOutputs() {
+    void cancelStopsFeedOutputsWithoutClearingShooterTargets() {
         TestShooterIO shooterIO = new TestShooterIO();
         TestTransferIO transferIO = new TestTransferIO();
         Shooter shooter = new Shooter(shooterIO);
@@ -429,6 +450,7 @@ class ShootCoordinatorTest {
         CommandScheduler.getInstance().schedule(command);
         runSchedulerCycles(3);
         assertTrue(shooter.isKickerActive());
+        assertTrue(shooter.getTargetAverageShooterRpm() > 0.0);
 
         command.cancel();
         runSchedulerCycles(2);
@@ -436,7 +458,9 @@ class ShootCoordinatorTest {
         assertFalse(shooter.isKickerActive());
         assertFalse(coordinator.isActivelyFeeding());
         assertEquals(0.0, transferIO.percent, EPSILON);
-        assertEquals(0.0, shooter.getTargetAverageShooterRpm(), EPSILON);
+        assertTrue(
+                shooter.getTargetAverageShooterRpm() > 0.0,
+                "Cancel should preserve shooter targets so another command/default can take over without a zero-RPM dip.");
     }
 
     private static void runSchedulerCycles(int cycles) {

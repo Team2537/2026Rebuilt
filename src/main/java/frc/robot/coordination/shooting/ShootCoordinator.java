@@ -174,6 +174,7 @@ public class ShootCoordinator {
                 automaticFeedEnabled);
 
         applyFeedOutputs(gateDecision.gateOpen());
+        Logger.recordOutput("Shooting/ShooterAimOnly", false);
 
         logShootingState(
                 solution,
@@ -266,16 +267,30 @@ public class ShootCoordinator {
     }
 
     private void stopAllOutputs() {
-        shotGate.reset();
-        activelyFeeding = false;
-        shooter.stopAll();
-        transfer.stopAll();
+        stopCoordinatorOutputsPreservingShooterTargets();
     }
 
     private void stopAimOutputs() {
+        stopCoordinatorOutputsPreservingShooterTargets();
+    }
+
+    private void stopCoordinatorOutputsPreservingShooterTargets() {
         shotGate.reset();
         activelyFeeding = false;
-        shooter.stopAll();
+        shooter.stopKicker();
+        shooter.resetActiveReadinessProfile();
+        transfer.stopAll();
+
+        Logger.recordOutput("Shooting/ShooterAimOnly", false);
+        Logger.recordOutput("Shooting/ShooterAtSetpoint", false);
+        Logger.recordOutput("Shooting/AimReady", false);
+        Logger.recordOutput("Shooting/ManualFeedOverride", false);
+        Logger.recordOutput("Shooting/AutomaticFeedEnabled", false);
+        Logger.recordOutput("Shooting/GateOpen", false);
+        Logger.recordOutput("Shooting/BlockReason", "CommandEnded");
+        Logger.recordOutput("Shooting/ReadyStableCycles", 0);
+        Logger.recordOutput("Shooting/ReadyDropStableCycles", 0);
+        Logger.recordOutput("Shooting/State", "IDLE");
     }
 
     public boolean isActivelyFeeding() {
