@@ -33,15 +33,15 @@
     {
       "anchor": {
         "x": 7.793197055967514,
-        "y": 6.723415706656073
+        "y": 6.838818083509887
       },
       "prevControl": {
         "x": 7.765150628286379,
-        "y": 6.971837521105463
+        "y": 7.087239897959276
       },
       "nextControl": {
         "x": 7.923182816399901,
-        "y": 5.572064139664297
+        "y": 5.687466516518111
       },
       "isLocked": false,
       "linkedName": null
@@ -49,15 +49,15 @@
     {
       "anchor": {
         "x": 7.793197055967514,
-        "y": 5.194171229222462
+        "y": 4.8582036215572035
       },
       "prevControl": {
         "x": 7.967825265061108,
-        "y": 6.027388999797096
+        "y": 5.691421392131837
       },
       "nextControl": {
         "x": 7.73818296276655,
-        "y": 4.931678013922268
+        "y": 4.595710406257009
       },
       "isLocked": false,
       "linkedName": null
@@ -221,24 +221,26 @@
       }
     },
     {
-      "name": "IntakeExtend",
+      "name": "IntakeExtendAndRoll",
       "waypointRelativePos": 1.0489768401015227,
-      "endWaypointRelativePos": null,
+      "endWaypointRelativePos": 3.39760469543147,
       "command": {
-        "type": "named",
+        "type": "sequential",
         "data": {
-          "name": "IntakeExtend"
-        }
-      }
-    },
-    {
-      "name": "IntakeRoller",
-      "waypointRelativePos": 1.6275380710659904,
-      "endWaypointRelativePos": 3.396474460659899,
-      "command": {
-        "type": "named",
-        "data": {
-          "name": "IntakeRoller"
+          "commands": [
+            {
+              "type": "named",
+              "data": {
+                "name": "IntakeExtend"
+              }
+            },
+            {
+              "type": "named",
+              "data": {
+                "name": "IntakeRoller"
+              }
+            }
+          ]
         }
       }
     },
@@ -254,24 +256,26 @@
       }
     },
     {
-      "name": "IntakeExtend",
+      "name": "IntakeExtendAndRoll",
       "waypointRelativePos": 6.102871192893404,
-      "endWaypointRelativePos": null,
+      "endWaypointRelativePos": 7.6770304568527905,
       "command": {
-        "type": "named",
+        "type": "sequential",
         "data": {
-          "name": "IntakeExtend"
-        }
-      }
-    },
-    {
-      "name": "IntakeRoller",
-      "waypointRelativePos": 6.285136421319794,
-      "endWaypointRelativePos": 7.678220177664979,
-      "command": {
-        "type": "named",
-        "data": {
-          "name": "IntakeRoller"
+          "commands": [
+            {
+              "type": "named",
+              "data": {
+                "name": "IntakeExtend"
+              }
+            },
+            {
+              "type": "named",
+              "data": {
+                "name": "IntakeRoller"
+              }
+            }
+          ]
         }
       }
     }
