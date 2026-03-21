@@ -103,9 +103,7 @@ public final class RobotContainer {
 
         drive = createDrive();
         RobotState.initialize(drive);
-        vision = Constants.isMechanismEnabled(Constants.Mechanism.VISION)
-                ? new Vision(RobotState.getInstance())
-                : null;
+        vision = new Vision(RobotState.getInstance());
         shooter = createShooter();
         transfer = createTransfer();
         intake = createIntake();
@@ -265,19 +263,13 @@ public final class RobotContainer {
     }
 
     private static Drive createDrive() {
-        boolean enabled = Constants.isMechanismEnabled(Constants.Mechanism.DRIVE);
         return switch (RobotType.MODE) {
-            case REAL -> enabled
-                    ? new Drive(
-                            new GyroIOPigeon2(),
-                            new ModuleIOTalonFX(TunerConstants.FrontLeft),
-                            new ModuleIOTalonFX(TunerConstants.FrontRight),
-                            new ModuleIOTalonFX(TunerConstants.BackLeft),
-                            new ModuleIOTalonFX(TunerConstants.BackRight))
-                    : new Drive(
-                            new GyroIO() {},
-                            new ModuleIO() {}, new ModuleIO() {},
-                            new ModuleIO() {}, new ModuleIO() {});
+            case REAL -> new Drive(
+                    new GyroIOPigeon2(),
+                    new ModuleIOTalonFX(TunerConstants.FrontLeft),
+                    new ModuleIOTalonFX(TunerConstants.FrontRight),
+                    new ModuleIOTalonFX(TunerConstants.BackLeft),
+                    new ModuleIOTalonFX(TunerConstants.BackRight));
             case SIMULATION -> {
                 GyroIOSim gyroIOSim = new GyroIOSim(Drive.getModuleTranslations());
                 Drive d = new Drive(
@@ -297,27 +289,24 @@ public final class RobotContainer {
     }
 
     private static Shooter createShooter() {
-        boolean enabled = Constants.isMechanismEnabled(Constants.Mechanism.SHOOTER);
         return new Shooter(switch (RobotType.MODE) {
-            case REAL -> enabled ? new ShooterIOReal() : new ShooterIO() {};
+            case REAL -> new ShooterIOReal();
             case SIMULATION -> new ShooterIOSim();
             case REPLAY -> new ShooterIO() {};
         });
     }
 
     private static Transfer createTransfer() {
-        boolean enabled = Constants.isMechanismEnabled(Constants.Mechanism.TRANSFER);
         return new Transfer(switch (RobotType.MODE) {
-            case REAL -> enabled ? new TransferIOReal() : new TransferIO() {};
+            case REAL -> new TransferIOReal();
             case SIMULATION -> new TransferIOSim();
             case REPLAY -> new TransferIO() {};
         });
     }
 
     private static Intake createIntake() {
-        boolean enabled = Constants.isMechanismEnabled(Constants.Mechanism.INTAKE);
         return new Intake(switch (RobotType.MODE) {
-            case REAL -> enabled ? new IntakeIOReal() : new IntakeIO() {};
+            case REAL -> new IntakeIOReal();
             case SIMULATION -> new IntakeIOSim();
             case REPLAY -> new IntakeIO() {};
         });

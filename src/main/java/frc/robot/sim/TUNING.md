@@ -9,20 +9,9 @@ This project includes a shooter tuning mode and simulated FUEL flight visualizat
 - Simulated FUEL poses published as a pool of **50** objects.
 - Ballistic shot motion (gravity only), with respawn/reset when `z < 0`.
 
-## Enable required subsystems
+## Subsystem availability
 
-Shooter logic only runs if shooter is enabled.
-
-Edit `src/main/java/frc/robot/Constants.java` and include shooter in:
-
-- `ENABLED_MECHANISMS`
-
-Example:
-
-```java
-public static final EnumSet<Mechanism> ENABLED_MECHANISMS =
-        EnumSet.of(Mechanism.DRIVE, Mechanism.VISION, Mechanism.SHOOTER, Mechanism.INTAKE, Mechanism.TRANSFER);
-```
+All robot mechanisms are now constructed directly in normal robot startup. No extra mechanism-enable toggle is required for shooter tuning in sim.
 
 ## Driver controls
 
