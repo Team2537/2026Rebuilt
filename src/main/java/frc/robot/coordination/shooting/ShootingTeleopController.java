@@ -157,27 +157,26 @@ public final class ShootingTeleopController {
             Supplier<ShotSolution> hubShotSolutionSupplier,
             BooleanSupplier aimReadyOverrideSupplier,
             BooleanSupplier manualFeedOverrideSupplier) {
-        BooleanSupplier overrideModeSupplier =
-                () -> dashboardOverrides.isAutoAimEnabled()
-                        && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose());
-        return withShootingConstraintProfile(createSwitchingCommand(
-                overrideModeSupplier,
-                () -> createOverrideAutoAimShootCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        manualFeedOverrideSupplier),
-                () -> createZoneAwareShootCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        distanceMetersSupplier,
-                        targetHeadingSupplier,
-                        hubShotSolutionSupplier,
-                        aimReadyOverrideSupplier,
-                        manualFeedOverrideSupplier,
-                        () -> !dashboardOverrides.isFeedingDisabled()),
-                "ShooterSelectedShootMode"));
+        return withShootingConstraintProfile(
+                Commands.either(
+                        createOverrideAutoAimShootCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                manualFeedOverrideSupplier),
+                        createZoneAwareShootCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                distanceMetersSupplier,
+                                targetHeadingSupplier,
+                                hubShotSolutionSupplier,
+                                aimReadyOverrideSupplier,
+                                manualFeedOverrideSupplier,
+                                () -> !dashboardOverrides.isFeedingDisabled()),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterSelectedShootMode"));
     }
 
     public Command createSelectedAimCommand(
@@ -185,23 +184,22 @@ public final class ShootingTeleopController {
             DoubleSupplier ySupplier,
             DoubleSupplier omegaFallbackSupplier,
             Supplier<ShotSolution> hubShotSolutionSupplier) {
-        BooleanSupplier overrideModeSupplier =
-                () -> dashboardOverrides.isAutoAimEnabled()
-                        && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose());
-        return withShootingConstraintProfile(createSwitchingCommand(
-                overrideModeSupplier,
-                () -> createOverrideAutoAimCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier),
-                () -> createZoneAwareAimCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        null,
-                        null,
-                        hubShotSolutionSupplier),
-                "ShooterDriverAim"));
+        return withShootingConstraintProfile(
+                Commands.either(
+                        createOverrideAutoAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier),
+                        createZoneAwareAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                null,
+                                null,
+                                hubShotSolutionSupplier),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterDriverAim"));
     }
 
     public Command createSelectedAimCommand(
@@ -210,23 +208,22 @@ public final class ShootingTeleopController {
             DoubleSupplier omegaFallbackSupplier,
             DoubleSupplier hubDistanceMetersSupplier,
             Supplier<Rotation2d> hubTargetHeadingSupplier) {
-        BooleanSupplier overrideModeSupplier =
-                () -> dashboardOverrides.isAutoAimEnabled()
-                        && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose());
-        return withShootingConstraintProfile(createSwitchingCommand(
-                overrideModeSupplier,
-                () -> createOverrideAutoAimCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier),
-                () -> createZoneAwareAimCommand(
-                        xSupplier,
-                        ySupplier,
-                        omegaFallbackSupplier,
-                        hubDistanceMetersSupplier,
-                        hubTargetHeadingSupplier,
-                        null),
-                "ShooterDriverAim"));
+        return withShootingConstraintProfile(
+                Commands.either(
+                        createOverrideAutoAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier),
+                        createZoneAwareAimCommand(
+                                xSupplier,
+                                ySupplier,
+                                omegaFallbackSupplier,
+                                hubDistanceMetersSupplier,
+                                hubTargetHeadingSupplier,
+                                null),
+                        () -> dashboardOverrides.isAutoAimEnabled()
+                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        .withName("ShooterDriverAim"));
     }
 
     private Supplier<Pose2d> createShootingPoseSupplier() {
@@ -384,11 +381,9 @@ public final class ShootingTeleopController {
                 AutoAimHeadingConfig.aimReleaseToleranceRad(),
                 ShooterConstants.scoreShooterRpmTolerance(),
                 hubShotSolutionSupplier);
-        BooleanSupplier blockedSupplier = () -> shotSolutionSupplier.get().intent() == ShotIntent.NONE;
-        return createSwitchingCommand(
-                blockedSupplier,
-                () -> createBlockedShootDriveCommand(xSupplier, ySupplier, omegaSupplier),
-                () -> createShootCommand(
+        return Commands.either(
+                createBlockedShootDriveCommand(xSupplier, ySupplier, omegaSupplier),
+                createShootCommand(
                         xSupplier,
                         ySupplier,
                         omegaSupplier,
@@ -396,7 +391,7 @@ public final class ShootingTeleopController {
                         aimReadyOverrideSupplier,
                         manualFeedOverrideSupplier,
                         automaticFeedEnabledSupplier),
-                "ShooterZoneAwareShoot");
+                () -> shotSolutionSupplier.get().intent() == ShotIntent.NONE);
     }
 
     private Command createZoneAwareAimCommand(
@@ -413,27 +408,10 @@ public final class ShootingTeleopController {
                 AutoAimHeadingConfig.aimReleaseToleranceRad(),
                 ShooterConstants.scoreShooterRpmTolerance(),
                 hubShotSolutionSupplier);
-        BooleanSupplier blockedSupplier = () -> shotSolutionSupplier.get().intent() == ShotIntent.NONE;
-        return createSwitchingCommand(
-                blockedSupplier,
-                () -> createBlockedShootDriveCommand(xSupplier, ySupplier, omegaSupplier),
-                () -> createAimCommand(xSupplier, ySupplier, omegaSupplier, shotSolutionSupplier),
-                "ShooterZoneAwareAim");
-    }
-
-    private static Command createSwitchingCommand(
-            BooleanSupplier condition,
-            Supplier<Command> whenTrueSupplier,
-            Supplier<Command> whenFalseSupplier,
-            String commandName) {
-        return Commands.deferredProxy(() -> {
-                    boolean selectedTrue = condition.getAsBoolean();
-                    BooleanSupplier activeCondition = selectedTrue ? condition : () -> !condition.getAsBoolean();
-                    return (selectedTrue ? whenTrueSupplier.get() : whenFalseSupplier.get())
-                            .onlyWhile(activeCondition);
-                })
-                .repeatedly()
-                .withName(commandName);
+        return Commands.either(
+                createBlockedShootDriveCommand(xSupplier, ySupplier, omegaSupplier),
+                createAimCommand(xSupplier, ySupplier, omegaSupplier, shotSolutionSupplier),
+                () -> shotSolutionSupplier.get().intent() == ShotIntent.NONE);
     }
 
     private Command createAimCommand(

@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
+    private static final double HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC = 0.5;
     private static final double HEADING_SNAP_SETTLE_TIME_SEC = 0.05;
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
@@ -147,8 +148,10 @@ public final class DriveCommands {
             boolean angleSettled = Math.abs(MathUtil.angleModulus(
                             state.targetHeading.minus(robotState.getRotation()).getRadians()))
                     <= HEADING_SNAP_TOLERANCE_RAD;
+            boolean omegaSettled = Math.abs(robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond)
+                    <= HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC;
             double nowSec = Timer.getFPGATimestamp();
-            if (angleSettled) {
+            if (angleSettled && omegaSettled) {
                 if (Double.isNaN(state.settledSinceSec)) {
                     state.settledSinceSec = nowSec;
                 }
