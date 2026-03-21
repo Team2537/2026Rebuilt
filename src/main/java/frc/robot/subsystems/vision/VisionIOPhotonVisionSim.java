@@ -86,4 +86,9 @@ public final class VisionIOPhotonVisionSim extends VisionIOPhotonVision {
         }
         return sharedVisionSim;
     }
+
+    static synchronized void resetSharedVisionSim() {
+        sharedVisionSim = null;
+        lastVisionSimUpdateTimestampSec = Double.NEGATIVE_INFINITY;
+    }
 }

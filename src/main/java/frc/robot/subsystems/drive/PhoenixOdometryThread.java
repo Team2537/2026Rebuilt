@@ -17,6 +17,7 @@ import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.littletonrobotics.junction.Logger;
 
 /**
  * Provides an interface for asynchronously reading high-frequency measurements
@@ -24,18 +25,20 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>
  * This version is intended for Phoenix 6 devices on both the RIO and CANivore
- * buses. When using
- * a CANivore, the thread uses the "waitForAll" blocking method to enable more
- * consistent sampling.
- * This also allows Phoenix Pro users to benefit from lower latency between
- * devices using CANivore
- * time synchronization.
+ * buses. It refreshes all registered signals at a fixed rate, estimates a
+ * shared sample timestamp from the FPGA clock minus average CAN latency, and
+ * publishes the sampled values into small queues consumed by the subsystem IO
+ * layers.
  */
 public class PhoenixOdometryThread extends Thread {
+    private static final int SAMPLE_QUEUE_CAPACITY = 20;
+
     private final Lock signalsLock = new ReentrantLock(); // Prevents conflicts when registering signals
     private BaseStatusSignal[] phoenixSignals = new BaseStatusSignal[0];
     private final List<Queue<Double>> phoenixQueues = new ArrayList<>();
     private final List<Queue<Double>> timestampQueues = new ArrayList<>();
+    private long droppedPhoenixSamples = 0L;
+    private long droppedTimestampSamples = 0L;
 
     private static PhoenixOdometryThread instance = null;
 
@@ -60,7 +63,7 @@ public class PhoenixOdometryThread extends Thread {
 
     /** Registers a Phoenix signal to be read from the thread. */
     public Queue<Double> registerSignal(StatusSignal<Angle> signal) {
-        Queue<Double> queue = new ArrayBlockingQueue<>(20);
+        Queue<Double> queue = new ArrayBlockingQueue<>(SAMPLE_QUEUE_CAPACITY);
         signalsLock.lock();
         Drive.odometryLock.lock();
         try {
@@ -78,7 +81,7 @@ public class PhoenixOdometryThread extends Thread {
 
     /** Returns a new queue that returns timestamp values for each sample. */
     public Queue<Double> makeTimestampQueue() {
-        Queue<Double> queue = new ArrayBlockingQueue<>(20);
+        Queue<Double> queue = new ArrayBlockingQueue<>(SAMPLE_QUEUE_CAPACITY);
         Drive.odometryLock.lock();
         try {
             timestampQueues.add(queue);
@@ -126,14 +129,28 @@ public class PhoenixOdometryThread extends Thread {
 
                 // Add new samples to queues
                 for (int i = 0; i < phoenixSignals.length; i++) {
-                    phoenixQueues.get(i).offer(phoenixSignals[i].getValueAsDouble());
+                    if (!offerLatestSample(phoenixQueues.get(i), phoenixSignals[i].getValueAsDouble())) {
+                        droppedPhoenixSamples++;
+                    }
                 }
                 for (int i = 0; i < timestampQueues.size(); i++) {
-                    timestampQueues.get(i).offer(timestamp);
+                    if (!offerLatestSample(timestampQueues.get(i), timestamp)) {
+                        droppedTimestampSamples++;
+                    }
                 }
+                Logger.recordOutput("Drive/OdometryThread/DroppedPhoenixSamples", droppedPhoenixSamples);
+                Logger.recordOutput("Drive/OdometryThread/DroppedTimestampSamples", droppedTimestampSamples);
             } finally {
                 Drive.odometryLock.unlock();
             }
         }
+    }
+
+    private static boolean offerLatestSample(Queue<Double> queue, double value) {
+        if (queue.offer(value)) {
+            return true;
+        }
+        queue.poll();
+        return queue.offer(value);
     }
 }

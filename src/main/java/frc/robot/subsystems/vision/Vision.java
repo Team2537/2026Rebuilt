@@ -57,6 +57,9 @@ public final class Vision extends SubsystemBase {
         super("Vision");
         this.robotState = robotState;
         this.robotPoseSupplier = robotState::getPose;
+        if (RobotType.MODE == RobotType.Mode.SIMULATION) {
+            VisionIOPhotonVisionSim.resetSharedVisionSim();
+        }
         this.ios = createIOs();
         this.inputs = ios.stream().map(io -> new VisionIOInputsAutoLogged()).toList();
         this.cameraLogKeys = new ArrayList<>(ios.size());
@@ -503,6 +506,12 @@ public final class Vision extends SubsystemBase {
     }
 
     private boolean isPoseValid(PoseObservation observation) {
+        if (observation == null || !Double.isFinite(observation.ambiguity())) {
+            return false;
+        }
+        if (!isFinitePose(observation.pose().toPose2d()) || !isFinitePose(observation.pose())) {
+            return false;
+        }
         if (observation.tagCount() == 0) {
             return false;
         }
@@ -521,6 +530,23 @@ public final class Vision extends SubsystemBase {
             return false;
         }
         return true;
+    }
+
+    private static boolean isFinitePose(Pose2d pose) {
+        return pose != null
+                && Double.isFinite(pose.getX())
+                && Double.isFinite(pose.getY())
+                && Double.isFinite(pose.getRotation().getRadians());
+    }
+
+    private static boolean isFinitePose(Pose3d pose) {
+        return pose != null
+                && Double.isFinite(pose.getX())
+                && Double.isFinite(pose.getY())
+                && Double.isFinite(pose.getZ())
+                && Double.isFinite(pose.getRotation().getX())
+                && Double.isFinite(pose.getRotation().getY())
+                && Double.isFinite(pose.getRotation().getZ());
     }
 
     private void updateHubTagTracking() {

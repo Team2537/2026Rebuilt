@@ -585,6 +585,12 @@ public final class RobotContainer {
                         false);
                 return;
             }
+            if (!isFinitePose(unifiedVisionPose)) {
+                DriverStation.reportWarning(
+                        "Cannot set odometry from unified vision pose: latest pose contains non-finite values.",
+                        false);
+                return;
+            }
 
             Pose2d poseToApply = unifiedVisionPose;
             String sourceTag = source;
@@ -594,5 +600,12 @@ public final class RobotContainer {
                         RobotState.getInstance().setPose(poseToApply);
                     }, drive).withName("DriveSetOdometryFromUnifiedVision"));
         }).withName("DriveSetOdometryFromUnifiedVisionDispatch");
+    }
+
+    private static boolean isFinitePose(Pose2d pose) {
+        return pose != null
+                && Double.isFinite(pose.getX())
+                && Double.isFinite(pose.getY())
+                && Double.isFinite(pose.getRotation().getRadians());
     }
 }

@@ -9,9 +9,7 @@ package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.filter.SlewRateLimiter;
-import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
@@ -32,7 +30,6 @@ import java.util.function.Supplier;
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
-    private static final double HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC = 0.5;
     private static final double HEADING_SNAP_SETTLE_TIME_SEC = 0.05;
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
@@ -41,17 +38,12 @@ public final class DriveCommands {
     }
 
     private static Translation2d getLinearVelocityFromJoysticks(double x, double y) {
-        // Apply deadband
         double linearMagnitude = MathUtil.applyDeadband(Math.hypot(x, y), DEADBAND);
-        Rotation2d linearDirection = new Rotation2d(Math.atan2(y, x));
-
-        // Square magnitude for more precise control
         linearMagnitude = linearMagnitude * linearMagnitude;
-
-        // Return new linear velocity
-        return new Pose2d(Translation2d.kZero, linearDirection)
-                .transformBy(new Transform2d(linearMagnitude, 0.0, Rotation2d.kZero))
-                .getTranslation();
+        if (linearMagnitude <= 1e-9) {
+            return Translation2d.kZero;
+        }
+        return new Translation2d(linearMagnitude, new Rotation2d(Math.atan2(y, x)));
     }
 
     private static double getAngularVelocityFromJoystick(double omegaInput) {
@@ -70,6 +62,29 @@ public final class DriveCommands {
         return isFlipped ? rotation.plus(Rotation2d.kPi) : rotation;
     }
 
+    private static ChassisSpeeds createRequestedSpeeds(
+            Drive drive,
+            Translation2d normalizedLinearVelocity,
+            double omegaRadPerSec) {
+        ChassisSpeeds speeds = new ChassisSpeeds(
+                normalizedLinearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
+                normalizedLinearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
+                omegaRadPerSec);
+        return drive.isFieldOriented()
+                ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
+                : speeds;
+    }
+
+    private static ChassisSpeeds createRequestedSpeedsFromAngularInput(
+            Drive drive,
+            Translation2d normalizedLinearVelocity,
+            double normalizedOmegaInput) {
+        return createRequestedSpeeds(
+                drive,
+                normalizedLinearVelocity,
+                normalizedOmegaInput * drive.getMaxAngularSpeedRadPerSec());
+    }
+
     /**
      * Field relative drive command using two joysticks (controlling linear and
      * angular velocities).
@@ -84,20 +99,10 @@ public final class DriveCommands {
                     // Get linear velocity
                     Translation2d linearVelocity = getLinearVelocityFromJoysticks(-xSupplier.getAsDouble(),
                             -ySupplier.getAsDouble());
-
-                    double omega = getAngularVelocityFromJoystick(omegaSupplier.getAsDouble());
-
-                    // Compute desired chassis speeds from joystick input
-                    ChassisSpeeds speeds = new ChassisSpeeds(
-                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                            omega * drive.getMaxAngularSpeedRadPerSec());
-
-                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
-                            : speeds;
-
-                    drive.runDriverVelocity(commandSpeeds);
+                    drive.runDriverVelocity(createRequestedSpeedsFromAngularInput(
+                            drive,
+                            linearVelocity,
+                            getAngularVelocityFromJoystick(omegaSupplier.getAsDouble())));
                 },
                 drive);
     }
@@ -142,10 +147,8 @@ public final class DriveCommands {
             boolean angleSettled = Math.abs(MathUtil.angleModulus(
                             state.targetHeading.minus(robotState.getRotation()).getRadians()))
                     <= HEADING_SNAP_TOLERANCE_RAD;
-            boolean omegaSettled = Math.abs(robotState.getMeasuredChassisSpeeds().omegaRadiansPerSecond)
-                    <= HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC;
             double nowSec = Timer.getFPGATimestamp();
-            if (angleSettled && omegaSettled) {
+            if (angleSettled) {
                 if (Double.isNaN(state.settledSinceSec)) {
                     state.settledSinceSec = nowSec;
                 }
@@ -167,14 +170,7 @@ public final class DriveCommands {
                             state.targetHeading,
                             0.0,
                             drive.getMaxAngularSpeedRadPerSec());
-                    ChassisSpeeds speeds = new ChassisSpeeds(
-                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                            omega);
-                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
-                            : speeds;
-                    drive.runDriverVelocity(commandSpeeds);
+                    drive.runDriverVelocity(createRequestedSpeeds(drive, linearVelocity, omega));
                 },
                 drive)
                 .beforeStarting(() -> {
@@ -273,15 +269,7 @@ public final class DriveCommands {
                         drive.stopWithX();
                         return;
                     }
-
-                    ChassisSpeeds speeds = new ChassisSpeeds(
-                            linearVelocity.getX() * drive.getMaxLinearSpeedMetersPerSec(),
-                            linearVelocity.getY() * drive.getMaxLinearSpeedMetersPerSec(),
-                            omega);
-                    ChassisSpeeds commandSpeeds = drive.isFieldOriented()
-                            ? ChassisSpeeds.fromFieldRelativeSpeeds(speeds, getAllianceAdjustedFieldHeading())
-                            : speeds;
-                    drive.runDriverVelocity(commandSpeeds);
+                    drive.runDriverVelocity(createRequestedSpeeds(drive, linearVelocity, omega));
                 },
                 drive)
                 .withName("DriveWhileAiming");
