@@ -1,5 +1,6 @@
 package frc.robot.coordination.shooting;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -230,9 +231,9 @@ class ShootingTeleopControllerXLockTest {
                 Rotation2d.kZero));
         fixture.runSchedulerCycles(3);
 
-        assertTrue(
-                fixture.hasAnyDriveVelocityCommanded(),
-                "Losing the target while holding aim should still pass driver omega through.");
+        assertFalse(
+                fixture.isDriveInXLock(),
+                "Losing the target while holding aim should still leave heading under driver control.");
     }
 
     @Test
@@ -295,6 +296,25 @@ class ShootingTeleopControllerXLockTest {
         assertTrue(
                 selection.targetPose().getY() > FieldConstants.getHubTargetTranslation().getY(),
                 "Blue pass target should move away from the hub lane.");
+    }
+
+    @Test
+    void publishShootTargetShowsManualDistanceOverrideOutsideAllianceZone() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockUpperY() + 0.2,
+                Rotation2d.kZero));
+        SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
+        SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.2);
+        fixture.runSchedulerCycles(2);
+
+        ShootingTeleopController.TargetSelection selection = fixture.publishShootTargetTelemetry();
+
+        assertTrue(selection.mode() == ShootingTeleopController.ShootTargetMode.MANUAL_DISTANCE);
+        assertFalse(selection.hasFieldTarget(), "Manual-distance override should not publish a field target pose.");
+        assertEquals(3.2, selection.distanceMeters(), 1e-9);
+        assertTrue(selection.targetHeading() == null, "Manual-distance override should not auto-align to a field heading.");
     }
 
     @Test
@@ -392,6 +412,33 @@ class ShootingTeleopControllerXLockTest {
         assertTrue(
                 selection.targetPose().getY() > FieldConstants.getHubTargetTranslation().getY(),
                 "Red pass target should move away from the hub lane.");
+    }
+
+    @Test
+    void manualDistanceOverrideShootOutsideAllianceZoneFeedsWithoutAutoAligning() {
+        fixture.setAlliance(AllianceStationID.Blue1);
+        fixture.setPose(new Pose2d(
+                8.0,
+                FieldConstants.getHubBackBlockUpperY() + 0.2,
+                Rotation2d.kZero));
+        SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
+        SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
+        fixture.runSchedulerCycles(2);
+
+        Command command = fixture.controller.createSelectedShootCommand(
+                () -> 0.0,
+                () -> 0.0,
+                () -> 0.65,
+                () -> 99.0,
+                () -> Rotation2d.fromDegrees(180.0),
+                () -> false,
+                () -> true);
+        CommandScheduler.getInstance().schedule(command);
+
+        fixture.runSchedulerCycles(3);
+
+        assertTrue(fixture.coordinator.isActivelyFeeding(), "Manual-distance override should feed immediately outside the alliance zone.");
+        assertFalse(fixture.isDriveInXLock(), "Manual-distance override should not auto-align the drive.");
     }
 
     private static final class Fixture {

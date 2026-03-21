@@ -555,18 +555,20 @@ final class FullFunctionalityBindings {
             FullFunctionalityHarness.CommandCounts feedDisabledShootBefore =
                     context.recorder.getCounts("ShooterSelectedShootMode");
             context.driverControllerSim.setRightBumperButton(true);
-            context.runCycles(140);
+            boolean feedDisabledOverrideFed = context.runUntil(
+                    () -> context.shooter.isKickerActive() && context.transferInputs.appliedVolts > 1.0,
+                    80);
             assertTrue(
                     context.recorder.runningCount("ShooterSelectedShootMode") >= 1,
                     "Expected right bumper auto-feed mode to keep aiming/spinning while feed disable override is enabled.");
             assertTrue(
-                    !context.shooter.isKickerActive(),
-                    "Expected feed disable override to block automatic kicker feed.");
+                    feedDisabledOverrideFed,
+                    "Right bumper should manual-feed even when the feed disable override is enabled.");
             assertTrue(
-                    Math.abs(context.transferInputs.appliedVolts) < 1e-6,
+                    context.transferInputs.appliedVolts > 1.0,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "Feed disable override should keep transfer stopped until manual override is used",
-                            "transferAppliedVolts=0",
+                            "Right bumper manual-feed override should drive the transfer even with feed disable enabled",
+                            "transferAppliedVolts>1.0",
                             String.format(Locale.US, "transferAppliedVolts=%.3f", context.transferInputs.appliedVolts)));
             context.driverControllerSim.setRightBumperButton(false);
             context.runCycles(10);

@@ -415,7 +415,7 @@ public final class RobotContainer {
                         () -> driverController.getLeftX(),
                         () -> -driverController.getRightX(),
                         teleopHubShotSolutionSupplier,
-                        () -> false).withName("ShooterSelectedShootMode"));
+                        () -> true).withName("ShooterSelectedShootMode"));
         bindWhileTrue(
                 dashboardTuneTrigger,
                 "driver.dashboardTune.whileTrue",

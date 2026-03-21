@@ -6,7 +6,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.vision.Vision;
 import org.littletonrobotics.junction.Logger;
 
-/** Reads and publishes driver dashboard override entries (auto-aim, distance, vision disable). */
+/** Reads and publishes driver dashboard override entries (manual-distance shooting, feed, vision). */
 public final class DashboardOverrides {
     private static final String AUTO_AIM_KEY = "Overrides/OverrideAutoAim";
     private static final String AIM_DISTANCE_METERS_KEY = "Overrides/AimDistanceMeters";
@@ -31,7 +31,7 @@ public final class DashboardOverrides {
 
     /** Reads current override values and publishes status outputs. */
     public void periodic(Vision vision) {
-        boolean overrideAutoAimEnabled = isAutoAimEnabled();
+        boolean overrideAutoAimEnabled = isAutoAimOverrideEnabled();
         double overrideAimDistanceMeters = getAimDistanceMeters();
         boolean feedingDisabled = isFeedingDisabled();
         boolean visionDisabled = SmartDashboard.getBoolean(DISABLE_VISION_KEY, false);
@@ -47,8 +47,8 @@ public final class DashboardOverrides {
         }
     }
 
-    /** Returns whether the dashboard auto-aim override is enabled. */
-    public boolean isAutoAimEnabled() {
+    /** Returns whether the dashboard manual-distance override is enabled. */
+    public boolean isAutoAimOverrideEnabled() {
         return SmartDashboard.getBoolean(AUTO_AIM_KEY, false);
     }
 

@@ -174,8 +174,7 @@ public final class ShootingTeleopController {
                                 aimReadyOverrideSupplier,
                                 manualFeedOverrideSupplier,
                                 () -> !dashboardOverrides.isFeedingDisabled()),
-                        () -> dashboardOverrides.isAutoAimEnabled()
-                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        dashboardOverrides::isAutoAimOverrideEnabled)
                         .withName("ShooterSelectedShootMode"));
     }
 
@@ -197,8 +196,7 @@ public final class ShootingTeleopController {
                                 null,
                                 null,
                                 hubShotSolutionSupplier),
-                        () -> dashboardOverrides.isAutoAimEnabled()
-                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        dashboardOverrides::isAutoAimOverrideEnabled)
                         .withName("ShooterDriverAim"));
     }
 
@@ -221,8 +219,7 @@ public final class ShootingTeleopController {
                                 hubDistanceMetersSupplier,
                                 hubTargetHeadingSupplier,
                                 null),
-                        () -> dashboardOverrides.isAutoAimEnabled()
-                                && FieldConstants.isInAllianceZone(RobotState.getInstance().getPose()))
+                        dashboardOverrides::isAutoAimOverrideEnabled)
                         .withName("ShooterDriverAim"));
     }
 
@@ -287,8 +284,7 @@ public final class ShootingTeleopController {
                 allianceZoneHubShotSolutionSupplier);
         CycleCache<TargetSelection> cycleCache = new CycleCache<>();
         return () -> cycleCache.get(commandTelemetry.getCycle(), () -> {
-            Pose2d robotPose = RobotState.getInstance().getPose();
-            if (dashboardOverrides.isAutoAimEnabled() && FieldConstants.isInAllianceZone(robotPose)) {
+            if (dashboardOverrides.isAutoAimOverrideEnabled()) {
                 return createManualDistanceTargetSelection(dashboardOverrides.getAimDistanceMeters());
             }
             return toTargetSelection(selectedShotSolutionSupplier.get());
