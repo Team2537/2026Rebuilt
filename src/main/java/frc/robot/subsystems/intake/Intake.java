@@ -43,7 +43,8 @@ public class Intake extends SubsystemBase {
     }
 
     private static final class RollerAgitationSession {
-        private double startSec = Double.NaN;
+        private double phaseStartSec = Double.NaN;
+        private boolean highPhase = false;
     }
 
     private record RollerAgitationProfile(String logStem, double baselineRot, double peakRot, double switchIntervalSec) {}
@@ -536,7 +537,10 @@ public class Intake extends SubsystemBase {
         return Commands.run(
                         () -> executeRollerAgitation(session, profile),
                         this)
-                .beforeStarting(() -> session.startSec = Timer.getFPGATimestamp())
+                .beforeStarting(() -> {
+                    session.phaseStartSec = Timer.getFPGATimestamp();
+                    session.highPhase = false;
+                })
                 .finallyDo(interrupted -> endRollerAgitation(profile))
                 .withName(commandName);
     }
@@ -564,9 +568,8 @@ public class Intake extends SubsystemBase {
             return;
         }
 
-        double elapsedSec = Math.max(0.0, Timer.getFPGATimestamp() - session.startSec);
-        boolean highPhase = ((int) Math.floor(elapsedSec / profile.switchIntervalSec())) % 2 == 1;
-        double agitationTargetRot = highPhase ? profile.peakRot() : profile.baselineRot();
+        maybeAdvanceRollerAgitationPhase(session, profile);
+        double agitationTargetRot = session.highPhase ? profile.peakRot() : profile.baselineRot();
 
         commandRollerAgitationTarget(agitationTargetRot);
         recordRollerAgitation(profile, true, agitationTargetRot);
@@ -579,6 +582,25 @@ public class Intake extends SubsystemBase {
             return;
         }
         commandRollerAgitationTarget(profile.baselineRot());
+    }
+
+    private void maybeAdvanceRollerAgitationPhase(RollerAgitationSession session, RollerAgitationProfile profile) {
+        double nowSec = Timer.getFPGATimestamp();
+        if (!Double.isFinite(session.phaseStartSec)) {
+            session.phaseStartSec = nowSec;
+        }
+
+        double currentTargetRot = session.highPhase ? profile.peakRot() : profile.baselineRot();
+        double elapsedInPhaseSec = Math.max(0.0, nowSec - session.phaseStartSec);
+        if (elapsedInPhaseSec < profile.switchIntervalSec()) {
+            return;
+        }
+        if (!isAtTargetPosition(currentTargetRot)) {
+            return;
+        }
+
+        session.highPhase = !session.highPhase;
+        session.phaseStartSec = nowSec;
     }
 
     private static void recordRollerAgitation(RollerAgitationProfile profile, boolean active, double targetRot) {

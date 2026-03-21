@@ -132,6 +132,16 @@ public class ModuleIOTalonFX implements ModuleIO {
         turnConfig.MotionMagic.MotionMagicExpo_kV = 0.12 * constants.SteerMotorGearRatio;
         turnConfig.MotionMagic.MotionMagicExpo_kA = 0.1;
         turnConfig.ClosedLoopGeneral.ContinuousWrap = true;
+        // Preserve steer current limits from Tuner constants. Previously these were dropped
+        // because this implementation started from a fresh TalonFXConfiguration.
+        turnConfig.CurrentLimits.StatorCurrentLimit = constants.SteerMotorInitialConfigs.CurrentLimits.StatorCurrentLimit;
+        turnConfig.CurrentLimits.StatorCurrentLimitEnable = constants.SteerMotorInitialConfigs.CurrentLimits.StatorCurrentLimitEnable;
+        turnConfig.CurrentLimits.SupplyCurrentLimit = constants.SteerMotorInitialConfigs.CurrentLimits.SupplyCurrentLimit;
+        turnConfig.CurrentLimits.SupplyCurrentLimitEnable = constants.SteerMotorInitialConfigs.CurrentLimits.SupplyCurrentLimitEnable;
+        if (turnConfig.CurrentLimits.StatorCurrentLimitEnable) {
+            turnConfig.TorqueCurrent.PeakForwardTorqueCurrent = turnConfig.CurrentLimits.StatorCurrentLimit;
+            turnConfig.TorqueCurrent.PeakReverseTorqueCurrent = -turnConfig.CurrentLimits.StatorCurrentLimit;
+        }
         turnConfig.MotorOutput.Inverted = constants.SteerMotorInverted
                 ? InvertedValue.Clockwise_Positive
                 : InvertedValue.CounterClockwise_Positive;
