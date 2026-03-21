@@ -207,6 +207,7 @@ public class Shooter extends SubsystemBase {
 
     public void setTargetsForDistance(double distanceMeters) {
         if (!Double.isFinite(distanceMeters)) {
+            stopAll();
             return;
         }
         setTargets(calculateSetpointForDistance(distanceMeters));

@@ -33,7 +33,9 @@ public final class ShotYawController {
         }
 
         double headingErrorRad = MathUtil.angleModulus(desiredHeading.minus(currentHeading).getRadians());
-        double feedbackOmega = kP.get() * headingErrorRad + kD.get() * (desiredHeadingRateRadPerSec - measuredOmegaRadPerSec);
+        double feedbackOmega = clampFeedbackOmega(
+                kP.get() * headingErrorRad + kD.get() * (desiredHeadingRateRadPerSec - measuredOmegaRadPerSec),
+                maxOmegaRadPerSec);
         double omegaCommand = desiredHeadingRateRadPerSec + feedbackOmega;
         double limitedOmega = MathUtil.clamp(omegaCommand, -maxOmegaRadPerSec, maxOmegaRadPerSec);
 
@@ -60,7 +62,12 @@ public final class ShotYawController {
             return 0.0;
         }
         double headingErrorRad = MathUtil.angleModulus(desiredHeading.minus(currentHeading).getRadians());
-        double feedbackOmega = kP.get() * headingErrorRad + kD.get() * (desiredHeadingRateRadPerSec - measuredOmegaRadPerSec);
+        return clampFeedbackOmega(
+                kP.get() * headingErrorRad + kD.get() * (desiredHeadingRateRadPerSec - measuredOmegaRadPerSec),
+                maxOmegaRadPerSec);
+    }
+
+    private static double clampFeedbackOmega(double feedbackOmega, double maxOmegaRadPerSec) {
         double feedbackLimit = Math.min(maxOmegaRadPerSec, maxFeedbackOmegaRadPerSec.get());
         return MathUtil.clamp(feedbackOmega, -feedbackLimit, feedbackLimit);
     }

@@ -44,7 +44,7 @@ public class ShootCoordinator {
     public Command aimForShot(Supplier<ShotSolution> shotSolutionSupplier) {
         return Commands.runEnd(
                         () -> executeAim(shotSolutionSupplier),
-                        this::stopAllOutputs,
+                        this::stopAimOutputs,
                         shooter)
                 .withName("ShootCoordinatorAim");
     }
@@ -247,7 +247,7 @@ public class ShootCoordinator {
         Logger.recordOutput("Shooting/ReadyDropStableCycles", shotGate.getReadyDropStableCycles());
 
         String state;
-        if (manualFeedOverride) {
+        if (manualFeedOverride && gateDecision.gateOpen()) {
             state = "MANUAL_FEED_OVERRIDE";
         } else if (!automaticFeedEnabled) {
             state = "AIM_ONLY_OVERRIDE";
@@ -270,6 +270,12 @@ public class ShootCoordinator {
         activelyFeeding = false;
         shooter.stopAll();
         transfer.stopAll();
+    }
+
+    private void stopAimOutputs() {
+        shotGate.reset();
+        activelyFeeding = false;
+        shooter.stopAll();
     }
 
     public boolean isActivelyFeeding() {
