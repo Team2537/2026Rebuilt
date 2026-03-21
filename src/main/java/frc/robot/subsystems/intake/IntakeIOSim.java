@@ -2,6 +2,7 @@ package frc.robot.subsystems.intake;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.math.util.Units;
@@ -36,9 +37,15 @@ public class IntakeIOSim implements IntakeIO {
 
     private double leftTargetIntakePositionRot = IntakeConstants.RETRACTED_POSITION_ROT;
     private double rightTargetIntakePositionRot = applyRightAlignment(IntakeConstants.RETRACTED_POSITION_ROT);
+    private double intakeVelocityRotPerSec = IntakeConstants.INTAKE_VELOCITY;
+    private double intakeAccelerationRotPerSecSq = IntakeConstants.INTAKE_ACCELERATION;
     private double targetRollerRpm = 0.0;
     private double leftIntakeVoltageLimit = MAX_VOLTS;
     private double rightIntakeVoltageLimit = MAX_VOLTS;
+    private TrapezoidProfile.State leftProfiledSetpoint = new TrapezoidProfile.State(IntakeConstants.RETRACTED_POSITION_ROT, 0.0);
+    private TrapezoidProfile.State rightProfiledSetpoint = new TrapezoidProfile.State(
+            applyRightAlignment(IntakeConstants.RETRACTED_POSITION_ROT),
+            0.0);
 
     private boolean leftIntakePositionClosedLoop = false;
     private boolean rightIntakePositionClosedLoop = false;
@@ -67,8 +74,13 @@ public class IntakeIOSim implements IntakeIO {
             leftAppliedVolts = leftAtRetractStop ? 0.0 : MathUtil.clamp(leftRequestedVolts, -MAX_VOLTS, MAX_VOLTS);
         } else if (leftIntakePositionClosedLoop) {
             leftAtRetractStop = false;
+            leftProfiledSetpoint = advanceProfile(
+                    leftProfiledSetpoint,
+                    leftTargetIntakePositionRot,
+                    leftPositionRot,
+                    leftIntakeSim.getAngularVelocityRPM() / 60.0);
             leftAppliedVolts = MathUtil.clamp(
-                    leftIntakePositionController.calculate(leftPositionRot, leftTargetIntakePositionRot),
+                    leftIntakePositionController.calculate(leftPositionRot, leftProfiledSetpoint.position),
                     -leftIntakeVoltageLimit,
                     leftIntakeVoltageLimit);
         } else {
@@ -82,8 +94,13 @@ public class IntakeIOSim implements IntakeIO {
             rightAppliedVolts = rightAtRetractStop ? 0.0 : MathUtil.clamp(rightRequestedVolts, -MAX_VOLTS, MAX_VOLTS);
         } else if (rightIntakePositionClosedLoop) {
             rightAtRetractStop = false;
+            rightProfiledSetpoint = advanceProfile(
+                    rightProfiledSetpoint,
+                    rightTargetIntakePositionRot,
+                    rightPositionRot,
+                    rightIntakeSim.getAngularVelocityRPM() / 60.0);
             rightAppliedVolts = MathUtil.clamp(
-                    rightIntakePositionController.calculate(rightPositionRot, rightTargetIntakePositionRot),
+                    rightIntakePositionController.calculate(rightPositionRot, rightProfiledSetpoint.position),
                     -rightIntakeVoltageLimit,
                     rightIntakeVoltageLimit);
         } else {
@@ -152,6 +169,10 @@ public class IntakeIOSim implements IntakeIO {
 
         leftTargetIntakePositionRot = leftTargetRot;
         rightTargetIntakePositionRot = applyRightAlignment(leftTargetRot);
+        intakeVelocityRotPerSec = Math.max(0.0, velocityRotPerSec);
+        intakeAccelerationRotPerSecSq = Math.max(0.0, accelerationRotPerSecSq);
+        leftProfiledSetpoint = new TrapezoidProfile.State(getLeftPositionRotations(), leftIntakeSim.getAngularVelocityRPM() / 60.0);
+        rightProfiledSetpoint = new TrapezoidProfile.State(getRightPositionRotations(), rightIntakeSim.getAngularVelocityRPM() / 60.0);
         leftIntakeVoltageLimit = MathUtil.clamp(Math.abs(maxVolts), 0.0, MAX_VOLTS);
         rightIntakeVoltageLimit = leftIntakeVoltageLimit;
         leftIntakePositionClosedLoop = true;
@@ -165,6 +186,7 @@ public class IntakeIOSim implements IntakeIO {
         leftRequestedVolts = MathUtil.clamp(volts, -MAX_VOLTS, MAX_VOLTS);
         leftAtRetractStop = false;
         leftIntakeVoltageLimit = MAX_VOLTS;
+        leftProfiledSetpoint = new TrapezoidProfile.State(getLeftPositionRotations(), leftIntakeSim.getAngularVelocityRPM() / 60.0);
     }
 
     @Override
@@ -174,6 +196,7 @@ public class IntakeIOSim implements IntakeIO {
         rightRequestedVolts = MathUtil.clamp(volts, -MAX_VOLTS, MAX_VOLTS);
         rightAtRetractStop = false;
         rightIntakeVoltageLimit = MAX_VOLTS;
+        rightProfiledSetpoint = new TrapezoidProfile.State(getRightPositionRotations(), rightIntakeSim.getAngularVelocityRPM() / 60.0);
     }
 
     @Override
@@ -201,6 +224,7 @@ public class IntakeIOSim implements IntakeIO {
         leftRequestedVolts = 0.0;
         leftAtRetractStop = false;
         leftIntakeVoltageLimit = MAX_VOLTS;
+        leftProfiledSetpoint = new TrapezoidProfile.State(getLeftPositionRotations(), 0.0);
         leftIntakePositionController.reset();
     }
 
@@ -211,6 +235,7 @@ public class IntakeIOSim implements IntakeIO {
         rightRequestedVolts = 0.0;
         rightAtRetractStop = false;
         rightIntakeVoltageLimit = MAX_VOLTS;
+        rightProfiledSetpoint = new TrapezoidProfile.State(getRightPositionRotations(), 0.0);
         rightIntakePositionController.reset();
     }
 
@@ -223,5 +248,32 @@ public class IntakeIOSim implements IntakeIO {
 
     private static double applyRightAlignment(double leftReference) {
         return IntakeConstants.RIGHT_OPPOSES_LEFT ? leftReference : -leftReference;
+    }
+
+    private TrapezoidProfile.State advanceProfile(
+            TrapezoidProfile.State currentSetpoint,
+            double targetPositionRot,
+            double measuredPositionRot,
+            double measuredVelocityRotPerSec) {
+        if (intakeVelocityRotPerSec >= IntakeConstants.INTAKE_VELOCITY
+                && intakeAccelerationRotPerSecSq >= IntakeConstants.INTAKE_ACCELERATION) {
+            return new TrapezoidProfile.State(targetPositionRot, 0.0);
+        }
+        double maxVelocity = Math.max(1e-6, intakeVelocityRotPerSec);
+        double maxAcceleration = Math.max(1e-6, intakeAccelerationRotPerSecSq);
+        TrapezoidProfile profile = new TrapezoidProfile(new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+        TrapezoidProfile.State startState = currentSetpoint;
+        if (!Double.isFinite(startState.position) || !Double.isFinite(startState.velocity)) {
+            startState = new TrapezoidProfile.State(measuredPositionRot, measuredVelocityRotPerSec);
+        }
+        return profile.calculate(LOOP_PERIOD_SEC, startState, new TrapezoidProfile.State(targetPositionRot, 0.0));
+    }
+
+    private double getLeftPositionRotations() {
+        return Units.radiansToRotations(leftIntakeSim.getAngularPositionRad() - leftPositionOffsetRad);
+    }
+
+    private double getRightPositionRotations() {
+        return Units.radiansToRotations(rightIntakeSim.getAngularPositionRad() - rightPositionOffsetRad);
     }
 }

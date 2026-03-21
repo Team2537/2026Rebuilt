@@ -34,8 +34,7 @@ public final class AutoCommands {
      * Continuously tracks the hub shot target and spins the shooter without feeding.
      * Runs until interrupted.
      */
-    public static Command aimForHub(
-            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
+    public static Command aimForHub(Shooter shooter, ShootCoordinator shootCoordinator) {
         Supplier<ShotSolution> shotSolutionSupplier = createHubShotSolutionSupplier(
                 shooter,
                 false,
@@ -63,7 +62,7 @@ public final class AutoCommands {
      * Runs until interrupted and intentionally leaves intake smart retract disabled.
      */
     public static Command shootHubWithoutSmartRetract(
-            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
+            Drive drive, Shooter shooter, ShootCoordinator shootCoordinator) {
         return createHubShootCommand(drive, shooter, shootCoordinator)
                 .withName("AutoShootHubNoSmartRetract");
     }
@@ -97,7 +96,7 @@ public final class AutoCommands {
      * Uses motion-compensated heading to override PathPlanner's rotation feedback.
      */
     public static Command shootHubOnMove(
-            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
+            Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
         return withSmartRetractDuringShoot(
                         createHubShootOnMoveCommand(shooter, shootCoordinator),
                         intake,
@@ -110,7 +109,7 @@ public final class AutoCommands {
      * Uses motion-compensated heading to override PathPlanner's rotation feedback and leaves smart retract disabled.
      */
     public static Command shootHubOnMoveWithoutSmartRetract(
-            Drive drive, Shooter shooter, Intake intake, ShootCoordinator shootCoordinator) {
+            Shooter shooter, ShootCoordinator shootCoordinator) {
         return createHubShootOnMoveCommand(shooter, shootCoordinator)
                 .withName("AutoShootHubOnMoveNoSmartRetract");
     }
