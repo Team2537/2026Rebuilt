@@ -155,6 +155,12 @@ task(replayWatch, type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
 }
 
+tasks.register("printTestRuntimeClasspath") {
+    doLast {
+        println sourceSets.test.runtimeClasspath.asPath
+    }
+}
+
 gversion {
     srcDir       = "src/main/java/"
     classPackage = "frc.robot"
