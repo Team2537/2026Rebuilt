@@ -87,7 +87,7 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
-    public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
+    public static final double SMART_RETRACT_ROLLER_RPM = 2000.0;
     public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.45;
     public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.25;
     public static final double SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT = EXTENDED_POSITION_ROT;
