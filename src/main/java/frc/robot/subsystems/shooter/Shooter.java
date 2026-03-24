@@ -442,6 +442,10 @@ public class Shooter extends SubsystemBase {
         return kickerControlMode != KickerControlMode.OFF && Math.abs(kickerOutput) > 1e-6;
     }
 
+    public boolean didDetectShotPulseThisCycle() {
+        return shotDetectedThisCycle;
+    }
+
     public double getTargetAverageShooterRpm() {
         return (targetLeftRpm + targetRightRpm) / 2.0;
     }

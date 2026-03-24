@@ -297,6 +297,10 @@ public class ShootCoordinator {
         return activelyFeeding;
     }
 
+    public boolean didDetectShotPulseThisCycle() {
+        return shooter.didDetectShotPulseThisCycle();
+    }
+
     private static String readinessLabelFor(ShotSolution solution) {
         if (solution == null || solution.intent() == ShotIntent.NONE) {
             return "SCORE";

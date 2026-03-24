@@ -28,6 +28,9 @@ public final class SmartRetractController {
         private boolean halfRetractReached = false;
         private boolean fullRetractReached = false;
         private boolean seenAboveSmartRetractThreshold = false;
+        private boolean sawShotPulse = false;
+        private double lastShotOrFeedTimestampSec = Double.NaN;
+        private int jamRecoveryCount = 0;
 
         public Mode mode() {
             return mode;
@@ -72,6 +75,22 @@ public final class SmartRetractController {
         public boolean fullRetractReached() {
             return fullRetractReached;
         }
+
+        public boolean sawShotPulse() {
+            return sawShotPulse;
+        }
+
+        public double lastShotOrFeedTimestampSec() {
+            return lastShotOrFeedTimestampSec;
+        }
+
+        public boolean jamRecoveryActive() {
+            return nibbleBackoffActive;
+        }
+
+        public int jamRecoveryCount() {
+            return jamRecoveryCount;
+        }
     }
 
     public record Update(
@@ -100,6 +119,9 @@ public final class SmartRetractController {
         session.feedFalseCycles = 0;
         session.halfRetractReached = false;
         session.fullRetractReached = false;
+        session.sawShotPulse = false;
+        session.lastShotOrFeedTimestampSec = Double.NaN;
+        session.jamRecoveryCount = 0;
         session.seenAboveSmartRetractThreshold =
                 initialLeftPositionRot > smartRetractCompletionThresholdRot();
     }
@@ -107,12 +129,14 @@ public final class SmartRetractController {
     public Update update(
             Session session,
             boolean activelyFeeding,
+            boolean shotPulseDetectedThisCycle,
             double leftPositionRot,
             double rawSignalCurrentAmps,
             boolean goalExtended,
             boolean atRetractedTarget) {
+        double nowSec = Timer.getFPGATimestamp();
         session.nibbleCurrentThresholdAmps = IntakeConstants.smartRetractNibbleCurrentThresholdAmps();
-        boolean shouldSpinRoller = session.startedExtended && (goalExtended || !atRetractedTarget);
+        boolean shouldSpinRoller = activelyFeeding;
         if (!session.active) {
             return new Update(shouldSpinRoller, false, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
@@ -121,13 +145,33 @@ public final class SmartRetractController {
                 session.filteredSignalCurrentAmps,
                 rawSignalCurrentAmps,
                 IntakeConstants.smartRetractCurrentFilterAlpha());
+        boolean wasFeedLatched = session.feedLatched;
         boolean feedLatched = updateFeedLatch(session, activelyFeeding);
+        if (feedLatched && !wasFeedLatched) {
+            resetShotProgressWindow(session, nowSec, false);
+        }
         if (!feedLatched) {
             return new Update(shouldSpinRoller, false, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
         if (!activelyFeeding) {
             session.commandedLeftTargetRot = clampSmartRetractTargetRot(leftPositionRot);
+            session.lastShotOrFeedTimestampSec = nowSec;
+            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+        }
+
+        if (shotPulseDetectedThisCycle) {
+            session.sawShotPulse = true;
+            session.lastShotOrFeedTimestampSec = nowSec;
+        }
+
+        if (session.mode == Mode.NIBBLE && session.nibbleBackoffActive) {
+            runJamRecovery(session, leftPositionRot, nowSec);
+            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+        }
+
+        if (session.mode == Mode.NIBBLE && shouldStartJamRecovery(session, nowSec)) {
+            startJamRecovery(session);
             return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
         }
 
@@ -157,6 +201,23 @@ public final class SmartRetractController {
         return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
     }
 
+    public Update update(
+            Session session,
+            boolean activelyFeeding,
+            double leftPositionRot,
+            double rawSignalCurrentAmps,
+            boolean goalExtended,
+            boolean atRetractedTarget) {
+        return update(
+                session,
+                activelyFeeding,
+                true,
+                leftPositionRot,
+                rawSignalCurrentAmps,
+                goalExtended,
+                atRetractedTarget);
+    }
+
     public boolean shouldRestoreExtendedOnExit(
             Session session,
             boolean disabled,
@@ -170,32 +231,44 @@ public final class SmartRetractController {
         return session.startedExtended && !atRetractedTarget;
     }
 
-    private void runNibbleSmartRetract(Session session, double leftPositionRot) {
-        double nowSec = Timer.getFPGATimestamp();
-        if (session.nibbleBackoffActive) {
-            if (nowSec < session.nibbleBackoffUntilSec) {
-                return;
-            }
-            session.nibbleBackoffActive = false;
-            session.nibbleSpikeCycles = 0;
+    private static boolean shouldStartJamRecovery(Session session, double nowSec) {
+        if (!Double.isFinite(session.lastShotOrFeedTimestampSec)) {
+            return false;
         }
+        double timeoutSec = session.sawShotPulse
+                ? IntakeConstants.smartRetractJamInterShotTimeoutSec()
+                : IntakeConstants.smartRetractJamFirstShotTimeoutSec();
+        return timeoutSec > 0.0 && nowSec - session.lastShotOrFeedTimestampSec >= timeoutSec;
+    }
 
-        if (session.filteredSignalCurrentAmps >= session.nibbleCurrentThresholdAmps) {
-            session.nibbleSpikeCycles++;
-        } else {
-            session.nibbleSpikeCycles = 0;
-        }
+    private static void startJamRecovery(Session session) {
+        session.nibbleBackoffActive = true;
+        session.nibbleSpikeCycles = 0;
+        session.nibbleBackoffUntilSec = Double.NaN;
+        session.fullRetractReached = false;
+        session.jamRecoveryCount++;
+        session.commandedLeftTargetRot = clampSmartRetractTargetRot(
+                IntakeConstants.smartRetractJamRecoveryExtendPositionRot());
+    }
 
-        if (session.nibbleSpikeCycles >= IntakeConstants.smartRetractNibbleDetectCycles()) {
-            session.commandedLeftTargetRot = clampSmartRetractTargetRot(
-                    leftPositionRot + IntakeConstants.smartRetractNibbleBackoffRot());
-            session.nibbleBackoffActive = true;
-            session.nibbleBackoffUntilSec =
-                    nowSec + IntakeConstants.smartRetractNibbleBackoffDwellSec();
-            session.nibbleSpikeCycles = 0;
+    private static void runJamRecovery(Session session, double leftPositionRot, double nowSec) {
+        double extendTargetRot = IntakeConstants.smartRetractJamRecoveryExtendPositionRot();
+        session.commandedLeftTargetRot = clampSmartRetractTargetRot(extendTargetRot);
+        if (leftPositionRot + IntakeConstants.POSITION_TOLERANCE_ROT < extendTargetRot) {
             return;
         }
 
+        session.nibbleBackoffActive = false;
+        session.seenAboveSmartRetractThreshold = true;
+        resetShotProgressWindow(session, nowSec, false);
+    }
+
+    private static void resetShotProgressWindow(Session session, double nowSec, boolean sawShotPulse) {
+        session.sawShotPulse = sawShotPulse;
+        session.lastShotOrFeedTimestampSec = nowSec;
+    }
+
+    private void runNibbleSmartRetract(Session session, double leftPositionRot) {
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(
                 session.commandedLeftTargetRot - IntakeConstants.smartRetractNibbleStepRot());
     }

@@ -135,7 +135,9 @@ public final class AutoCommands {
             Command shootingCommand, Intake intake, ShootCoordinator shootCoordinator) {
         return Commands.parallel(
                 shootingCommand,
-                intake.smartRetractDuringShootCommand(shootCoordinator::isActivelyFeeding))
+                intake.smartRetractDuringShootCommand(
+                        shootCoordinator::isActivelyFeeding,
+                        shootCoordinator::didDetectShotPulseThisCycle))
                 .finallyDo(interrupted -> {
                     if (interrupted) {
                         intake.setExtended(true);

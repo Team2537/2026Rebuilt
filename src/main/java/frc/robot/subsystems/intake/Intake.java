@@ -162,19 +162,26 @@ public class Intake extends SubsystemBase {
                 "IntakeWaitForSlowRetract").withName("IntakeSlowRetract");
     }
 
-    public Command smartRetractDuringShootCommand(BooleanSupplier activelyFeedingSupplier) {
+    public Command smartRetractDuringShootCommand(
+            BooleanSupplier activelyFeedingSupplier,
+            BooleanSupplier shotPulseDetectedSupplier) {
         BooleanSupplier feedSupplier = Objects.requireNonNull(activelyFeedingSupplier, "activelyFeedingSupplier");
+        BooleanSupplier shotSupplier = Objects.requireNonNull(shotPulseDetectedSupplier, "shotPulseDetectedSupplier");
         SmartRetractController.Session session = new SmartRetractController.Session();
         return Commands.run(
-                        () -> executeSmartRetractSession(session, feedSupplier),
+                        () -> executeSmartRetractSession(session, feedSupplier, shotSupplier),
                         this)
                 .beforeStarting(() -> initializeSmartRetractSession(session))
                 .finallyDo(interrupted -> endSmartRetractSession(session))
                 .withName("IntakeSmartRetractDuringShoot");
     }
 
+    public Command smartRetractDuringShootCommand(BooleanSupplier activelyFeedingSupplier) {
+        return smartRetractDuringShootCommand(activelyFeedingSupplier, () -> true);
+    }
+
     public Command smartRetractDuringShootCommand() {
-        return smartRetractDuringShootCommand(() -> true);
+        return smartRetractDuringShootCommand(() -> true, () -> true);
     }
 
     public Command extendCommand() {
@@ -312,18 +319,20 @@ public class Intake extends SubsystemBase {
 
     private void executeSmartRetractSession(
             SmartRetractController.Session session,
-            BooleanSupplier activelyFeedingSupplier) {
+            BooleanSupplier activelyFeedingSupplier,
+            BooleanSupplier shotPulseDetectedSupplier) {
         boolean activelyFeeding = activelyFeedingSupplier.getAsBoolean();
         SmartRetractController.Update update = smartRetractController.update(
                 session,
                 activelyFeeding,
+                shotPulseDetectedSupplier.getAsBoolean(),
                 getLeftPositionRotations(),
                 getSmartRetractSignalCurrentAmps(),
                 isGoalExtended(),
                 isAtRetractedTarget());
 
         if (update.spinRoller()) {
-            io.setRollerRpm(IntakeConstants.SLOW_ROLLER_RPM);
+            io.setRollerRpm(IntakeConstants.smartRetractRollerRpm());
         } else {
             io.stopRoller();
         }
@@ -370,6 +379,11 @@ public class Intake extends SubsystemBase {
         Logger.recordOutput("Intake/SmartRetract/NibbleSpikeCycles", session.nibbleSpikeCycles());
         Logger.recordOutput("Intake/SmartRetract/NibbleBackoffActive", session.nibbleBackoffActive());
         Logger.recordOutput("Intake/SmartRetract/FullRetractReached", session.fullRetractReached());
+        Logger.recordOutput("Intake/SmartRetract/RollerRpm", IntakeConstants.smartRetractRollerRpm());
+        Logger.recordOutput("Intake/SmartRetract/SawShotPulse", session.sawShotPulse());
+        Logger.recordOutput("Intake/SmartRetract/LastShotOrFeedTimestampSec", session.lastShotOrFeedTimestampSec());
+        Logger.recordOutput("Intake/SmartRetract/JamRecoveryActive", session.jamRecoveryActive());
+        Logger.recordOutput("Intake/SmartRetract/JamRecoveryCount", session.jamRecoveryCount());
         Logger.recordOutput("Intake/SmartRetract/CommandedTargetRot", session.commandedLeftTargetRot());
     }
 

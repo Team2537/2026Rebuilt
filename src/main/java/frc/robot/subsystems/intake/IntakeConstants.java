@@ -87,6 +87,10 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
+    public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
+    public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.45;
+    public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.25;
+    public static final double SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT = EXTENDED_POSITION_ROT;
     public static final double SMART_RETRACT_WIGGLE_OUT_ROT =
             DRIVER_TRIGGER_WIGGLE_PEAK_ROT - DRIVER_TRIGGER_WIGGLE_BASELINE_ROT;
     public static final double SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC = DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC;
@@ -132,6 +136,22 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/NibbleBackoffDwellSec",
                     SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
+    private static final LoggedTunableNumber smartRetractRollerRpm =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/RollerRpm",
+                    SMART_RETRACT_ROLLER_RPM);
+    private static final LoggedTunableNumber smartRetractJamFirstShotTimeoutSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamFirstShotTimeoutSec",
+                    SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC);
+    private static final LoggedTunableNumber smartRetractJamInterShotTimeoutSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamInterShotTimeoutSec",
+                    SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC);
+    private static final LoggedTunableNumber smartRetractJamRecoveryExtendPositionRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamRecoveryExtendPositionRot",
+                    SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT);
     private static final LoggedTunableNumber smartRetractWiggleOutRot =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/WiggleOutRot",
@@ -182,6 +202,25 @@ public final class IntakeConstants {
 
     public static double smartRetractNibbleBackoffDwellSec() {
         return Math.max(0.0, smartRetractNibbleBackoffDwellSec.get());
+    }
+
+    public static double smartRetractRollerRpm() {
+        return MathUtil.clamp(smartRetractRollerRpm.get(), -ROLLER_MAX_RPM, ROLLER_MAX_RPM);
+    }
+
+    public static double smartRetractJamFirstShotTimeoutSec() {
+        return Math.max(0.0, smartRetractJamFirstShotTimeoutSec.get());
+    }
+
+    public static double smartRetractJamInterShotTimeoutSec() {
+        return Math.max(0.0, smartRetractJamInterShotTimeoutSec.get());
+    }
+
+    public static double smartRetractJamRecoveryExtendPositionRot() {
+        return MathUtil.clamp(
+                smartRetractJamRecoveryExtendPositionRot.get(),
+                smartRetractRetractedPositionRot(),
+                EXTENDED_POSITION_ROT);
     }
 
     public static double smartRetractWiggleOutRot() {

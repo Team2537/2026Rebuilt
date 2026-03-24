@@ -49,6 +49,18 @@ class SmartRetractControllerTest {
                 "Intake/SmartRetract/NibbleBackoffDwellSec",
                 IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
         SmartDashboard.putNumber(
+                "Intake/SmartRetract/RollerRpm",
+                IntakeConstants.SMART_RETRACT_ROLLER_RPM);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamFirstShotTimeoutSec",
+                IntakeConstants.SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamInterShotTimeoutSec",
+                IntakeConstants.SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamRecoveryExtendPositionRot",
+                IntakeConstants.SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT);
+        SmartDashboard.putNumber(
                 "Intake/SmartRetract/WiggleOutRot",
                 IntakeConstants.SMART_RETRACT_WIGGLE_OUT_ROT);
         SmartDashboard.putNumber(
@@ -323,7 +335,7 @@ class SmartRetractControllerTest {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
 
         for (int i = 0; i < feedStartDelayCycles(); i++) {
-            controller.update(session, true, MID_POSITION, 50.0, true, false);
+            controller.update(session, true, true, MID_POSITION, 50.0, true, false);
         }
 
         double filtered = session.filteredSignalCurrentAmps();
@@ -332,51 +344,51 @@ class SmartRetractControllerTest {
     }
 
     @Test
-    void nibbleUsesConstantCurrentThresholdInsteadOfBaselineDelta() {
+    void jamRecoveryTriggersWhenNoFirstShotPulseArrives() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamRecoveryExtendPositionRot", IntakeConstants.EXTENDED_POSITION_ROT);
+
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 20.0);
-        assertEquals(
-                IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS,
-                session.nibbleCurrentThresholdAmps(),
-                1e-9,
-                "Nibble threshold should come from the fixed threshold constant");
 
         for (int i = 0; i < feedStartDelayCycles(); i++) {
-            controller.update(session, true, MID_POSITION, 0.0, true, false);
+            controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+            sleepMs(20);
         }
 
-        boolean sawBackoff = false;
-        for (int i = 0; i < 20; i++) {
-            controller.update(session, true, MID_POSITION, 11.0, true, false);
-            if (session.nibbleBackoffActive()) {
-                sawBackoff = true;
-                break;
-            }
-        }
+        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        sleepMs(20);
+        SmartRetractController.Update jamUpdate =
+                controller.update(session, true, false, MID_POSITION, 0.0, true, false);
 
-        assertTrue(
-                sawBackoff,
-                "Fixed threshold should still trigger backoff even if the session started with a much higher initial current.");
+        assertTrue(session.jamRecoveryActive(), "Missing the first shot pulse should trigger jam recovery.");
+        assertEquals(1, session.jamRecoveryCount(), "Jam recovery should increment its recovery counter.");
+        assertEquals(
+                IntakeConstants.EXTENDED_POSITION_ROT,
+                jamUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "Jam recovery should command the configured extend position before restarting retract.");
     }
 
     @Test
-    void nibbleDoesNotSpikeBelowFixedThreshold() {
+    void shotPulsePreventsJamRecoveryUntilInterShotTimeoutExpires() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.04);
+
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
 
         for (int i = 0; i < feedStartDelayCycles(); i++) {
-            controller.update(session, true, MID_POSITION, 0.0, true, false);
+            controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+            sleepMs(20);
         }
 
-        for (int i = 0; i < 20; i++) {
-            controller.update(
-                    session,
-                    true,
-                    MID_POSITION,
-                    IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS - 1.0,
-                    true,
-                    false);
-        }
+        controller.update(session, true, true, MID_POSITION, 0.0, true, false);
+        sleepMs(20);
+        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        assertFalse(session.jamRecoveryActive(), "A recent shot pulse should reset the jam timer.");
 
-        assertFalse(session.nibbleBackoffActive(), "Currents below the fixed threshold should not trigger nibble backoff.");
+        sleepMs(50);
+        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        assertTrue(session.jamRecoveryActive(), "After the inter-shot timeout expires, jam recovery should trigger.");
     }
 
     @Test
@@ -389,8 +401,9 @@ class SmartRetractControllerTest {
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleCurrentThresholdAmps", 8.5);
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleDetectCycles", 3.0);
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleStepRot", 1.25);
-        SmartDashboard.putNumber("Intake/SmartRetract/NibbleBackoffRot", 2.5);
-        SmartDashboard.putNumber("Intake/SmartRetract/NibbleBackoffDwellSec", 0.6);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.06);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamRecoveryExtendPositionRot", 14.0);
 
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, 0.0, 0.0);
         assertEquals(8.5, session.nibbleCurrentThresholdAmps(), 1e-9);
@@ -399,23 +412,25 @@ class SmartRetractControllerTest {
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
         for (int i = 0; i < 4; i++) {
             SmartRetractController.Update preLatchUpdate =
-                    controller.update(session, true, MID_POSITION, 50.0, true, false);
+                    controller.update(session, true, false, MID_POSITION, 50.0, true, false);
             assertFalse(preLatchUpdate.commandRetractTarget(), "Feed engage cycles tuning should delay latching.");
+            sleepMs(20);
         }
 
         SmartRetractController.Update stepUpdate =
-                controller.update(session, true, MID_POSITION, 0.0, true, false);
+                controller.update(session, true, false, MID_POSITION, 0.0, true, false);
         assertEquals(MID_POSITION - 1.25, stepUpdate.commandedLeftTargetRot(), 1e-9);
         assertEquals(0.0, session.filteredSignalCurrentAmps(), 1e-9);
 
-        controller.update(session, true, MID_POSITION, 50.0, true, false);
-        controller.update(session, true, MID_POSITION, 50.0, true, false);
-        assertFalse(session.nibbleBackoffActive(), "Detect cycles tuning should delay backoff until the configured count.");
+        sleepMs(20);
+        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        assertFalse(session.jamRecoveryActive(), "Jam recovery should wait until the tuned timeout expires.");
 
-        SmartRetractController.Update backoffUpdate =
-                controller.update(session, true, MID_POSITION, 50.0, true, false);
-        assertTrue(session.nibbleBackoffActive(), "Third spike should trigger backoff when detect cycles is tuned to 3.");
-        assertEquals(MID_POSITION + 2.5, backoffUpdate.commandedLeftTargetRot(), 1e-9);
+        sleepMs(30);
+        SmartRetractController.Update jamUpdate =
+                controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        assertTrue(session.jamRecoveryActive(), "Jam recovery should trigger once the tuned timeout expires.");
+        assertEquals(14.0, jamUpdate.commandedLeftTargetRot(), 1e-9);
 
         controller.initialize(
                 session,
@@ -435,5 +450,14 @@ class SmartRetractControllerTest {
         int configuredDelayCycles =
                 (int) Math.ceil(IntakeConstants.smartRetractFeedStartDelaySec() * IntakeConstants.STATUS_UPDATE_HZ);
         return Math.max(IntakeConstants.smartRetractFeedEngageCycles(), Math.max(1, configuredDelayCycles));
+    }
+
+    private static void sleepMs(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(ex);
+        }
     }
 }
