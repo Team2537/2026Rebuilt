@@ -16,7 +16,7 @@ public final class ShotPulseDetector {
     private static final LoggedTunableNumber maxTargetRangeRpm =
             new LoggedTunableNumber("Shooter/ShotDetection/MaxTargetRangeRpm", 120.0);
     private static final LoggedTunableNumber minNotchDepthRpm =
-            new LoggedTunableNumber("Shooter/ShotDetection/MinNotchDepthRpm", 180.0);
+            new LoggedTunableNumber("Shooter/ShotDetection/MinNotchDepthRpm", 250.0);
     private static final LoggedTunableNumber minErrorRpm =
             new LoggedTunableNumber("Shooter/ShotDetection/MinErrorRpm", 180.0);
     private static final LoggedTunableNumber minImmediateStepRpm =
