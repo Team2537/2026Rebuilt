@@ -19,6 +19,7 @@ import edu.wpi.first.util.datalog.StringLogEntry;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -41,6 +42,14 @@ public class Shooter extends SubsystemBase {
     private static final String DASHBOARD_FEED_KEY = "Shooter/Tuning/FeedKicker";
     private static final String DASHBOARD_KICKER_TORQUE_KEY = "Shooter/Tuning/KickerTorqueAmps";
     private static final String DASHBOARD_SYSID_ENABLE_KEY = "Shooter/SysId/Enabled";
+    private static final String DASHBOARD_SHOT_DETECTION_ARMED_KEY = "Shooter/ShotDetection/Armed";
+    private static final String DASHBOARD_SHOT_DETECTED_KEY = "Shooter/ShotDetection/ShotDetected";
+    private static final String DASHBOARD_SHOTS_SINCE_ENABLE_KEY = "Shooter/ShotDetection/ShotsSinceEnable";
+    private static final String DASHBOARD_SHOTS_IN_ACTIVE_SHOOT_COMMAND_KEY = "Shooter/ShotDetection/ShotsInActiveShootCommand";
+    private static final String DASHBOARD_LAST_SHOOT_COMMAND_SHOTS_KEY = "Shooter/ShotDetection/LastShootCommandShots";
+    private static final String DASHBOARD_LAST_SHOT_TIME_KEY = "Shooter/ShotDetection/LastShotTimestampSec";
+    private static final String DASHBOARD_LAST_SHOT_ERROR_KEY = "Shooter/ShotDetection/LastShotErrorRpm";
+    private static final String DASHBOARD_LAST_SHOT_DEPTH_KEY = "Shooter/ShotDetection/LastShotDepthRpm";
 
     public record ShotSetpoint(double leftRpm, double rightRpm, double hoodAngleRad) {}
     public record ReadinessDiagnostics(
@@ -61,6 +70,7 @@ public class Shooter extends SubsystemBase {
 
     private final ShooterIO io;
     private final ShooterIOInputsAutoLogged inputs = new ShooterIOInputsAutoLogged();
+    private final ShotPulseDetector shotPulseDetector = new ShotPulseDetector();
     private final SysIdRoutine sysId;
     private StringLogEntry sysIdStateLogEntry;
     private Debouncer atSetpointDropDebouncer =
@@ -87,6 +97,15 @@ public class Shooter extends SubsystemBase {
     private boolean cachedDashboardTuningEnabled = false;
     private boolean cachedDashboardFeedKickerEnabled = false;
     private boolean cachedDashboardSysIdEnabled = false;
+    private boolean wasEnabledLastCycle = false;
+    private boolean shotTrackingShootCommandActive = false;
+    private boolean shotDetectedThisCycle = false;
+    private int shotsSinceEnable = 0;
+    private int shotsInActiveShootCommand = 0;
+    private int lastShootCommandShotCount = 0;
+    private double lastShotTimestampSec = Double.NaN;
+    private double lastShotErrorRpm = Double.NaN;
+    private double lastShotDepthRpm = Double.NaN;
 
     public Shooter(ShooterIO io) {
         super("shooter");
@@ -130,6 +149,8 @@ public class Shooter extends SubsystemBase {
         io.updateInputs(inputs);
         Logger.processInputs("Shooter", inputs);
 
+        updateShotDetectionEnabledState();
+
         if (ShooterConstants.motionCompTimeScaleHasChanged(tunableId)
                 || ShooterConstants.motionCompDistanceTimeScaleHasChanged(tunableId)) {
             rebuildLaunchCalculator();
@@ -150,12 +171,96 @@ public class Shooter extends SubsystemBase {
         Logger.recordOutput("Shooter/KickerVoltage", kickerControlMode == KickerControlMode.VOLTAGE ? kickerOutput : 0.0);
         cachedReadiness = computeReadinessDiagnostics(activeReadinessTolerance);
         logReadinessOutputs(cachedReadiness, activeReadinessTolerance, activeReadinessLabel);
+        updateShotDetection();
         // Cache SmartDashboard reads once per cycle to avoid repeated NT lookups
         cachedDashboardTuningEnabled = SmartDashboard.getBoolean(DASHBOARD_ENABLE_KEY, false);
         cachedDashboardFeedKickerEnabled = SmartDashboard.getBoolean(DASHBOARD_FEED_KEY, false);
         cachedDashboardSysIdEnabled = SmartDashboard.getBoolean(DASHBOARD_SYSID_ENABLE_KEY, false);
         Logger.recordOutput("Shooter/TuningEnabled", cachedDashboardTuningEnabled);
         Logger.recordOutput("Shooter/SysIdEnabled", cachedDashboardSysIdEnabled);
+    }
+
+    private void updateShotDetectionEnabledState() {
+        boolean enabled = DriverStation.isEnabled();
+        if (enabled && !wasEnabledLastCycle) {
+            shotsSinceEnable = 0;
+            shotsInActiveShootCommand = 0;
+            lastShootCommandShotCount = 0;
+            lastShotTimestampSec = Double.NaN;
+            lastShotErrorRpm = Double.NaN;
+            lastShotDepthRpm = Double.NaN;
+            shotDetectedThisCycle = false;
+            shotPulseDetector.reset();
+        } else if (!enabled && wasEnabledLastCycle) {
+            shotTrackingShootCommandActive = false;
+            shotsInActiveShootCommand = 0;
+            shotDetectedThisCycle = false;
+            shotPulseDetector.reset();
+        }
+        wasEnabledLastCycle = enabled;
+    }
+
+    private void updateShotDetection() {
+        boolean armed = DriverStation.isEnabled()
+                && shooterTargetRequested
+                && isKickerActive();
+        ShotPulseDetector.UpdateResult result = shotPulseDetector.update(
+                Timer.getFPGATimestamp(),
+                targetLeftRpm,
+                inputs.shooterLeftVelocityRpm,
+                armed);
+        shotDetectedThisCycle = result.detected();
+        if (shotDetectedThisCycle) {
+            shotsSinceEnable++;
+            if (shotTrackingShootCommandActive) {
+                shotsInActiveShootCommand++;
+            }
+            lastShotTimestampSec = result.candidateTimestampSec();
+            lastShotErrorRpm = result.candidateErrorRpm();
+            lastShotDepthRpm = result.notchDepthRpm();
+        }
+
+        Logger.recordOutput("Shooter/ShotDetection/Armed", armed);
+        Logger.recordOutput("Shooter/ShotDetection/ShotDetected", shotDetectedThisCycle);
+        Logger.recordOutput("Shooter/ShotDetection/ShotsSinceEnable", shotsSinceEnable);
+        Logger.recordOutput("Shooter/ShotDetection/ShotsInActiveShootCommand", shotsInActiveShootCommand);
+        Logger.recordOutput("Shooter/ShotDetection/LastShootCommandShots", lastShootCommandShotCount);
+        Logger.recordOutput("Shooter/ShotDetection/CandidateTimestampSec", result.candidateTimestampSec());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateTargetRpm", result.candidateTargetRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateMeasuredRpm", result.candidateMeasuredRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateErrorRpm", result.candidateErrorRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateNotchDepthRpm", result.notchDepthRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateLeftStepRpm", result.leftStepRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateRightStepRpm", result.rightStepRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateRecentMaxRpm", result.recentMaxRpm());
+        Logger.recordOutput("Shooter/ShotDetection/CandidateTargetRangeRpm", result.targetRangeRpm());
+        Logger.recordOutput("Shooter/ShotDetection/LastShotTimestampSec", lastShotTimestampSec);
+        Logger.recordOutput("Shooter/ShotDetection/LastShotErrorRpm", lastShotErrorRpm);
+        Logger.recordOutput("Shooter/ShotDetection/LastShotDepthRpm", lastShotDepthRpm);
+
+        SmartDashboard.putBoolean(DASHBOARD_SHOT_DETECTION_ARMED_KEY, armed);
+        SmartDashboard.putBoolean(DASHBOARD_SHOT_DETECTED_KEY, shotDetectedThisCycle);
+        SmartDashboard.putNumber(DASHBOARD_SHOTS_SINCE_ENABLE_KEY, shotsSinceEnable);
+        SmartDashboard.putNumber(DASHBOARD_SHOTS_IN_ACTIVE_SHOOT_COMMAND_KEY, shotsInActiveShootCommand);
+        SmartDashboard.putNumber(DASHBOARD_LAST_SHOOT_COMMAND_SHOTS_KEY, lastShootCommandShotCount);
+        SmartDashboard.putNumber(DASHBOARD_LAST_SHOT_TIME_KEY, lastShotTimestampSec);
+        SmartDashboard.putNumber(DASHBOARD_LAST_SHOT_ERROR_KEY, lastShotErrorRpm);
+        SmartDashboard.putNumber(DASHBOARD_LAST_SHOT_DEPTH_KEY, lastShotDepthRpm);
+    }
+
+    private void beginShotTrackingForShootCommand() {
+        shotTrackingShootCommandActive = true;
+        shotsInActiveShootCommand = 0;
+        shotDetectedThisCycle = false;
+        shotPulseDetector.reset();
+    }
+
+    private void endShotTrackingForShootCommand() {
+        lastShootCommandShotCount = shotsInActiveShootCommand;
+        shotsInActiveShootCommand = 0;
+        shotTrackingShootCommandActive = false;
+        shotDetectedThisCycle = false;
+        shotPulseDetector.reset();
     }
 
     private static void logReadinessOutputs(
@@ -475,7 +580,7 @@ public class Shooter extends SubsystemBase {
 
     public Command shoot(
             DoubleSupplier distanceMetersSupplier, DoubleSupplier kickerTorqueAmpsSupplier) {
-        return runCommandWithCleanup(
+        return Commands.run(
                         () -> {
                             setTargetsForDistance(distanceMetersSupplier.getAsDouble());
                             if (getReadinessDiagnosticsNow().atSetpoint()) {
@@ -484,8 +589,13 @@ public class Shooter extends SubsystemBase {
                                 stopKicker();
                             }
                         },
-                        this::stopAll,
-                        "ShooterShoot");
+                        this)
+                .beforeStarting(this::beginShotTrackingForShootCommand)
+                .finallyDo(interrupted -> {
+                    endShotTrackingForShootCommand();
+                    stopAll();
+                })
+                .withName("ShooterShoot");
     }
 
     public Command slowShooterMotorsCommand() {
@@ -700,6 +810,14 @@ public class Shooter extends SubsystemBase {
         SmartDashboard.setDefaultBoolean(DASHBOARD_FEED_KEY, false);
         SmartDashboard.setDefaultNumber(DASHBOARD_KICKER_TORQUE_KEY, ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
         SmartDashboard.setDefaultBoolean(DASHBOARD_SYSID_ENABLE_KEY, false);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_SHOT_DETECTION_ARMED_KEY, false);
+        SmartDashboard.setDefaultBoolean(DASHBOARD_SHOT_DETECTED_KEY, false);
+        SmartDashboard.setDefaultNumber(DASHBOARD_SHOTS_SINCE_ENABLE_KEY, 0.0);
+        SmartDashboard.setDefaultNumber(DASHBOARD_SHOTS_IN_ACTIVE_SHOOT_COMMAND_KEY, 0.0);
+        SmartDashboard.setDefaultNumber(DASHBOARD_LAST_SHOOT_COMMAND_SHOTS_KEY, 0.0);
+        SmartDashboard.setDefaultNumber(DASHBOARD_LAST_SHOT_TIME_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_LAST_SHOT_ERROR_KEY, Double.NaN);
+        SmartDashboard.setDefaultNumber(DASHBOARD_LAST_SHOT_DEPTH_KEY, Double.NaN);
     }
 
     public static double getHubDistanceMeters(Pose2d robotPose) {
