@@ -60,7 +60,9 @@ public final class RobotState {
                 drive.getKinematics(),
                 drive.getRotation(),
                 drive.getModulePositionsSnapshot(),
-                latestDeadReckonedPose);
+                latestDeadReckonedPose,
+                VecBuilder.fill(0.1, 0.1, 0.1),
+                VecBuilder.fill(1.3, 1.3, 1.3));
         logState();
     }
 

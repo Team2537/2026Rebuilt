@@ -16,13 +16,13 @@ public final class ShotPulseDetector {
     private static final LoggedTunableNumber maxTargetRangeRpm =
             new LoggedTunableNumber("Shooter/ShotDetection/MaxTargetRangeRpm", 120.0);
     private static final LoggedTunableNumber minNotchDepthRpm =
-            new LoggedTunableNumber("Shooter/ShotDetection/MinNotchDepthRpm", 250.0);
+            new LoggedTunableNumber("Shooter/ShotDetection/MinNotchDepthRpm", 100.0);
     private static final LoggedTunableNumber minErrorRpm =
             new LoggedTunableNumber("Shooter/ShotDetection/MinErrorRpm", 180.0);
     private static final LoggedTunableNumber minImmediateStepRpm =
             new LoggedTunableNumber("Shooter/ShotDetection/MinImmediateStepRpm", 20.0);
     private static final LoggedTunableNumber minShotSeparationSec =
-            new LoggedTunableNumber("Shooter/ShotDetection/MinShotSeparationSec", 0.05);
+            new LoggedTunableNumber("Shooter/ShotDetection/MinShotSeparationSec", 0.00);
 
     private final Deque<Sample> recentSamples = new ArrayDeque<>();
     private Sample previousSample;

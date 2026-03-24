@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.coordination.intake.SmartRetractController;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Intake extends SubsystemBase {
@@ -172,6 +173,24 @@ public class Intake extends SubsystemBase {
                         () -> executeSmartRetractSession(session, feedSupplier, shotSupplier),
                         this)
                 .beforeStarting(() -> initializeSmartRetractSession(session))
+                .finallyDo(interrupted -> endSmartRetractSession(session))
+                .withName("IntakeSmartRetractDuringShoot");
+    }
+
+    public Command smartRetractDuringShootCommand(
+            BooleanSupplier activelyFeedingSupplier,
+            IntSupplier shotCountSupplier) {
+        BooleanSupplier feedSupplier = Objects.requireNonNull(activelyFeedingSupplier, "activelyFeedingSupplier");
+        IntSupplier countSupplier = Objects.requireNonNull(shotCountSupplier, "shotCountSupplier");
+        SmartRetractController.Session session = new SmartRetractController.Session();
+        int[] lastObservedShotCount = new int[] {0};
+        return Commands.run(
+                        () -> executeSmartRetractSession(session, feedSupplier, countSupplier, lastObservedShotCount),
+                        this)
+                .beforeStarting(() -> {
+                    lastObservedShotCount[0] = countSupplier.getAsInt();
+                    initializeSmartRetractSession(session);
+                })
                 .finallyDo(interrupted -> endSmartRetractSession(session))
                 .withName("IntakeSmartRetractDuringShoot");
     }
@@ -348,6 +367,18 @@ public class Intake extends SubsystemBase {
         }
 
         logSmartRetractSessionOutputs(session, update.rawSignalCurrentAmps());
+    }
+
+    private void executeSmartRetractSession(
+            SmartRetractController.Session session,
+            BooleanSupplier activelyFeedingSupplier,
+            IntSupplier shotCountSupplier,
+            int[] lastObservedShotCount) {
+        int currentShotCount = shotCountSupplier.getAsInt();
+        boolean shotPulseDetectedThisCycle = currentShotCount > lastObservedShotCount[0];
+        lastObservedShotCount[0] = currentShotCount;
+        Logger.recordOutput("Intake/SmartRetract/ObservedShotCount", currentShotCount);
+        executeSmartRetractSession(session, activelyFeedingSupplier, () -> shotPulseDetectedThisCycle);
     }
 
     private void endSmartRetractSession(SmartRetractController.Session session) {

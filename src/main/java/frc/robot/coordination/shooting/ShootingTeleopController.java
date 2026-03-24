@@ -456,7 +456,7 @@ public final class ShootingTeleopController {
                         automaticFeedEnabledSupplier),
                 intake.smartRetractDuringShootCommand(
                         shootCoordinator::isActivelyFeeding,
-                        shootCoordinator::didDetectShotPulseThisCycle))
+                        shootCoordinator::getShotsSinceEnable))
                 .withName("ShooterTriggerAimAndShoot");
     }
 
@@ -496,7 +496,7 @@ public final class ShootingTeleopController {
                         .withName("ShooterShootOverrideDistance"),
                 intake.smartRetractDuringShootCommand(
                         shootCoordinator::isActivelyFeeding,
-                        shootCoordinator::didDetectShotPulseThisCycle))
+                        shootCoordinator::getShotsSinceEnable))
                 .withName("ShooterTriggerOverrideAutoAimShoot");
     }
 
