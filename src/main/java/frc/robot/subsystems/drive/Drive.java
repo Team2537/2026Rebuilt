@@ -24,7 +24,6 @@ import com.pathplanner.lib.util.swerve.SwerveSetpointGenerator;
 import edu.wpi.first.hal.FRCNetComm.tInstances;
 import edu.wpi.first.hal.FRCNetComm.tResourceType;
 import edu.wpi.first.hal.HAL;
-import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -32,11 +31,8 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Twist2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
-import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.math.numbers.N1;
-import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.util.datalog.StringLogEntry;
 import edu.wpi.first.wpilibj.Alert;
@@ -48,6 +44,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import frc.robot.RobotState;
 import frc.robot.RobotType;
 import frc.robot.generated.TunerConstants;
 import frc.robot.util.ElasticNotifications;
@@ -55,7 +52,6 @@ import frc.robot.util.LocalADStarAK;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.Optional;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import org.littletonrobotics.junction.AutoLogOutput;
@@ -120,12 +116,11 @@ public class Drive extends SubsystemBase {
     // Pre-allocated arrays reused each odometry cycle to avoid GC pressure
     private final SwerveModulePosition[] odomModulePositions = new SwerveModulePosition[4];
     private final SwerveModulePosition[] odomModuleDeltas = new SwerveModulePosition[4];
-    private SwerveDrivePoseEstimator poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation,
+    private final SwerveDrivePoseEstimator deadReckoningEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation,
             lastModulePositions, Pose2d.kZero);
-    // Tracks pure odometry (no vision corrections) in sim mode so the vision sim
-    // cameras see the true robot position rather than the fused estimate.
-    private final SwerveDriveOdometry simGroundTruthOdometry;
+    private RobotState robotState;
     private boolean fieldOriented = true;
+    private double slipScore = 0.0;
 
     public Drive(
             GyroIO gyroIO,
@@ -147,20 +142,6 @@ public class Drive extends SubsystemBase {
         // Start odometry thread
         PhoenixOdometryThread.getInstance().start();
 
-        // Configure AutoBuilder for PathPlanner
-        double autoRotationKp = RobotType.MODE == RobotType.Mode.SIMULATION ? 7.5 : 5.0;
-
-        AutoBuilder.configure(
-                this::getPose,
-                this::setPose,
-                this::getChassisSpeeds,
-                (speeds, feedforwards) -> runVelocity(speeds, feedforwards),
-                new PPHolonomicDriveController(
-                        new PIDConstants(7.0, 0.0, 0.0),
-                        new PIDConstants(autoRotationKp, 0.0, 0.0)),
-                PP_CONFIG,
-                () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
-                this);
         Pathfinding.setPathfinder(new LocalADStarAK());
         PathPlannerLogging.setLogActivePathCallback(
                 (activePath) -> {
@@ -171,11 +152,6 @@ public class Drive extends SubsystemBase {
                 (targetPose) -> {
                     Logger.recordOutput("Odometry/TrajectorySetpoint", targetPose);
                 });
-
-        // Sim ground truth odometry (vision-free pose for camera placement)
-        simGroundTruthOdometry = RobotType.MODE == RobotType.Mode.SIMULATION
-                ? new SwerveDriveOdometry(kinematics, rawGyroRotation, lastModulePositions, Pose2d.kZero)
-                : null;
 
         // Configure SysId
         sysId = new SysIdRoutine(
@@ -212,6 +188,24 @@ public class Drive extends SubsystemBase {
                                     .linearVelocity(MetersPerSecond.of(avgVelocityMetersPerSec));
                         },
                         this));
+    }
+
+    /** Attaches the centralized RobotState and configures PathPlanner pose access. */
+    public void attachRobotState(RobotState robotState) {
+        this.robotState = robotState;
+
+        double autoRotationKp = RobotType.MODE == RobotType.Mode.SIMULATION ? 7.5 : 5.0;
+        AutoBuilder.configure(
+                robotState::getPose,
+                robotState::setPose,
+                this::getChassisSpeeds,
+                (speeds, feedforwards) -> runVelocity(speeds, feedforwards),
+                new PPHolonomicDriveController(
+                        new PIDConstants(7.0, 0.0, 0.0),
+                        new PIDConstants(autoRotationKp, 0.0, 0.0)),
+                PP_CONFIG,
+                () -> DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Red,
+                this);
     }
 
     @Override
@@ -265,6 +259,8 @@ public class Drive extends SubsystemBase {
                 "Drive/Odometry/SampleCountMismatch",
                 Arrays.stream(moduleSampleCounts).anyMatch(count -> count != sharedSampleCount)
                         || (gyroInputs.connected && gyroSampleCount != sharedSampleCount));
+        slipScore = calculateSlipScore();
+        Logger.recordOutput("Drive/SlipScore", slipScore);
         for (int i = 0; i < sharedSampleCount; i++) {
             // Read wheel positions and deltas from each module (reuse pre-allocated arrays)
             for (int moduleIndex = 0; moduleIndex < 4; moduleIndex++) {
@@ -288,9 +284,14 @@ public class Drive extends SubsystemBase {
 
             // Apply update
             double sampleTimestamp = getOdometrySampleTimestamp(i);
-            poseEstimator.updateWithTime(sampleTimestamp, rawGyroRotation, odomModulePositions);
-            if (simGroundTruthOdometry != null) {
-                simGroundTruthOdometry.update(rawGyroRotation, odomModulePositions);
+            deadReckoningEstimator.updateWithTime(sampleTimestamp, rawGyroRotation, odomModulePositions);
+            if (robotState != null) {
+                robotState.addDriveSample(
+                        sampleTimestamp,
+                        rawGyroRotation,
+                        odomModulePositions,
+                        deadReckoningEstimator.getEstimatedPosition(),
+                        slipScore);
             }
         }
 
@@ -497,18 +498,21 @@ public class Drive extends SubsystemBase {
         return output;
     }
 
-    /** Returns the current odometry pose. */
+    /** Returns the current fused pose when RobotState is attached, else dead reckoning. */
     @AutoLogOutput(key = "Odometry/Robot")
     public Pose2d getPose() {
-        return poseEstimator.getEstimatedPosition();
+        return robotState != null ? robotState.getPose() : getDeadReckonedPose();
     }
 
-    /**
-     * Returns the sim ground truth pose (pure odometry, no vision corrections).
-     * Falls back to the fused estimator pose when not in simulation.
-     */
+    /** Returns the current dead-reckoned pose (swerve + gyro only). */
+    @AutoLogOutput(key = "Odometry/DeadReckoned")
+    public Pose2d getDeadReckonedPose() {
+        return deadReckoningEstimator.getEstimatedPosition();
+    }
+
+    /** Returns the dead-reckoned pose used as ground truth by vision simulation. */
     public Pose2d getSimGroundTruthPose() {
-        return simGroundTruthOdometry != null ? simGroundTruthOdometry.getPoseMeters() : getPose();
+        return getDeadReckonedPose();
     }
 
     /**
@@ -516,34 +520,62 @@ public class Drive extends SubsystemBase {
      * Falls back to current pose if the estimator buffer does not have that sample.
      */
     public Pose2d getPoseAtTimestamp(double timestampSeconds) {
-        if (!Double.isFinite(timestampSeconds)) {
-            return getPose();
+        if (robotState != null) {
+            return robotState.getPoseAtTimestamp(timestampSeconds);
         }
-        Optional<Pose2d> sampledPose = poseEstimator.sampleAt(timestampSeconds);
-        return sampledPose.orElseGet(this::getPose);
+        return getDeadReckonedPoseAtTimestamp(timestampSeconds);
+    }
+
+    /** Returns the dead-reckoned pose sampled at a historical timestamp. */
+    public Pose2d getDeadReckonedPoseAtTimestamp(double timestampSeconds) {
+        if (!Double.isFinite(timestampSeconds)) {
+            return getDeadReckonedPose();
+        }
+        return deadReckoningEstimator.sampleAt(timestampSeconds).orElseGet(this::getDeadReckonedPose);
     }
 
     /** Returns the current robot rotation for field orientation. */
     public Rotation2d getRotation() {
         // On real hardware prefer live gyro yaw; in sim/disconnected, use pose rotation
-        return gyroInputs.connected ? gyroInputs.yawPosition : getPose().getRotation();
+        return gyroInputs.connected ? gyroInputs.yawPosition : getDeadReckonedPose().getRotation();
     }
 
-    /** Resets the current odometry pose. */
+    /** Resets the fused pose when RobotState is attached, else dead reckoning only. */
     public void setPose(Pose2d pose) {
+        if (robotState != null) {
+            robotState.setPose(pose);
+            return;
+        }
+        resetDeadReckoningPose(pose);
+    }
+
+    /** Resets the drive's dead-reckoned pose and aligns the gyro yaw with it. */
+    public void resetDeadReckoningPose(Pose2d pose) {
         Rotation2d rotation = pose.getRotation();
         odometryLock.lock();
         try {
             rawGyroRotation = rotation;
             gyroInputs.yawPosition = rotation;
             gyroIO.setYaw(rotation);
-            poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
-            if (simGroundTruthOdometry != null) {
-                simGroundTruthOdometry.resetPosition(rawGyroRotation, getModulePositions(), pose);
-            }
+            deadReckoningEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
         } finally {
             odometryLock.unlock();
         }
+    }
+
+    /** Returns a copy of the current module positions for estimator consumers. */
+    public SwerveModulePosition[] getModulePositionsSnapshot() {
+        return getModulePositions();
+    }
+
+    /** Returns the drivetrain kinematics used by odometry and PathPlanner. */
+    public SwerveDriveKinematics getKinematics() {
+        return kinematics;
+    }
+
+    /** Returns the current slip score in the range [0, 1]. */
+    public double getSlipScore() {
+        return slipScore;
     }
 
     private static SwerveModuleState[] copyModuleStates(SwerveModuleState[] states) {
@@ -606,15 +638,6 @@ public class Drive extends SubsystemBase {
 
     public boolean isConstraintProfileActive(DriveConstants.ConstraintProfile profile) {
         return activeConstraintProfiles.contains(profile);
-    }
-
-    /** Adds a new timestamped vision measurement. */
-    public void addVisionMeasurement(
-            Pose2d visionRobotPoseMeters,
-            double timestampSeconds,
-            Matrix<N3, N1> visionMeasurementStdDevs) {
-        poseEstimator.addVisionMeasurement(
-                visionRobotPoseMeters, timestampSeconds, visionMeasurementStdDevs);
     }
 
     /** Returns the maximum linear speed in meters per sec. */
@@ -690,6 +713,28 @@ public class Drive extends SubsystemBase {
         }
 
         return timestampCount > 0 ? timestampSum / timestampCount : 0.0;
+    }
+
+    private double calculateSlipScore() {
+        ChassisSpeeds requested = getSetpointChassisSpeeds();
+        ChassisSpeeds measured = getMeasuredChassisSpeeds();
+
+        double requestedLinear = Math.hypot(requested.vxMetersPerSecond, requested.vyMetersPerSecond);
+        double measuredLinear = Math.hypot(measured.vxMetersPerSecond, measured.vyMetersPerSecond);
+        double translationError = Math.hypot(
+                requested.vxMetersPerSecond - measured.vxMetersPerSecond,
+                requested.vyMetersPerSecond - measured.vyMetersPerSecond);
+        double omegaError = Math.abs(requested.omegaRadiansPerSecond - measured.omegaRadiansPerSecond);
+
+        double translationDenominator = Math.max(0.35, Math.max(requestedLinear, measuredLinear));
+        double omegaDenominator = Math.max(0.35, Math.max(
+                Math.abs(requested.omegaRadiansPerSecond),
+                Math.abs(measured.omegaRadiansPerSecond)));
+
+        double translationComponent = Math.min(1.0, translationError / translationDenominator);
+        double omegaComponent = Math.min(1.0, omegaError / omegaDenominator);
+        double instantaneousSlip = Math.max(translationComponent, 0.5 * omegaComponent);
+        return Math.max(0.0, Math.min(1.0, (0.8 * slipScore) + (0.2 * instantaneousSlip)));
     }
 
     private double getModuleArbitraryFeedforward(DriveFeedforwards feedforwards, int moduleIndex) {

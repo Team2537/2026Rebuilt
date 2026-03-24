@@ -9,7 +9,6 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
@@ -45,6 +44,7 @@ import frc.robot.subsystems.transfer.TransferIO;
 import frc.robot.subsystems.transfer.TransferIOReal;
 import frc.robot.subsystems.transfer.TransferIOSim;
 import frc.robot.subsystems.vision.Vision;
+import frc.robot.subsystems.vision.VisionConsensus;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
@@ -372,7 +372,7 @@ public final class RobotContainer {
         bindOnTrue(
                 driverController.povLeft(),
                 "driver.povLeft.onTrue",
-                createSetOdometryFromUnifiedVisionCommand());
+                createSetOdometryFromVisionConsensusCommand());
         bindOnTrue(
                 driverController.povRight(),
                 "driver.povRight.onTrue",
@@ -522,10 +522,10 @@ public final class RobotContainer {
                 DriveCommands.resetOdometryAndHeading(drive)
                         .withName("DashboardDriveResetOdometryAndHeading"));
         putDashboardCommand(
-                DASHBOARD_ACTIONS_PREFIX + "DriveSetOdometryFromUnifiedVision",
-                "dashboard.actions.driveSetOdometryFromUnifiedVision",
-                createSetOdometryFromUnifiedVisionCommand()
-                        .withName("DashboardDriveSetOdometryFromUnifiedVision"));
+                DASHBOARD_ACTIONS_PREFIX + "DriveSetOdometryFromVisionConsensus",
+                "dashboard.actions.driveSetOdometryFromVisionConsensus",
+                createSetOdometryFromVisionConsensusCommand()
+                        .withName("DashboardDriveSetOdometryFromVisionConsensus"));
     }
 
     private void putDashboardCommand(String dashboardKey, String source, Command command) {
@@ -565,41 +565,32 @@ public final class RobotContainer {
                 .withName("StopManipulators");
     }
 
-    private Command createSetOdometryFromUnifiedVisionCommand() {
+    private Command createSetOdometryFromVisionConsensusCommand() {
         return Commands.runOnce(() -> {
             if (vision == null) {
                 DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: vision is disabled.",
+                        "Cannot set odometry from vision consensus pose: vision is disabled.",
                         false);
                 return;
             }
-            Pose2d unifiedVisionPose = vision.getUnifiedRobotPose();
-            String source = "unifiedVisionPose";
-            if (unifiedVisionPose == null) {
-                unifiedVisionPose = vision.getUnifiedRobotPoseRaw();
-                source = "rawUnifiedVisionPoseFallback";
-            }
-            if (unifiedVisionPose == null) {
+            VisionConsensus consensus = vision.getLatestConsensus();
+            if (consensus == null) {
                 DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: no recent vision pose is available.",
+                        "Cannot set odometry from vision consensus pose: no recent pose is available.",
                         false);
                 return;
             }
-            if (!isFinitePose(unifiedVisionPose)) {
+            Pose2d consensusPose = consensus.pose();
+            if (!isFinitePose(consensusPose)) {
                 DriverStation.reportWarning(
-                        "Cannot set odometry from unified vision pose: latest pose contains non-finite values.",
+                        "Cannot set odometry from vision consensus pose: latest pose contains non-finite values.",
                         false);
                 return;
             }
 
-            Pose2d poseToApply = unifiedVisionPose;
-            String sourceTag = source;
-            CommandScheduler.getInstance().schedule(
-                    Commands.runOnce(() -> {
-                        Logger.recordOutput("Vision/OdometryOverrideSource", sourceTag);
-                        RobotState.getInstance().setPose(poseToApply);
-                    }, drive).withName("DriveSetOdometryFromUnifiedVision"));
-        }).withName("DriveSetOdometryFromUnifiedVisionDispatch");
+            Logger.recordOutput("Vision/OdometryOverrideSource", "consensusPose");
+            RobotState.getInstance().setPose(consensusPose);
+        }, drive).withName("DriveSetOdometryFromVisionConsensus");
     }
 
     private static boolean isFinitePose(Pose2d pose) {

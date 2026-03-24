@@ -1,6 +1,5 @@
 package frc.robot.subsystems.vision;
 
-import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -22,12 +21,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.littletonrobotics.junction.Logger;
 
-/** Vision subsystem responsible for pose updates from PhotonVision. */
+/**
+ * Vision subsystem responsible for camera IO, per-frame filtering, and the
+ * latest consensus vision pose used by {@link RobotState}.
+ */
 public final class Vision extends SubsystemBase {
     private static final double VISIBLE_TAG_HOLD_SECONDS = 0.25;
 
@@ -41,10 +44,9 @@ public final class Vision extends SubsystemBase {
 
     private double hubYawRad = Double.NaN;
     private Pose2d hubTagRobotPose = null;
-    private Pose2d unifiedRobotPoseRaw = null;
-    private double unifiedRobotPoseRawTimestampSeconds = Double.NaN;
-    private Pose2d unifiedRobotPose = null;
-    private double unifiedRobotPoseTimestampSeconds = Double.NaN;
+    private Pose2d latestRawPose = null;
+    private double latestRawPoseTimestampSeconds = Double.NaN;
+    private VisionConsensus latestConsensus = null;
     private int visionEventSequence = 0;
     private int visionRejectEventCount = 0;
     private int visionJumpEventCount = 0;
@@ -93,20 +95,26 @@ public final class Vision extends SubsystemBase {
         return hubTagRobotPose;
     }
 
-    /**
-     * Returns the most recent unified vision pose that passed consistency checks.
-     * Returns null when unavailable or stale.
-     */
-    public Pose2d getUnifiedRobotPose() {
-        return unifiedRobotPose;
+    /** Returns the most recent consensus pose, or null when unavailable or stale. */
+    public Pose2d getConsensusPose() {
+        VisionConsensus consensus = getLatestConsensus();
+        return consensus != null ? consensus.pose() : null;
     }
 
-    /**
-     * Returns the most recent raw unified vision pose before consistency checks.
-     * Returns null when unavailable or stale.
-     */
-    public Pose2d getUnifiedRobotPoseRaw() {
-        return unifiedRobotPoseRaw;
+    /** Returns the most recent consensus object used for fusion and diagnostics. */
+    public VisionConsensus getLatestConsensus() {
+        return latestConsensus != null
+                        && latestConsensus.isUsable()
+                        && isFresh(latestConsensus.timestampSeconds(), VisionConstants.CONSENSUS_POSE_MAX_AGE_SECONDS)
+                ? latestConsensus
+                : null;
+    }
+
+    /** Returns the most recent raw vision pose before consensus filtering. */
+    public Pose2d getRawPose() {
+        return isFresh(latestRawPoseTimestampSeconds, VisionConstants.RAW_POSE_MAX_AGE_SECONDS)
+                ? latestRawPose
+                : null;
     }
 
     /** Returns AprilTag IDs currently visible from active camera results. */
@@ -134,20 +142,17 @@ public final class Vision extends SubsystemBase {
 
         VisionCycleResult cycleResult = processVisionCycle(currentPose, candidateDiagnostics);
         updateLatestVisibleAprilTagIds();
-        updateUnifiedRawPose(cycleResult.bestRawObservation());
-        updateUnifiedPose(
-                cycleResult.bestConsistentMeasuredPose(),
-                cycleResult.bestConsistentObservation() != null
-                        ? cycleResult.bestConsistentObservation().timestampSeconds()
-                        : Double.NaN);
-        seedUnifiedPosesFromRobotPoseInSimulation(currentPose);
+        updateLatestRawPose(cycleResult.bestRawObservation());
+        updateLatestConsensus(cycleResult.consensus());
+        seedVisionStateFromRobotPoseInSimulation(currentPose);
+        robotState.addVisionConsensus(dashboardDisabled ? null : getLatestConsensus());
 
         if (VisionConstants.ENABLE_VERBOSE_VISION_DIAGNOSTICS) {
             logCandidateDiagnostics(candidateDiagnostics);
-            logUnifiedPoseDiagnostics(currentPose);
+            logConsensusDiagnostics(currentPose);
         }
 
-        publishUnifiedPoseOutputs();
+        publishPoseOutputs();
         updateCameraConnectivityAndDiagnostics(currentPose);
         updateHubTagTracking();
     }
@@ -156,8 +161,7 @@ public final class Vision extends SubsystemBase {
             Pose2d currentPose,
             List<CandidateObservationDiagnostics> candidateDiagnostics) {
         PoseObservation bestRawObservation = null;
-        PoseObservation bestConsistentObservation = null;
-        Pose2d bestConsistentMeasuredPose = null;
+        List<ConsensusObservation> consensusCandidates = new ArrayList<>();
 
         for (int index = 0; index < ios.size(); index++) {
             VisionIO io = ios.get(index);
@@ -208,44 +212,27 @@ public final class Vision extends SubsystemBase {
                         stdDevs.linearStdDev(),
                         stdDevs.angularStdDev(),
                         index);
-                continue;
-            }
-
-            if (!dashboardDisabled) {
-                Pose2d estimatorMeasurementPose =
-                        new Pose2d(measuredPose.getTranslation(), referencePose.getRotation());
-                robotState.addVisionMeasurement(
-                        estimatorMeasurementPose,
+            } else {
+                logVisionJumpIfLarge(
                         bestObservation.timestampSeconds(),
-                        VecBuilder.fill(
-                                stdDevs.linearStdDev(),
-                                stdDevs.linearStdDev(),
-                                VisionConstants.ESTIMATOR_ANGULAR_STD_DEV_RAD));
+                        measuredPose,
+                        referencePose,
+                        innovation,
+                        bestObservation.tagCount(),
+                        input.tagIds,
+                        bestObservation.ambiguity(),
+                        bestObservation.averageTagDistance(),
+                        stdDevs.linearStdDev(),
+                        stdDevs.angularStdDev(),
+                        index);
             }
 
-            if (isBetterObservation(bestObservation, bestConsistentObservation)) {
-                bestConsistentObservation = bestObservation;
-                bestConsistentMeasuredPose = measuredPose;
-            }
-
-            logVisionJumpIfLarge(
-                    bestObservation.timestampSeconds(),
-                    measuredPose,
-                    referencePose,
-                    innovation,
-                    bestObservation.tagCount(),
-                    input.tagIds,
-                    bestObservation.ambiguity(),
-                    bestObservation.averageTagDistance(),
-                    stdDevs.linearStdDev(),
-                    stdDevs.angularStdDev(),
-                    index);
+            consensusCandidates.add(new ConsensusObservation(bestObservation, measuredPose, stdDevs));
         }
 
         return new VisionCycleResult(
                 bestRawObservation,
-                bestConsistentObservation,
-                bestConsistentMeasuredPose);
+                buildVisionConsensus(consensusCandidates));
     }
 
     private static ObservationStdDevs computeObservationStdDevs(PoseObservation bestObservation) {
@@ -256,11 +243,130 @@ public final class Vision extends SubsystemBase {
                 VisionConstants.ANGULAR_STD_DEV_BASELINE * clampedFactor);
     }
 
-    private void publishUnifiedPoseOutputs() {
-        Logger.recordOutput("Vision/unifiedRobotPoseRaw", unifiedRobotPoseRaw != null ? unifiedRobotPoseRaw : new Pose2d());
-        Logger.recordOutput("Vision/unifiedRobotPoseRawValid", unifiedRobotPoseRaw != null);
-        Logger.recordOutput("Vision/unifiedRobotPose", unifiedRobotPose != null ? unifiedRobotPose : new Pose2d());
-        Logger.recordOutput("Vision/unifiedRobotPoseValid", unifiedRobotPose != null);
+    private VisionConsensus buildVisionConsensus(List<ConsensusObservation> observations) {
+        if (observations.isEmpty()) {
+            return null;
+        }
+
+        ConsensusObservation seed = observations.stream()
+                .max(Comparator.comparingDouble(ConsensusObservation::weight))
+                .orElse(null);
+        if (seed == null) {
+            return null;
+        }
+
+        List<ConsensusObservation> cluster = observations.stream()
+                .filter(observation -> isConsensusCompatible(seed.measuredPose(), observation.measuredPose()))
+                .toList();
+        if (cluster.isEmpty()) {
+            return null;
+        }
+
+        double totalWeight = 0.0;
+        double sumX = 0.0;
+        double sumY = 0.0;
+        double sumCos = 0.0;
+        double sumSin = 0.0;
+        double weightedLinearStdDev = 0.0;
+        double weightedAngularStdDev = 0.0;
+        double weightedAmbiguity = 0.0;
+        double weightedDistance = 0.0;
+        double timestampSeconds = Double.NEGATIVE_INFINITY;
+        int totalTagCount = 0;
+        boolean multiTag = false;
+
+        for (ConsensusObservation observation : cluster) {
+            double weight = observation.weight();
+            totalWeight += weight;
+            Pose2d pose = observation.measuredPose();
+            sumX += pose.getX() * weight;
+            sumY += pose.getY() * weight;
+            sumCos += pose.getRotation().getCos() * weight;
+            sumSin += pose.getRotation().getSin() * weight;
+            weightedLinearStdDev += observation.stdDevs().linearStdDev() * weight;
+            weightedAngularStdDev += observation.stdDevs().angularStdDev() * weight;
+            weightedAmbiguity += observation.observation().ambiguity() * weight;
+            weightedDistance += observation.observation().averageTagDistance() * weight;
+            timestampSeconds = Math.max(timestampSeconds, observation.observation().timestampSeconds());
+            totalTagCount += observation.observation().tagCount();
+            multiTag |= observation.observation().tagCount() > 1;
+        }
+
+        if (!(totalWeight > 0.0) || !Double.isFinite(timestampSeconds)) {
+            return null;
+        }
+
+        Pose2d consensusPose = new Pose2d(
+                sumX / totalWeight,
+                sumY / totalWeight,
+                new Rotation2d(sumCos, sumSin));
+        double translationStdDev = (weightedLinearStdDev / totalWeight) / Math.sqrt(cluster.size());
+        double rotationStdDev = (weightedAngularStdDev / totalWeight) / Math.sqrt(cluster.size());
+        double averageAmbiguity = weightedAmbiguity / totalWeight;
+        double averageDistance = weightedDistance / totalWeight;
+        double confidence = computeConsensusConfidence(
+                cluster.size(),
+                totalTagCount,
+                averageAmbiguity,
+                averageDistance,
+                multiTag);
+
+        return new VisionConsensus(
+                timestampSeconds,
+                consensusPose,
+                confidence,
+                Math.max(0.01, translationStdDev),
+                Math.max(Units.degreesToRadians(2.0), rotationStdDev),
+                cluster.size(),
+                totalTagCount,
+                multiTag);
+    }
+
+    private static boolean isConsensusCompatible(Pose2d seedPose, Pose2d candidatePose) {
+        PoseDelta delta = calculatePoseDelta(seedPose, candidatePose);
+        return delta.translationMeters() <= VisionConstants.MAX_CONSENSUS_TRANSLATION_DELTA_METERS
+                && delta.headingDegrees() <= VisionConstants.MAX_CONSENSUS_HEADING_DELTA_DEGREES;
+    }
+
+    private static double computeConsensusConfidence(
+            int contributingCameraCount,
+            int totalTagCount,
+            double averageAmbiguity,
+            double averageDistance,
+            boolean multiTag) {
+        double cameraFactor = Math.min(1.0, contributingCameraCount / (double) Math.max(1, VisionConstants.CAMERA_CONFIGS.size()));
+        double tagFactor = Math.min(1.0, totalTagCount / 4.0);
+        double ambiguityFactor = 1.0 - Math.min(1.0, Math.max(0.0, averageAmbiguity));
+        double distanceFactor = Math.min(1.0, 1.0 / Math.max(1.0, averageDistance));
+        double confidence = (0.30 * cameraFactor)
+                + (0.35 * tagFactor)
+                + (0.20 * ambiguityFactor)
+                + (0.15 * distanceFactor);
+        if (multiTag) {
+            confidence += 0.10;
+        }
+        return Math.max(0.0, Math.min(1.0, confidence));
+    }
+
+    private void publishPoseOutputs() {
+        VisionConsensus consensus = getLatestConsensus();
+        Pose2d rawPose = getRawPose();
+        Logger.recordOutput("Vision/rawPose", rawPose != null ? rawPose : new Pose2d());
+        Logger.recordOutput("Vision/rawPoseValid", rawPose != null);
+        Logger.recordOutput("Vision/consensus/pose", consensus != null ? consensus.pose() : new Pose2d());
+        Logger.recordOutput("Vision/consensus/valid", consensus != null);
+        Logger.recordOutput("Vision/consensus/confidence", consensus != null ? consensus.confidence() : Double.NaN);
+        Logger.recordOutput(
+                "Vision/consensus/translationStdDevMeters",
+                consensus != null ? consensus.translationStdDevMeters() : Double.NaN);
+        Logger.recordOutput(
+                "Vision/consensus/rotationStdDevRadians",
+                consensus != null ? consensus.rotationStdDevRadians() : Double.NaN);
+        Logger.recordOutput(
+                "Vision/consensus/contributingCameraCount",
+                consensus != null ? consensus.contributingCameraCount() : 0);
+        Logger.recordOutput("Vision/consensus/tagCount", consensus != null ? consensus.tagCount() : 0);
+        Logger.recordOutput("Vision/consensus/multiTag", consensus != null && consensus.multiTag());
     }
 
     private void updateCameraConnectivityAndDiagnostics(Pose2d currentPose) {
@@ -375,54 +481,57 @@ public final class Vision extends SubsystemBase {
         return candidate.averageTagDistance() < currentBest.averageTagDistance();
     }
 
-    private void updateUnifiedRawPose(PoseObservation bestRawObservation) {
+    private void updateLatestRawPose(PoseObservation bestRawObservation) {
         if (bestRawObservation != null) {
-            unifiedRobotPoseRaw = bestRawObservation.pose().toPose2d();
-            unifiedRobotPoseRawTimestampSeconds = bestRawObservation.timestampSeconds();
+            latestRawPose = bestRawObservation.pose().toPose2d();
+            latestRawPoseTimestampSeconds = bestRawObservation.timestampSeconds();
             return;
         }
 
-        if (unifiedRobotPoseRaw == null) {
+        if (latestRawPose == null) {
             return;
         }
 
-        double ageSeconds = Timer.getFPGATimestamp() - unifiedRobotPoseRawTimestampSeconds;
-        if (!Double.isFinite(ageSeconds) || ageSeconds > VisionConstants.UNIFIED_RAW_POSE_MAX_AGE_SECONDS) {
-            unifiedRobotPoseRaw = null;
-            unifiedRobotPoseRawTimestampSeconds = Double.NaN;
+        if (!isFresh(latestRawPoseTimestampSeconds, VisionConstants.RAW_POSE_MAX_AGE_SECONDS)) {
+            latestRawPose = null;
+            latestRawPoseTimestampSeconds = Double.NaN;
         }
     }
 
-    private void updateUnifiedPose(Pose2d bestConsistentPose, double bestConsistentTimestampSeconds) {
-        if (bestConsistentPose != null && Double.isFinite(bestConsistentTimestampSeconds)) {
-            unifiedRobotPose = bestConsistentPose;
-            unifiedRobotPoseTimestampSeconds = bestConsistentTimestampSeconds;
+    private void updateLatestConsensus(VisionConsensus consensus) {
+        if (consensus != null && consensus.isUsable()) {
+            latestConsensus = consensus;
             return;
         }
 
-        if (unifiedRobotPose == null) {
+        if (latestConsensus == null) {
             return;
         }
 
-        double ageSeconds = Timer.getFPGATimestamp() - unifiedRobotPoseTimestampSeconds;
-        if (!Double.isFinite(ageSeconds) || ageSeconds > VisionConstants.UNIFIED_POSE_MAX_AGE_SECONDS) {
-            unifiedRobotPose = null;
-            unifiedRobotPoseTimestampSeconds = Double.NaN;
+        if (!isFresh(latestConsensus.timestampSeconds(), VisionConstants.CONSENSUS_POSE_MAX_AGE_SECONDS)) {
+            latestConsensus = null;
         }
     }
 
-    private void seedUnifiedPosesFromRobotPoseInSimulation(Pose2d currentPose) {
+    private void seedVisionStateFromRobotPoseInSimulation(Pose2d currentPose) {
         if (RobotType.MODE != RobotType.Mode.SIMULATION || currentPose == null) {
             return;
         }
         double nowSec = Timer.getFPGATimestamp();
-        if (unifiedRobotPoseRaw == null) {
-            unifiedRobotPoseRaw = currentPose;
-            unifiedRobotPoseRawTimestampSeconds = nowSec;
+        if (latestRawPose == null) {
+            latestRawPose = currentPose;
+            latestRawPoseTimestampSeconds = nowSec;
         }
-        if (unifiedRobotPose == null) {
-            unifiedRobotPose = currentPose;
-            unifiedRobotPoseTimestampSeconds = nowSec;
+        if (latestConsensus == null) {
+            latestConsensus = new VisionConsensus(
+                    nowSec,
+                    currentPose,
+                    1.0,
+                    VisionConstants.LINEAR_STD_DEV_BASELINE,
+                    VisionConstants.ANGULAR_STD_DEV_BASELINE,
+                    1,
+                    1,
+                    true);
         }
     }
 
@@ -438,16 +547,25 @@ public final class Vision extends SubsystemBase {
                 Math.abs(Math.IEEEremainder(first.minus(second).getRadians(), 2.0 * Math.PI)));
     }
 
-    private void logUnifiedPoseDiagnostics(Pose2d currentPose) {
-        if (currentPose == null || unifiedRobotPose == null) {
-            Logger.recordOutput("Vision/jump/unifiedToOdometryTranslationMeters", Double.NaN);
-            Logger.recordOutput("Vision/jump/unifiedToOdometryHeadingDegrees", Double.NaN);
+    private static boolean isFresh(double timestampSeconds, double maxAgeSeconds) {
+        if (!Double.isFinite(timestampSeconds)) {
+            return false;
+        }
+        double ageSeconds = Timer.getFPGATimestamp() - timestampSeconds;
+        return Double.isFinite(ageSeconds) && ageSeconds <= maxAgeSeconds;
+    }
+
+    private void logConsensusDiagnostics(Pose2d currentPose) {
+        Pose2d consensusPose = getConsensusPose();
+        if (currentPose == null || consensusPose == null) {
+            Logger.recordOutput("Vision/jump/consensusToOdometryTranslationMeters", Double.NaN);
+            Logger.recordOutput("Vision/jump/consensusToOdometryHeadingDegrees", Double.NaN);
             return;
         }
 
-        PoseDelta delta = calculatePoseDelta(unifiedRobotPose, currentPose);
-        Logger.recordOutput("Vision/jump/unifiedToOdometryTranslationMeters", delta.translationMeters());
-        Logger.recordOutput("Vision/jump/unifiedToOdometryHeadingDegrees", delta.headingDegrees());
+        PoseDelta delta = calculatePoseDelta(consensusPose, currentPose);
+        Logger.recordOutput("Vision/jump/consensusToOdometryTranslationMeters", delta.translationMeters());
+        Logger.recordOutput("Vision/jump/consensusToOdometryHeadingDegrees", delta.headingDegrees());
     }
 
     private void logCandidateDiagnostics(List<CandidateObservationDiagnostics> candidates) {
@@ -802,8 +920,8 @@ public final class Vision extends SubsystemBase {
     }
 
     private void resetJumpDiagnosticsOutputs() {
-        Logger.recordOutput("Vision/jump/unifiedToOdometryTranslationMeters", Double.NaN);
-        Logger.recordOutput("Vision/jump/unifiedToOdometryHeadingDegrees", Double.NaN);
+        Logger.recordOutput("Vision/jump/consensusToOdometryTranslationMeters", Double.NaN);
+        Logger.recordOutput("Vision/jump/consensusToOdometryHeadingDegrees", Double.NaN);
     }
 
     private record PoseDelta(double translationMeters, double headingDegrees) {
@@ -814,8 +932,18 @@ public final class Vision extends SubsystemBase {
 
     private record VisionCycleResult(
             PoseObservation bestRawObservation,
-            PoseObservation bestConsistentObservation,
-            Pose2d bestConsistentMeasuredPose) {
+            VisionConsensus consensus) {
+    }
+
+    private record ConsensusObservation(
+            PoseObservation observation,
+            Pose2d measuredPose,
+            ObservationStdDevs stdDevs) {
+        private double weight() {
+            double ambiguityFactor = 1.0 - Math.min(1.0, Math.max(0.0, observation.ambiguity()));
+            double distanceFactor = 1.0 / Math.max(0.5, observation.averageTagDistance());
+            return Math.max(1e-6, observation.tagCount() * (0.25 + ambiguityFactor) * distanceFactor);
+        }
     }
 
     private record CandidateObservationDiagnostics(
