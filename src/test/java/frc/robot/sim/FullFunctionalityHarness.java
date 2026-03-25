@@ -151,8 +151,8 @@ final class FullFunctionalityHarness {
                 "Intake/SmartRetract/FeedStartDelaySec",
                 IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC);
         SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleStepRot",
-                IntakeConstants.SMART_RETRACT_NIBBLE_STEP_ROT);
+                "Intake/SmartRetract/StepRot",
+                IntakeConstants.SMART_RETRACT_STEP_ROT);
     }
 
     static <T> T getPrivateField(Object target, String fieldName, Class<T> type) {

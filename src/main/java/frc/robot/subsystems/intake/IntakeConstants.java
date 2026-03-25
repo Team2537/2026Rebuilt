@@ -81,9 +81,8 @@ public final class IntakeConstants {
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
     public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.0;
 
-    public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
+    public static final double SMART_RETRACT_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
-    public static final double SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS = 3.0;
     public static final double SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS = 2.5;
     public static final int SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES = 10;
     public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.7;
@@ -111,18 +110,14 @@ public final class IntakeConstants {
                     "Intake/SmartRetract/FeedStartDelaySec",
                     SMART_RETRACT_FEED_START_DELAY_SEC);
 
-    private static final LoggedTunableNumber smartRetractNibbleStepRot =
+    private static final LoggedTunableNumber smartRetractStepRot =
             new LoggedTunableNumber(
-                    "Intake/SmartRetract/NibbleStepRot",
-                    SMART_RETRACT_NIBBLE_STEP_ROT);
+                    "Intake/SmartRetract/StepRot",
+                    SMART_RETRACT_STEP_ROT);
     private static final LoggedTunableNumber smartRetractRollerRpm =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/RollerRpm",
                     SMART_RETRACT_ROLLER_RPM);
-    private static final LoggedTunableNumber smartRetractJamCurrentThresholdAmps =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/JamCurrentThresholdAmps",
-                    SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS);
     private static final LoggedTunableNumber smartRetractJamBackoffCurrentThresholdAmps =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
@@ -176,16 +171,12 @@ public final class IntakeConstants {
         return Math.max(0.0, smartRetractFeedStartDelaySec.get());
     }
 
-    public static double smartRetractNibbleStepRot() {
-        return Math.max(0.0, smartRetractNibbleStepRot.get());
+    public static double smartRetractStepRot() {
+        return Math.max(0.0, smartRetractStepRot.get());
     }
 
     public static double smartRetractRollerRpm() {
         return MathUtil.clamp(smartRetractRollerRpm.get(), -ROLLER_MAX_RPM, ROLLER_MAX_RPM);
-    }
-
-    public static double smartRetractJamCurrentThresholdAmps() {
-        return Math.max(0.0, smartRetractJamCurrentThresholdAmps.get());
     }
 
     public static double smartRetractJamBackoffCurrentThresholdAmps() {

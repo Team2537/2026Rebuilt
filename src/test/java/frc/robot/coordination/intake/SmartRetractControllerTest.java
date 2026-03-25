@@ -33,14 +33,11 @@ class SmartRetractControllerTest {
                 "Intake/SmartRetract/FeedStartDelaySec",
                 IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC);
         SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleStepRot",
-                IntakeConstants.SMART_RETRACT_NIBBLE_STEP_ROT);
+                "Intake/SmartRetract/StepRot",
+                IntakeConstants.SMART_RETRACT_STEP_ROT);
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/RollerRpm",
                 IntakeConstants.SMART_RETRACT_ROLLER_RPM);
-        SmartDashboard.putNumber(
-                "Intake/SmartRetract/JamCurrentThresholdAmps",
-                IntakeConstants.SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS);
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
                 IntakeConstants.SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS);
@@ -88,7 +85,7 @@ class SmartRetractControllerTest {
         initialize(true, MID_POSITION, 0.0);
         SmartRetractController.Update update = update(false, false, MID_POSITION, 0.0);
         assertTrue(update.commandTarget());
-        assertEquals(MID_POSITION - IntakeConstants.smartRetractNibbleStepRot(), update.commandedLeftTargetRot(), 1e-9);
+        assertEquals(MID_POSITION - IntakeConstants.smartRetractStepRot(), update.commandedLeftTargetRot(), 1e-9);
         assertEquals(SmartRetractController.Phase.SEEKING_FLOW, session.phase());
     }
 

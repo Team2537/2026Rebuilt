@@ -361,8 +361,6 @@ public class Intake extends SubsystemBase {
         Logger.recordOutput("Intake/SmartRetract/FeedFalseCycles", session.feedFalseCycles());
         Logger.recordOutput("Intake/SmartRetract/FullRetractReached", session.fullRetractReached());
         Logger.recordOutput("Intake/SmartRetract/RollerRpm", IntakeConstants.smartRetractRollerRpm());
-        Logger.recordOutput("Intake/SmartRetract/JamCurrentThresholdAmps", session.jamCurrentThresholdAmps());
-        Logger.recordOutput("Intake/SmartRetract/JamDetectionCurrentMet", session.jamDetectionCurrentMet());
         Logger.recordOutput("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", session.jamBackoffCurrentThresholdAmps());
         Logger.recordOutput("Intake/SmartRetract/JamBackoffDetectCycles", session.jamBackoffDetectCycles());
         Logger.recordOutput("Intake/SmartRetract/JamBackoffCurrentCycles", session.jamBackoffCurrentCycles());
