@@ -4,28 +4,26 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.subsystems.intake.IntakeConstants;
 
-/** Stateful smart-retract controller extracted from Intake for reuse and testing. */
+/** Stateful smart-retract coordinator with jam-aware retract-first behavior. */
 public final class SmartRetractController {
-    public enum Mode {
-        DISABLED,
-        NIBBLE,
-        HALF_RETRACT_RETURN
+    public enum Phase {
+        INACTIVE,
+        SEEKING_FLOW,
+        FLOWING,
+        TAIL_DRAIN,
+        OUTER_JAM_RECOVERY,
+        INNER_STALL_RECOVERY
     }
 
     public static final class Session {
-        private Mode mode = Mode.DISABLED;
+        private Phase phase = Phase.INACTIVE;
         private boolean startedExtended = false;
         private boolean active = false;
-        private boolean nibbleBackoffActive = false;
-        private int nibbleSpikeCycles = 0;
-        private double nibbleBackoffUntilSec = Double.NaN;
         private double commandedLeftTargetRot = Double.NaN;
         private double filteredSignalCurrentAmps = 0.0;
-        private double nibbleCurrentThresholdAmps = 0.0;
         private boolean feedLatched = false;
         private int feedTrueCycles = 0;
         private int feedFalseCycles = 0;
-        private boolean halfRetractReached = false;
         private boolean fullRetractReached = false;
         private boolean seenAboveSmartRetractThreshold = false;
         private boolean sawShotPulse = false;
@@ -35,10 +33,11 @@ public final class SmartRetractController {
         private int jamBackoffDetectCycles = 0;
         private int jamBackoffCurrentCycles = 0;
         private double lastShotOrFeedTimestampSec = Double.NaN;
+        private double tailDrainUntilSec = Double.NaN;
         private int jamRecoveryCount = 0;
 
-        public Mode mode() {
-            return mode;
+        public Phase phase() {
+            return phase;
         }
 
         public boolean active() {
@@ -53,10 +52,6 @@ public final class SmartRetractController {
             return filteredSignalCurrentAmps;
         }
 
-        public double nibbleCurrentThresholdAmps() {
-            return nibbleCurrentThresholdAmps;
-        }
-
         public boolean feedLatched() {
             return feedLatched;
         }
@@ -67,14 +62,6 @@ public final class SmartRetractController {
 
         public int feedFalseCycles() {
             return feedFalseCycles;
-        }
-
-        public int nibbleSpikeCycles() {
-            return nibbleSpikeCycles;
-        }
-
-        public boolean nibbleBackoffActive() {
-            return nibbleBackoffActive;
         }
 
         public boolean fullRetractReached() {
@@ -110,7 +97,7 @@ public final class SmartRetractController {
         }
 
         public boolean jamRecoveryActive() {
-            return nibbleBackoffActive;
+            return phase == Phase.OUTER_JAM_RECOVERY || phase == Phase.INNER_STALL_RECOVERY;
         }
 
         public int jamRecoveryCount() {
@@ -118,157 +105,125 @@ public final class SmartRetractController {
         }
     }
 
+    public record Inputs(
+            boolean activelyFeeding,
+            boolean shotPulseDetectedThisCycle,
+            double leftPositionRot,
+            double rawSignalCurrentAmps) {}
+
     public record Update(
             boolean spinRoller,
-            boolean commandRetractTarget,
+            boolean commandTarget,
             double commandedLeftTargetRot,
+            boolean wiggleActive,
             double rawSignalCurrentAmps) {}
 
     public void initialize(
             Session session,
-            Mode mode,
             boolean startedExtended,
             double initialLeftPositionRot,
             double initialSignalCurrentAmps) {
-        session.mode = mode;
         session.startedExtended = startedExtended;
-        session.active = session.startedExtended && session.mode != Mode.DISABLED;
+        session.active = startedExtended;
+        session.phase = session.active ? Phase.SEEKING_FLOW : Phase.INACTIVE;
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(initialLeftPositionRot);
         session.filteredSignalCurrentAmps = initialSignalCurrentAmps;
-        session.nibbleCurrentThresholdAmps = IntakeConstants.smartRetractNibbleCurrentThresholdAmps();
-        session.nibbleBackoffActive = false;
-        session.nibbleSpikeCycles = 0;
-        session.nibbleBackoffUntilSec = Double.NaN;
         session.feedLatched = false;
         session.feedTrueCycles = 0;
         session.feedFalseCycles = 0;
-        session.halfRetractReached = false;
         session.fullRetractReached = false;
         session.sawShotPulse = false;
-        session.jamCurrentThresholdAmps = IntakeConstants.smartRetractJamCurrentThresholdAmps();
         session.jamDetectionCurrentMet = false;
-        session.jamBackoffCurrentThresholdAmps = IntakeConstants.smartRetractJamBackoffCurrentThresholdAmps();
-        session.jamBackoffDetectCycles = IntakeConstants.smartRetractJamBackoffDetectCycles();
         session.jamBackoffCurrentCycles = 0;
         session.lastShotOrFeedTimestampSec = Double.NaN;
+        session.tailDrainUntilSec = Double.NaN;
         session.jamRecoveryCount = 0;
-        session.seenAboveSmartRetractThreshold =
-                initialLeftPositionRot > smartRetractCompletionThresholdRot();
+        session.seenAboveSmartRetractThreshold = initialLeftPositionRot > smartRetractCompletionThresholdRot();
+        refreshThresholds(session);
     }
 
-    public Update update(
-            Session session,
-            boolean activelyFeeding,
-            boolean shotPulseDetectedThisCycle,
-            double leftPositionRot,
-            double rawSignalCurrentAmps,
-            boolean goalExtended,
-            boolean atRetractedTarget) {
-        double nowSec = Timer.getFPGATimestamp();
-        session.nibbleCurrentThresholdAmps = IntakeConstants.smartRetractNibbleCurrentThresholdAmps();
-        session.jamCurrentThresholdAmps = IntakeConstants.smartRetractJamCurrentThresholdAmps();
-        session.jamBackoffCurrentThresholdAmps = IntakeConstants.smartRetractJamBackoffCurrentThresholdAmps();
-        session.jamBackoffDetectCycles = IntakeConstants.smartRetractJamBackoffDetectCycles();
-        boolean shouldSpinRoller = activelyFeeding;
+    public Update update(Session session, Inputs inputs) {
+        return update(session, inputs, Timer.getFPGATimestamp());
+    }
+
+    Update update(Session session, Inputs inputs, double nowSec) {
+        boolean shouldSpinRoller = inputs.activelyFeeding();
         if (!session.active) {
-            return new Update(shouldSpinRoller, false, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+            session.phase = Phase.INACTIVE;
+            return new Update(
+                    shouldSpinRoller,
+                    false,
+                    session.commandedLeftTargetRot,
+                    false,
+                    inputs.rawSignalCurrentAmps());
         }
 
+        refreshThresholds(session);
         session.filteredSignalCurrentAmps = filteredCurrent(
                 session.filteredSignalCurrentAmps,
-                rawSignalCurrentAmps,
+                inputs.rawSignalCurrentAmps(),
                 IntakeConstants.smartRetractCurrentFilterAlpha());
         session.jamDetectionCurrentMet = session.filteredSignalCurrentAmps >= session.jamCurrentThresholdAmps;
-        boolean wasFeedLatched = session.feedLatched;
-        boolean feedLatched = updateFeedLatch(session, activelyFeeding);
-        if (feedLatched && !wasFeedLatched) {
-            resetShotProgressWindow(session, nowSec, false);
-        }
-        if (!feedLatched) {
-            session.jamBackoffCurrentCycles = 0;
-            return new Update(shouldSpinRoller, false, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+
+        boolean feedWindowOpened = updateFeedLatch(session, inputs.activelyFeeding(), nowSec);
+        if (feedWindowOpened) {
+            session.phase = session.fullRetractReached ? Phase.FLOWING : Phase.SEEKING_FLOW;
         }
 
-        if (!activelyFeeding) {
-            session.commandedLeftTargetRot = clampSmartRetractTargetRot(leftPositionRot);
-            session.lastShotOrFeedTimestampSec = nowSec;
-            session.jamBackoffCurrentCycles = 0;
-            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
-        }
-
-        if (shotPulseDetectedThisCycle) {
+        if (inputs.shotPulseDetectedThisCycle()) {
             session.sawShotPulse = true;
             session.lastShotOrFeedTimestampSec = nowSec;
+            session.tailDrainUntilSec = Double.NaN;
+            session.phase = Phase.FLOWING;
         }
 
-        if (session.mode == Mode.NIBBLE && session.nibbleBackoffActive) {
-            runJamRecovery(session, leftPositionRot, nowSec);
-            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+        if (session.phase == Phase.OUTER_JAM_RECOVERY) {
+            runOuterJamRecovery(session, inputs.leftPositionRot(), nowSec);
+            return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
+        }
+        if (session.phase == Phase.INNER_STALL_RECOVERY) {
+            runInnerStallRecovery(session, inputs.leftPositionRot(), nowSec);
+            return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
         }
 
-        updateJamBackoffCurrentCycles(session);
-        if (session.mode == Mode.NIBBLE
-                && session.jamBackoffCurrentCycles >= session.jamBackoffDetectCycles) {
-            startJamRecovery(session);
-            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
-        }
+        boolean inInnerRegion = inputs.leftPositionRot() <= innerStallArmThresholdRot();
+        updateFullRetractReached(session, inputs.leftPositionRot());
 
-        if (session.mode == Mode.NIBBLE && !session.jamDetectionCurrentMet) {
-            resetShotProgressWindow(session, nowSec, false);
-        }
-
-        if (session.mode == Mode.NIBBLE && shouldStartJamRecovery(session, nowSec)) {
-            startJamRecovery(session);
-            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
-        }
-
-        boolean atSmartRetractTarget = leftPositionRot
-                <= smartRetractCompletionThresholdRot();
-
-        if (!atSmartRetractTarget) {
-            session.seenAboveSmartRetractThreshold = true;
-        }
-
-        if (session.mode == Mode.NIBBLE
-                && atSmartRetractTarget
-                && session.seenAboveSmartRetractThreshold) {
-            session.fullRetractReached = true;
-            session.commandedLeftTargetRot = IntakeConstants.smartRetractRetractedPositionRot();
-            return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
-        }
-
-        switch (session.mode) {
-            case NIBBLE -> runNibbleSmartRetract(session, leftPositionRot);
-            case HALF_RETRACT_RETURN -> runHalfRetractReturnSmartRetract(session, leftPositionRot);
-            case DISABLED -> {
-                // Session is marked active only for non-disabled modes.
+        if (!inInnerRegion) {
+            updateJamBackoffCurrentCycles(session);
+            if (session.jamBackoffCurrentCycles >= session.jamBackoffDetectCycles) {
+                startOuterJamRecovery(session);
+                return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
             }
+        } else {
+            session.jamBackoffCurrentCycles = 0;
         }
 
-        return new Update(shouldSpinRoller, true, session.commandedLeftTargetRot, rawSignalCurrentAmps);
+        if (shouldStartInnerStallHandling(session, inputs.activelyFeeding(), inInnerRegion, nowSec)) {
+            if (shouldEnterTailDrain(session)) {
+                if (session.phase != Phase.TAIL_DRAIN) {
+                    session.phase = Phase.TAIL_DRAIN;
+                    session.tailDrainUntilSec = nowSec + IntakeConstants.smartRetractTailDrainGraceSec();
+                } else if (Double.isFinite(session.tailDrainUntilSec) && nowSec >= session.tailDrainUntilSec) {
+                    startInnerStallRecovery(session);
+                }
+            } else {
+                startInnerStallRecovery(session);
+            }
+            return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
+        }
+
+        if (session.phase == Phase.TAIL_DRAIN
+                && (!inputs.activelyFeeding() || !session.sawShotPulse || !session.fullRetractReached)) {
+            session.phase = session.sawShotPulse ? Phase.FLOWING : Phase.SEEKING_FLOW;
+            session.tailDrainUntilSec = Double.NaN;
+        }
+
+        commandNormalRetract(session);
+        return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
     }
 
-    public Update update(
-            Session session,
-            boolean activelyFeeding,
-            double leftPositionRot,
-            double rawSignalCurrentAmps,
-            boolean goalExtended,
-            boolean atRetractedTarget) {
-        return update(
-                session,
-                activelyFeeding,
-                true,
-                leftPositionRot,
-                rawSignalCurrentAmps,
-                goalExtended,
-                atRetractedTarget);
-    }
-
-    public boolean shouldRestoreExtendedOnExit(
-            Session session,
-            boolean disabled,
-            boolean atRetractedTarget) {
+    public boolean shouldRestoreExtendedOnExit(Session session, boolean disabled, boolean atRetractedTarget) {
         if (!session.active || disabled) {
             return false;
         }
@@ -278,8 +233,49 @@ public final class SmartRetractController {
         return session.startedExtended && !atRetractedTarget;
     }
 
-    private static boolean shouldStartJamRecovery(Session session, double nowSec) {
-        if (!session.jamDetectionCurrentMet || !Double.isFinite(session.lastShotOrFeedTimestampSec)) {
+    private static Update buildUpdate(Session session, boolean spinRoller, double rawSignalCurrentAmps) {
+        return new Update(
+                spinRoller,
+                true,
+                session.commandedLeftTargetRot,
+                session.fullRetractReached && !session.jamRecoveryActive(),
+                rawSignalCurrentAmps);
+    }
+
+    private static void refreshThresholds(Session session) {
+        session.jamCurrentThresholdAmps = IntakeConstants.smartRetractJamCurrentThresholdAmps();
+        session.jamBackoffCurrentThresholdAmps = IntakeConstants.smartRetractJamBackoffCurrentThresholdAmps();
+        session.jamBackoffDetectCycles = IntakeConstants.smartRetractJamBackoffDetectCycles();
+    }
+
+    private static boolean updateFeedLatch(Session session, boolean activelyFeeding, double nowSec) {
+        boolean wasLatched = session.feedLatched;
+        if (activelyFeeding) {
+            session.feedTrueCycles++;
+            session.feedFalseCycles = 0;
+        } else {
+            session.feedFalseCycles++;
+            session.feedTrueCycles = 0;
+            session.feedLatched = false;
+            return false;
+        }
+
+        if (session.feedTrueCycles >= feedStartDelayCycles()) {
+            session.feedLatched = true;
+        }
+        if (session.feedLatched && !wasLatched) {
+            resetShotProgressWindow(session, nowSec, false);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean shouldStartInnerStallHandling(
+            Session session,
+            boolean activelyFeeding,
+            boolean inInnerRegion,
+            double nowSec) {
+        if (!activelyFeeding || !session.feedLatched || !inInnerRegion || !Double.isFinite(session.lastShotOrFeedTimestampSec)) {
             return false;
         }
         double timeoutSec = session.sawShotPulse
@@ -288,25 +284,51 @@ public final class SmartRetractController {
         return timeoutSec > 0.0 && nowSec - session.lastShotOrFeedTimestampSec >= timeoutSec;
     }
 
-    private static void startJamRecovery(Session session) {
-        session.nibbleBackoffActive = true;
-        session.nibbleSpikeCycles = 0;
-        session.nibbleBackoffUntilSec = Double.NaN;
+    private static boolean shouldEnterTailDrain(Session session) {
+        return session.sawShotPulse
+                && session.fullRetractReached
+                && session.filteredSignalCurrentAmps < session.jamBackoffCurrentThresholdAmps;
+    }
+
+    private static void startOuterJamRecovery(Session session) {
+        session.phase = Phase.OUTER_JAM_RECOVERY;
         session.fullRetractReached = false;
         session.jamBackoffCurrentCycles = 0;
+        session.tailDrainUntilSec = Double.NaN;
         session.jamRecoveryCount++;
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(
                 IntakeConstants.smartRetractJamRecoveryExtendPositionRot());
     }
 
-    private static void runJamRecovery(Session session, double leftPositionRot, double nowSec) {
+    private static void startInnerStallRecovery(Session session) {
+        session.phase = Phase.INNER_STALL_RECOVERY;
+        session.fullRetractReached = false;
+        session.tailDrainUntilSec = Double.NaN;
+        session.jamRecoveryCount++;
+        session.commandedLeftTargetRot = clampSmartRetractTargetRot(
+                IntakeConstants.smartRetractInnerStallRecoveryExtendPositionRot());
+    }
+
+    private static void runOuterJamRecovery(Session session, double leftPositionRot, double nowSec) {
         double extendTargetRot = IntakeConstants.smartRetractJamRecoveryExtendPositionRot();
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(extendTargetRot);
         if (leftPositionRot + IntakeConstants.POSITION_TOLERANCE_ROT < extendTargetRot) {
             return;
         }
 
-        session.nibbleBackoffActive = false;
+        session.phase = Phase.SEEKING_FLOW;
+        session.seenAboveSmartRetractThreshold = true;
+        resetShotProgressWindow(session, nowSec, false);
+    }
+
+    private static void runInnerStallRecovery(Session session, double leftPositionRot, double nowSec) {
+        double extendTargetRot = IntakeConstants.smartRetractInnerStallRecoveryExtendPositionRot();
+        session.commandedLeftTargetRot = clampSmartRetractTargetRot(extendTargetRot);
+        if (leftPositionRot + IntakeConstants.POSITION_TOLERANCE_ROT < extendTargetRot) {
+            return;
+        }
+
+        session.phase = Phase.SEEKING_FLOW;
         session.seenAboveSmartRetractThreshold = true;
         resetShotProgressWindow(session, nowSec, false);
     }
@@ -324,45 +346,28 @@ public final class SmartRetractController {
         session.jamBackoffCurrentCycles = 0;
     }
 
-    private void runNibbleSmartRetract(Session session, double leftPositionRot) {
+    private static void updateFullRetractReached(Session session, double leftPositionRot) {
+        boolean atSmartRetractTarget = leftPositionRot <= smartRetractCompletionThresholdRot();
+        if (!atSmartRetractTarget) {
+            session.seenAboveSmartRetractThreshold = true;
+        }
+        if (atSmartRetractTarget && session.seenAboveSmartRetractThreshold) {
+            session.fullRetractReached = true;
+        }
+    }
+
+    private static void commandNormalRetract(Session session) {
+        if (session.fullRetractReached) {
+            session.commandedLeftTargetRot = IntakeConstants.smartRetractRetractedPositionRot();
+            return;
+        }
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(
                 session.commandedLeftTargetRot - IntakeConstants.smartRetractNibbleStepRot());
     }
 
-    private static void runHalfRetractReturnSmartRetract(Session session, double leftPositionRot) {
-        double halfRetractTargetRot = IntakeConstants.smartRetractHalfRetractPositionRot();
-        if (!session.halfRetractReached) {
-            session.commandedLeftTargetRot = clampSmartRetractTargetRot(halfRetractTargetRot);
-            if (leftPositionRot <= halfRetractTargetRot
-                    + IntakeConstants.POSITION_TOLERANCE_ROT) {
-                session.halfRetractReached = true;
-            }
-            return;
-        }
-
-        session.commandedLeftTargetRot = IntakeConstants.EXTENDED_POSITION_ROT;
-    }
-
-    private static boolean updateFeedLatch(Session session, boolean activelyFeeding) {
-        if (activelyFeeding) {
-            session.feedTrueCycles++;
-            session.feedFalseCycles = 0;
-        } else {
-            session.feedFalseCycles++;
-        }
-
-        if (!session.feedLatched && activelyFeeding
-                && session.feedTrueCycles >= feedStartDelayCycles()) {
-            session.feedLatched = true;
-        } else if (!session.feedLatched && !activelyFeeding) {
-            session.feedTrueCycles = 0;
-        }
-        return session.feedLatched;
-    }
-
     private static int feedStartDelayCycles() {
-        int configuredDelayCycles = (int) Math.ceil(
-                IntakeConstants.smartRetractFeedStartDelaySec() * IntakeConstants.STATUS_UPDATE_HZ);
+        int configuredDelayCycles =
+                (int) Math.ceil(IntakeConstants.smartRetractFeedStartDelaySec() * IntakeConstants.STATUS_UPDATE_HZ);
         return Math.max(IntakeConstants.smartRetractFeedEngageCycles(), Math.max(1, configuredDelayCycles));
     }
 
@@ -380,5 +385,9 @@ public final class SmartRetractController {
 
     private static double smartRetractCompletionThresholdRot() {
         return IntakeConstants.smartRetractRetractedPositionRot() + IntakeConstants.POSITION_TOLERANCE_ROT;
+    }
+
+    private static double innerStallArmThresholdRot() {
+        return IntakeConstants.smartRetractInnerStallRecoveryExtendPositionRot();
     }
 }

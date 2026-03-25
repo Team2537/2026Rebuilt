@@ -36,7 +36,8 @@ class SmartRetractLogAnalyzerTest {
         assertTrue(summary.sawSessionActiveTrue, "Smart retract session never became active.");
         assertTrue(summary.sawFeedLatchedTrue, "Smart retract never latched feed true.");
         assertTrue(
-                summary.minCommandedTargetRot <= IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT,
+                summary.minCommandedTargetRot <= IntakeConstants.EXTENDED_POSITION_ROT
+                        - IntakeConstants.smartRetractNibbleStepRot() + 1e-6,
                 String.format(
                         Locale.US,
                         "Smart retract never commanded inward motion. minTarget=%.3f",

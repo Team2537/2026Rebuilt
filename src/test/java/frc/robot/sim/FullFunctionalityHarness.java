@@ -138,14 +138,9 @@ final class FullFunctionalityHarness {
         SmartDashboard.putBoolean("Shooter/Tuning/FeedKicker", false);
         SmartDashboard.putNumber("Shooter/Tuning/KickerTorqueAmps", ShooterConstants.DEFAULT_KICKER_TORQUE_AMPS);
         SmartDashboard.putBoolean("Shooter/SysId/Enabled", false);
-        SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-        SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/RetractedPositionRot",
                 IntakeConstants.SMART_RETRACT_RETRACTED_POSITION_ROT);
-        SmartDashboard.putNumber(
-                "Intake/SmartRetract/HalfRetractPositionRot",
-                IntakeConstants.SMART_RETRACT_HALF_RETRACT_POSITION_ROT);
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/CurrentFilterAlpha",
                 IntakeConstants.SMART_RETRACT_CURRENT_FILTER_ALPHA);
@@ -156,20 +151,8 @@ final class FullFunctionalityHarness {
                 "Intake/SmartRetract/FeedStartDelaySec",
                 IntakeConstants.SMART_RETRACT_FEED_START_DELAY_SEC);
         SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleCurrentThresholdAmps",
-                IntakeConstants.SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS);
-        SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleDetectCycles",
-                IntakeConstants.SMART_RETRACT_NIBBLE_DETECT_CYCLES);
-        SmartDashboard.putNumber(
                 "Intake/SmartRetract/NibbleStepRot",
                 IntakeConstants.SMART_RETRACT_NIBBLE_STEP_ROT);
-        SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleBackoffRot",
-                IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_ROT);
-        SmartDashboard.putNumber(
-                "Intake/SmartRetract/NibbleBackoffDwellSec",
-                IntakeConstants.SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
     }
 
     static <T> T getPrivateField(Object target, String fieldName, Class<T> type) {

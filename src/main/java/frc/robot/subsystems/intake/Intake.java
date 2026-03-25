@@ -5,14 +5,12 @@ import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.coordination.intake.SmartRetractController;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import java.util.function.IntSupplier;
 import org.littletonrobotics.junction.Logger;
 
 public class Intake extends SubsystemBase {
@@ -45,13 +43,19 @@ public class Intake extends SubsystemBase {
 
     private record PositionDirective(double targetRot, GoalState goalState, MotionProfile profile) {}
 
-    private record OscillationProfile(String logStem, double baselineRot, double peakRot, double switchIntervalSec) {}
+    private record OscillationProfile(
+            String logStem,
+            double baselineRot,
+            double peakRot,
+            double switchIntervalSec,
+            boolean waitForTargetSync) {}
 
     private static final class PositionOverlayState {
         private OscillationProfile profile;
         private GoalState goalState = GoalState.RETRACTED;
         private MotionProfile motionProfile;
-        private double startSec = Double.NaN;
+        private double phaseStartSec = Double.NaN;
+        private boolean highPhase = false;
 
         private boolean active() {
             return profile != null;
@@ -62,29 +66,31 @@ public class Intake extends SubsystemBase {
             profile = nextProfile;
             goalState = nextGoalState;
             motionProfile = nextMotionProfile;
-            if (shouldResetPhase || Double.isNaN(startSec)) {
-                startSec = Timer.getFPGATimestamp();
+            if (shouldResetPhase || Double.isNaN(phaseStartSec)) {
+                phaseStartSec = Timer.getFPGATimestamp();
+                highPhase = false;
             }
         }
 
         private void clear() {
             profile = null;
             motionProfile = null;
-            startSec = Double.NaN;
+            phaseStartSec = Double.NaN;
+            highPhase = false;
         }
 
-        private PositionDirective resolve() {
-            double elapsedSec = Math.max(0.0, Timer.getFPGATimestamp() - startSec);
-            boolean highPhase = ((int) Math.floor(elapsedSec / profile.switchIntervalSec())) % 2 == 1;
+        private PositionDirective resolve(boolean atCurrentTarget) {
+            double elapsedSec = Math.max(0.0, Timer.getFPGATimestamp() - phaseStartSec);
+            boolean readyToToggle = elapsedSec >= profile.switchIntervalSec()
+                    && (!profile.waitForTargetSync() || atCurrentTarget);
+            if (readyToToggle) {
+                highPhase = !highPhase;
+                phaseStartSec = Timer.getFPGATimestamp();
+            }
             double targetRot = highPhase ? profile.peakRot() : profile.baselineRot();
             return new PositionDirective(targetRot, goalState, motionProfile);
         }
     }
-
-    private static final String DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY = "Intake/SmartRetract/EnableNibble";
-    private static final String DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY =
-            "Intake/SmartRetract/EnableHalfRetractReturn";
-    private static final String DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY = "Intake/SmartRetract/StatusMode";
 
     private final IntakeIO io;
     private final IntakeIOInputsAutoLogged inputs = new IntakeIOInputsAutoLogged();
@@ -97,9 +103,6 @@ public class Intake extends SubsystemBase {
     private MotionState preHomeMotionState = MotionState.RETRACTED;
     private GoalState preHomeGoalState = GoalState.RETRACTED;
     private boolean preHomePositionControlEnabled = true;
-    private boolean cachedSmartRetractNibbleEnabled = false;
-    private boolean cachedSmartRetractHalfRetractReturnEnabled = false;
-    private SmartRetractController.Mode cachedSmartRetractMode = SmartRetractController.Mode.DISABLED;
     private boolean positionControlEnabled = true;
     private PositionDirective basePositionDirective = goalDirective(GoalState.RETRACTED, standardMotionProfile());
     private double commandedLeftTargetRot = IntakeConstants.RETRACTED_POSITION_ROT;
@@ -107,14 +110,12 @@ public class Intake extends SubsystemBase {
     public Intake(IntakeIO io) {
         super("intake");
         this.io = io;
-        initDashboardSmartRetractEntries();
     }
 
     @Override
     public void periodic() {
         io.updateInputs(inputs);
         Logger.processInputs("Intake", inputs);
-        refreshDashboardSmartRetractMode();
 
         if (DriverStation.isDisabled()) {
             io.stop();
@@ -131,14 +132,6 @@ public class Intake extends SubsystemBase {
         Logger.recordOutput("Intake/MotionState", motionState.name());
         Logger.recordOutput("Intake/PositionControlEnabled", positionControlEnabled);
         Logger.recordOutput("Intake/PositionOverlayActive", positionOverlay.active());
-        Logger.recordOutput("Intake/SmartRetract/EnableNibble", cachedSmartRetractNibbleEnabled);
-        Logger.recordOutput(
-                "Intake/SmartRetract/EnableHalfRetractReturn",
-                cachedSmartRetractHalfRetractReturnEnabled);
-        Logger.recordOutput(
-                "Intake/SmartRetract/BothModesEnabled",
-                cachedSmartRetractNibbleEnabled && cachedSmartRetractHalfRetractReturnEnabled);
-        Logger.recordOutput("Intake/SmartRetract/SelectedMode", cachedSmartRetractMode.name());
     }
 
     public void setExtended(boolean isExtended) {
@@ -175,32 +168,6 @@ public class Intake extends SubsystemBase {
                 .beforeStarting(() -> initializeSmartRetractSession(session))
                 .finallyDo(interrupted -> endSmartRetractSession(session))
                 .withName("IntakeSmartRetractDuringShoot");
-    }
-
-    public Command smartRetractDuringShootCommand(
-            BooleanSupplier activelyFeedingSupplier,
-            IntSupplier shotCountSupplier) {
-        BooleanSupplier feedSupplier = Objects.requireNonNull(activelyFeedingSupplier, "activelyFeedingSupplier");
-        IntSupplier countSupplier = Objects.requireNonNull(shotCountSupplier, "shotCountSupplier");
-        SmartRetractController.Session session = new SmartRetractController.Session();
-        int[] lastObservedShotCount = new int[] {0};
-        return Commands.run(
-                        () -> executeSmartRetractSession(session, feedSupplier, countSupplier, lastObservedShotCount),
-                        this)
-                .beforeStarting(() -> {
-                    lastObservedShotCount[0] = countSupplier.getAsInt();
-                    initializeSmartRetractSession(session);
-                })
-                .finallyDo(interrupted -> endSmartRetractSession(session))
-                .withName("IntakeSmartRetractDuringShoot");
-    }
-
-    public Command smartRetractDuringShootCommand(BooleanSupplier activelyFeedingSupplier) {
-        return smartRetractDuringShootCommand(activelyFeedingSupplier, () -> true);
-    }
-
-    public Command smartRetractDuringShootCommand() {
-        return smartRetractDuringShootCommand(() -> true, () -> true);
     }
 
     public Command extendCommand() {
@@ -323,7 +290,6 @@ public class Intake extends SubsystemBase {
         clearPositionOverlay();
         smartRetractController.initialize(
                 session,
-                cachedSmartRetractMode,
                 isExtended() || isGoalExtended(),
                 getLeftPositionRotations(),
                 getSmartRetractSignalCurrentAmps());
@@ -333,7 +299,7 @@ public class Intake extends SubsystemBase {
         }
 
         Logger.recordOutput("Intake/SmartRetract/SessionActive", session.active());
-        Logger.recordOutput("Intake/SmartRetract/SessionMode", session.mode().name());
+        Logger.recordOutput("Intake/SmartRetract/Phase", session.phase().name());
     }
 
     private void executeSmartRetractSession(
@@ -343,12 +309,11 @@ public class Intake extends SubsystemBase {
         boolean activelyFeeding = activelyFeedingSupplier.getAsBoolean();
         SmartRetractController.Update update = smartRetractController.update(
                 session,
-                activelyFeeding,
-                shotPulseDetectedSupplier.getAsBoolean(),
-                getLeftPositionRotations(),
-                getSmartRetractSignalCurrentAmps(),
-                isGoalExtended(),
-                isAtRetractedTarget());
+                new SmartRetractController.Inputs(
+                        activelyFeeding,
+                        shotPulseDetectedSupplier.getAsBoolean(),
+                        getLeftPositionRotations(),
+                        getSmartRetractSignalCurrentAmps()));
 
         if (update.spinRoller()) {
             io.setRollerRpm(IntakeConstants.smartRetractRollerRpm());
@@ -356,29 +321,17 @@ public class Intake extends SubsystemBase {
             io.stopRoller();
         }
 
-        if (update.commandRetractTarget()) {
+        if (update.commandTarget()) {
             commandSmartRetractTarget(update.commandedLeftTargetRot());
         }
 
-        if (shouldRunSmartRetractWiggle(session, activelyFeeding)) {
+        if (update.wiggleActive()) {
             activatePositionOverlay(smartRetractWiggleProfile(), GoalState.RETRACTED, standardMotionProfile());
         } else {
             clearPositionOverlay();
         }
 
         logSmartRetractSessionOutputs(session, update.rawSignalCurrentAmps());
-    }
-
-    private void executeSmartRetractSession(
-            SmartRetractController.Session session,
-            BooleanSupplier activelyFeedingSupplier,
-            IntSupplier shotCountSupplier,
-            int[] lastObservedShotCount) {
-        int currentShotCount = shotCountSupplier.getAsInt();
-        boolean shotPulseDetectedThisCycle = currentShotCount > lastObservedShotCount[0];
-        lastObservedShotCount[0] = currentShotCount;
-        Logger.recordOutput("Intake/SmartRetract/ObservedShotCount", currentShotCount);
-        executeSmartRetractSession(session, activelyFeedingSupplier, () -> shotPulseDetectedThisCycle);
     }
 
     private void endSmartRetractSession(SmartRetractController.Session session) {
@@ -402,13 +355,10 @@ public class Intake extends SubsystemBase {
             double rawSignalCurrentAmps) {
         Logger.recordOutput("Intake/SmartRetract/SignalCurrentRawAmps", rawSignalCurrentAmps);
         Logger.recordOutput("Intake/SmartRetract/SignalCurrentFilteredAmps", session.filteredSignalCurrentAmps());
-        Logger.recordOutput("Intake/SmartRetract/SignalThresholdAmps", session.nibbleCurrentThresholdAmps());
-        Logger.recordOutput("Intake/SmartRetract/SignalBaselineAmps", session.nibbleCurrentThresholdAmps());
+        Logger.recordOutput("Intake/SmartRetract/Phase", session.phase().name());
         Logger.recordOutput("Intake/SmartRetract/FeedLatched", session.feedLatched());
         Logger.recordOutput("Intake/SmartRetract/FeedTrueCycles", session.feedTrueCycles());
         Logger.recordOutput("Intake/SmartRetract/FeedFalseCycles", session.feedFalseCycles());
-        Logger.recordOutput("Intake/SmartRetract/NibbleSpikeCycles", session.nibbleSpikeCycles());
-        Logger.recordOutput("Intake/SmartRetract/NibbleBackoffActive", session.nibbleBackoffActive());
         Logger.recordOutput("Intake/SmartRetract/FullRetractReached", session.fullRetractReached());
         Logger.recordOutput("Intake/SmartRetract/RollerRpm", IntakeConstants.smartRetractRollerRpm());
         Logger.recordOutput("Intake/SmartRetract/JamCurrentThresholdAmps", session.jamCurrentThresholdAmps());
@@ -429,36 +379,6 @@ public class Intake extends SubsystemBase {
                 ? GoalState.EXTENDED
                 : GoalState.RETRACTED;
         setBasePositionDirective(new PositionDirective(clampedTargetRot, semanticGoal, standardMotionProfile()));
-    }
-
-    private void refreshDashboardSmartRetractMode() {
-        cachedSmartRetractNibbleEnabled = SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, true);
-        cachedSmartRetractHalfRetractReturnEnabled =
-                SmartDashboard.getBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
-        cachedSmartRetractMode = selectSmartRetractMode(
-                cachedSmartRetractNibbleEnabled,
-                cachedSmartRetractHalfRetractReturnEnabled);
-        SmartDashboard.putString(DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY, cachedSmartRetractMode.name());
-    }
-
-    private static SmartRetractController.Mode selectSmartRetractMode(
-            boolean nibbleEnabled,
-            boolean halfRetractReturnEnabled) {
-        if (nibbleEnabled) {
-            return SmartRetractController.Mode.NIBBLE;
-        }
-        if (halfRetractReturnEnabled) {
-            return SmartRetractController.Mode.HALF_RETRACT_RETURN;
-        }
-        return SmartRetractController.Mode.DISABLED;
-    }
-
-    private static void initDashboardSmartRetractEntries() {
-        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_NIBBLE_KEY, true);
-        SmartDashboard.setDefaultBoolean(DASHBOARD_SMART_RETRACT_ENABLE_HALF_RETRACT_RETURN_KEY, false);
-        SmartDashboard.putString(
-                DASHBOARD_SMART_RETRACT_STATUS_MODE_KEY,
-                SmartRetractController.Mode.DISABLED.name());
     }
 
     public Command spinRoller() {
@@ -636,7 +556,8 @@ public class Intake extends SubsystemBase {
                 "Intake/DriverTriggerWiggle",
                 IntakeConstants.DRIVER_TRIGGER_WIGGLE_BASELINE_ROT,
                 IntakeConstants.DRIVER_TRIGGER_WIGGLE_PEAK_ROT,
-                IntakeConstants.DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC);
+                IntakeConstants.DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC,
+                true);
     }
 
     private static OscillationProfile driverAgitationProfile() {
@@ -644,7 +565,8 @@ public class Intake extends SubsystemBase {
                 "Intake/DriverAgitation",
                 IntakeConstants.DRIVER_AGITATION_BASELINE_ROT,
                 IntakeConstants.DRIVER_AGITATION_PEAK_ROT,
-                IntakeConstants.DRIVER_AGITATION_SWITCH_INTERVAL_SEC);
+                IntakeConstants.DRIVER_AGITATION_SWITCH_INTERVAL_SEC,
+                true);
     }
 
     private static OscillationProfile smartRetractWiggleProfile() {
@@ -657,7 +579,8 @@ public class Intake extends SubsystemBase {
                 "Intake/SmartRetract/Wiggle",
                 baselineRot,
                 peakRot,
-                IntakeConstants.smartRetractWiggleSwitchIntervalSec());
+                IntakeConstants.smartRetractWiggleSwitchIntervalSec(),
+                false);
     }
 
     private void executeRollerAgitation(OscillationProfile profile) {
@@ -669,7 +592,7 @@ public class Intake extends SubsystemBase {
         }
 
         activatePositionOverlay(profile, GoalState.EXTENDED, standardMotionProfile());
-        PositionDirective directive = positionOverlay.resolve();
+        PositionDirective directive = positionOverlay.resolve(isAtTargetPosition(commandedLeftTargetRot));
         recordOscillation(profile, true, directive.targetRot());
     }
 
@@ -705,7 +628,7 @@ public class Intake extends SubsystemBase {
 
     private PositionDirective resolvePositionDirective() {
         if (positionOverlay.active()) {
-            PositionDirective overlayDirective = positionOverlay.resolve();
+            PositionDirective overlayDirective = positionOverlay.resolve(isAtTargetPosition(commandedLeftTargetRot));
             recordOscillation(positionOverlay.profile, true, overlayDirective.targetRot());
             return overlayDirective;
         }
@@ -737,15 +660,5 @@ public class Intake extends SubsystemBase {
     private static void recordOscillation(OscillationProfile profile, boolean active, double targetRot) {
         Logger.recordOutput(profile.logStem() + "Active", active);
         Logger.recordOutput(profile.logStem() + "TargetRot", targetRot);
-    }
-
-    private static boolean shouldRunSmartRetractWiggle(
-            SmartRetractController.Session session,
-            boolean activelyFeeding) {
-        return session.active()
-                && session.mode() == SmartRetractController.Mode.NIBBLE
-                && session.fullRetractReached()
-                && session.feedLatched()
-                && activelyFeeding;
     }
 }

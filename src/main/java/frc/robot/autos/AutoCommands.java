@@ -137,7 +137,7 @@ public final class AutoCommands {
                 shootingCommand,
                 intake.smartRetractDuringShootCommand(
                         shootCoordinator::isActivelyFeeding,
-                        shootCoordinator::getShotsSinceEnable))
+                        shootCoordinator::didDetectShotPulseThisCycle))
                 .finallyDo(interrupted -> {
                     if (interrupted) {
                         intake.setExtended(true);

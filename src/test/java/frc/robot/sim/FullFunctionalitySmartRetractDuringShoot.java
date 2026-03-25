@@ -1,14 +1,14 @@
 package frc.robot.sim;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.subsystems.intake.IntakeConstants;
 import frc.robot.util.FieldConstants;
 import java.util.Locale;
@@ -17,63 +17,16 @@ import org.junit.jupiter.api.Test;
 final class FullFunctionalitySmartRetractDuringShoot {
 
     @Test
-    void nibbleModeRestoresExtendedIfShootReleasedEarly() {
+    void smartRetractRestoresExtendedIfShootReleasedEarly() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(50);
 
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
             SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
             SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
-            context.runCycles(8);
-
-            context.intake.setExtended(true);
-            context.runCycles(180);
-            double extendedStartRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
-            assertTrue(
-                    Math.abs(extendedStartRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Intake should be physically near extended before smart retract test",
-                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
-                            String.format(Locale.US, "extendedStartRot=%.3f", extendedStartRot)));
-
-            context.driverControllerSim.setRightTriggerAxis(1.0);
-            context.runCycles(100);
-
-            context.driverControllerSim.setRightTriggerAxis(0.0);
-            context.runCycles(100);
-            double afterReleaseRot = Units.radiansToRotations(context.intakeInputs.leftPositionRad);
-            assertTrue(
-                    context.intake.isExtended(),
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "Releasing shoot early should return intake to extended",
-                            "intake.isExtended()=true",
-                            context.intake.isExtended()));
-            assertTrue(
-                    Math.abs(afterReleaseRot - IntakeConstants.EXTENDED_POSITION_ROT) <= 1.20,
-                    FullFunctionalityHarness.formatExpectedVsActual(
-                            "After early release, intake should settle near extended position",
-                            IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
-                            String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
-        }
-    }
-
-    @Test
-    void halfRetractReturnModeRestoresExtendedIfShootReleasedEarly() {
-        try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
-            context.setTeleopEnabled();
-            context.container.teleopInit();
-            context.runCycles(50);
-
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", false);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", true);
-            SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
-            SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
-            SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
-            context.runCycles(8);
+            settleSmartRetractConfig(context);
 
             context.intake.setExtended(true);
             context.runCycles(180);
@@ -113,12 +66,10 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.container.teleopInit();
             context.runCycles(50);
 
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
             SmartDashboard.putBoolean("Overrides/OverrideAutoAim", true);
             SmartDashboard.putNumber("Overrides/AimDistanceMeters", 3.0);
             SmartDashboard.putBoolean("Shooter/Tuning/Enabled", false);
-            context.runCycles(8);
+            settleSmartRetractConfig(context);
 
             context.intake.setExtended(true);
             context.runCycles(30);
@@ -130,7 +81,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     500);
             assertTrue(
                     !reachedSmartRetractTarget,
-                    "Expected this scenario to keep nibble smart retract above the inward target.");
+                    "Expected this scenario to keep smart retract above the inward target.");
             context.driverControllerSim.setRightTriggerAxis(0.0);
             context.runCycles(100);
 
@@ -146,7 +97,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "After release without reaching smart retract target, intake should settle back near extended position",
                             IntakeConstants.EXTENDED_POSITION_ROT + "±1.20 rot",
-                    String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
+                            String.format(Locale.US, "afterReleaseRot=%.3f", afterReleaseRot)));
         }
     }
 
@@ -155,10 +106,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();
             context.runCycles(40);
-
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
-            context.runCycles(8);
+            settleSmartRetractConfig(context);
 
             context.intake.setExtended(true);
             context.runCycles(180);
@@ -205,10 +153,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();
             context.runCycles(40);
-
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
-            context.runCycles(8);
+            settleSmartRetractConfig(context);
 
             context.intake.setExtended(true);
             context.runCycles(180);
@@ -250,10 +195,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setAutonomousEnabled();
             context.runCycles(40);
-
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-            SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
-            context.runCycles(8);
+            settleSmartRetractConfig(context);
 
             context.intake.setExtended(true);
             context.runCycles(180);
@@ -298,11 +240,11 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.container.teleopInit();
             context.runCycles(50);
 
-            configureNibbleWiggleMode(context);
+            settleSmartRetractConfig(context);
             extendAndSettle(context);
 
             boolean[] feeding = {true};
-            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0], () -> true)
                     .withName("FF_DirectSmartRetractWiggle");
             CommandScheduler.getInstance().schedule(smartRetract);
 
@@ -337,10 +279,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     maxTargetRot >= retractPeakRot - 0.15,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Smart retract wiggle should reach its configured outward peak after full retraction",
-                            String.format(
-                                    Locale.US,
-                                    "maxTargetRot>=%.3f",
-                                    retractPeakRot - 0.15),
+                            String.format(Locale.US, "maxTargetRot>=%.3f", retractPeakRot - 0.15),
                             String.format(Locale.US, "maxTargetRot=%.3f", maxTargetRot)));
 
             CommandScheduler.getInstance().cancel(smartRetract);
@@ -355,11 +294,11 @@ final class FullFunctionalitySmartRetractDuringShoot {
             context.container.teleopInit();
             context.runCycles(50);
 
-            configureNibbleWiggleMode(context);
+            settleSmartRetractConfig(context);
             extendAndSettle(context);
 
             boolean[] feeding = {true};
-            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0], () -> true)
                     .withName("FF_DirectSmartRetractCancelAfterWiggle");
             CommandScheduler.getInstance().schedule(smartRetract);
 
@@ -377,10 +316,7 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     reachedWigglePeak,
                     FullFunctionalityHarness.formatExpectedVsActual(
                             "Smart retract should enter the post-retract wiggle before cancellation",
-                            String.format(
-                                    Locale.US,
-                                    "commandedTargetRot>=%.3f",
-                                    retractPeakRot - 0.15),
+                            String.format(Locale.US, "commandedTargetRot>=%.3f", retractPeakRot - 0.15),
                             String.format(Locale.US, "commandedTargetRot=%.3f", commandedLeftTargetRot(context))));
 
             CommandScheduler.getInstance().cancel(smartRetract);
@@ -402,17 +338,17 @@ final class FullFunctionalitySmartRetractDuringShoot {
     }
 
     @Test
-    void pausingFeedStopsRetractWiggleAndResumingFeedRestartsIt() {
+    void pausingFeedDoesNotCollapseRetractWiggle() {
         try (FullFunctionalityHarness.Context context = new FullFunctionalityHarness.Context(false)) {
             context.setTeleopEnabled();
             context.container.teleopInit();
             context.runCycles(50);
 
-            configureNibbleWiggleMode(context);
+            settleSmartRetractConfig(context);
             extendAndSettle(context);
 
             boolean[] feeding = {true};
-            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0])
+            Command smartRetract = context.intake.smartRetractDuringShootCommand(() -> feeding[0], () -> true)
                     .withName("FF_DirectSmartRetractPauseResumeWiggle");
             CommandScheduler.getInstance().schedule(smartRetract);
 
@@ -439,13 +375,10 @@ final class FullFunctionalitySmartRetractDuringShoot {
             }
 
             assertTrue(
-                    pausedMaxTargetRot - pausedMinTargetRot <= IntakeConstants.smartRetractWiggleOutRot() * 0.55,
+                    pausedMaxTargetRot - pausedMinTargetRot >= IntakeConstants.smartRetractWiggleOutRot() * 0.60,
                     FullFunctionalityHarness.formatExpectedVsActual(
-                            "When feed drops, smart retract should stop oscillating instead of continuing the wiggle",
-                            String.format(
-                                    Locale.US,
-                                    "pausedRange<=%.3f",
-                                    IntakeConstants.smartRetractWiggleOutRot() * 0.55),
+                            "When feed drops, smart retract should keep working the fully retracted fuel stack instead of freezing",
+                            String.format(Locale.US, "pausedRange>=%.3f", IntakeConstants.smartRetractWiggleOutRot() * 0.60),
                             String.format(
                                     Locale.US,
                                     "pausedRange=%.3f (min=%.3f max=%.3f)",
@@ -459,16 +392,14 @@ final class FullFunctionalitySmartRetractDuringShoot {
                     120);
             assertTrue(
                     reachedResumedWigglePeak,
-                    "Expected smart retract wiggle to resume after feed resumes without restarting the session.");
+                    "Expected smart retract wiggle to still be available after feed resumes.");
 
             CommandScheduler.getInstance().cancel(smartRetract);
             context.runCycles(10);
         }
     }
 
-    private static void configureNibbleWiggleMode(FullFunctionalityHarness.Context context) {
-        SmartDashboard.putBoolean("Intake/SmartRetract/EnableNibble", true);
-        SmartDashboard.putBoolean("Intake/SmartRetract/EnableHalfRetractReturn", false);
+    private static void settleSmartRetractConfig(FullFunctionalityHarness.Context context) {
         context.runCycles(8);
     }
 

@@ -301,10 +301,6 @@ public class ShootCoordinator {
         return shooter.didDetectShotPulseThisCycle();
     }
 
-    public int getShotsSinceEnable() {
-        return shooter.getShotsSinceEnable();
-    }
-
     private static String readinessLabelFor(ShotSolution solution) {
         if (solution == null || solution.intent() == ShotIntent.NONE) {
             return "SCORE";

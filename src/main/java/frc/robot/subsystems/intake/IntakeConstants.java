@@ -77,16 +77,11 @@ public final class IntakeConstants {
 
     // Smart-retract will only drive intake as far as this value (unless regular retract is used).
     public static final double SMART_RETRACT_RETRACTED_POSITION_ROT = 2.0;
-    public static final double SMART_RETRACT_HALF_RETRACT_POSITION_ROT = 10.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
     public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.0;
 
-    public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 4.0;
-    public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 2;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
-    public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
-    public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
     public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
     public static final double SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS = 3.0;
     public static final double SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS = 2.5;
@@ -94,6 +89,8 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.7;
     public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.5;
     public static final double SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT = EXTENDED_POSITION_ROT;
+    public static final double SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT = 10.0;
+    public static final double SMART_RETRACT_TAIL_DRAIN_GRACE_SEC = 0.75;
     public static final double SMART_RETRACT_WIGGLE_OUT_ROT = 8.0;
     public static final double SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC = DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC;
 
@@ -101,10 +98,6 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/RetractedPositionRot",
                     SMART_RETRACT_RETRACTED_POSITION_ROT);
-    private static final LoggedTunableNumber smartRetractHalfRetractPositionRot =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/HalfRetractPositionRot",
-                    SMART_RETRACT_HALF_RETRACT_POSITION_ROT);
     private static final LoggedTunableNumber smartRetractCurrentFilterAlpha =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/CurrentFilterAlpha",
@@ -118,26 +111,10 @@ public final class IntakeConstants {
                     "Intake/SmartRetract/FeedStartDelaySec",
                     SMART_RETRACT_FEED_START_DELAY_SEC);
 
-    private static final LoggedTunableNumber smartRetractNibbleCurrentThresholdAmps =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/NibbleCurrentThresholdAmps",
-                    SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS);
-    private static final LoggedTunableNumber smartRetractNibbleDetectCycles =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/NibbleDetectCycles",
-                    SMART_RETRACT_NIBBLE_DETECT_CYCLES);
     private static final LoggedTunableNumber smartRetractNibbleStepRot =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/NibbleStepRot",
                     SMART_RETRACT_NIBBLE_STEP_ROT);
-    private static final LoggedTunableNumber smartRetractNibbleBackoffRot =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/NibbleBackoffRot",
-                    SMART_RETRACT_NIBBLE_BACKOFF_ROT);
-    private static final LoggedTunableNumber smartRetractNibbleBackoffDwellSec =
-            new LoggedTunableNumber(
-                    "Intake/SmartRetract/NibbleBackoffDwellSec",
-                    SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC);
     private static final LoggedTunableNumber smartRetractRollerRpm =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/RollerRpm",
@@ -166,6 +143,14 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamRecoveryExtendPositionRot",
                     SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT);
+    private static final LoggedTunableNumber smartRetractInnerStallRecoveryExtendPositionRot =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/InnerStallRecoveryExtendPositionRot",
+                    SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT);
+    private static final LoggedTunableNumber smartRetractTailDrainGraceSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/TailDrainGraceSec",
+                    SMART_RETRACT_TAIL_DRAIN_GRACE_SEC);
     private static final LoggedTunableNumber smartRetractWiggleOutRot =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/WiggleOutRot",
@@ -177,13 +162,6 @@ public final class IntakeConstants {
 
     public static double smartRetractRetractedPositionRot() {
         return MathUtil.clamp(smartRetractRetractedPositionRot.get(), 0.0, EXTENDED_POSITION_ROT);
-    }
-
-    public static double smartRetractHalfRetractPositionRot() {
-        return MathUtil.clamp(
-                smartRetractHalfRetractPositionRot.get(),
-                smartRetractRetractedPositionRot(),
-                EXTENDED_POSITION_ROT);
     }
 
     public static double smartRetractCurrentFilterAlpha() {
@@ -198,24 +176,8 @@ public final class IntakeConstants {
         return Math.max(0.0, smartRetractFeedStartDelaySec.get());
     }
 
-    public static double smartRetractNibbleCurrentThresholdAmps() {
-        return Math.max(0.0, smartRetractNibbleCurrentThresholdAmps.get());
-    }
-
-    public static int smartRetractNibbleDetectCycles() {
-        return Math.max(1, (int) Math.round(smartRetractNibbleDetectCycles.get()));
-    }
-
     public static double smartRetractNibbleStepRot() {
         return Math.max(0.0, smartRetractNibbleStepRot.get());
-    }
-
-    public static double smartRetractNibbleBackoffRot() {
-        return Math.max(0.0, smartRetractNibbleBackoffRot.get());
-    }
-
-    public static double smartRetractNibbleBackoffDwellSec() {
-        return Math.max(0.0, smartRetractNibbleBackoffDwellSec.get());
     }
 
     public static double smartRetractRollerRpm() {
@@ -247,6 +209,17 @@ public final class IntakeConstants {
                 smartRetractJamRecoveryExtendPositionRot.get(),
                 smartRetractRetractedPositionRot(),
                 EXTENDED_POSITION_ROT);
+    }
+
+    public static double smartRetractInnerStallRecoveryExtendPositionRot() {
+        return MathUtil.clamp(
+                smartRetractInnerStallRecoveryExtendPositionRot.get(),
+                smartRetractRetractedPositionRot(),
+                EXTENDED_POSITION_ROT);
+    }
+
+    public static double smartRetractTailDrainGraceSec() {
+        return Math.max(0.0, smartRetractTailDrainGraceSec.get());
     }
 
     public static double smartRetractWiggleOutRot() {

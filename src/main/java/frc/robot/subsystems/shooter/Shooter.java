@@ -548,10 +548,6 @@ public class Shooter extends SubsystemBase {
         return shotDetectedThisCycle;
     }
 
-    public int getShotsSinceEnable() {
-        return totalShotsSinceEnable;
-    }
-
     public int getLeftShotsSinceEnable() {
         return leftShotsSinceEnable;
     }
