@@ -10,7 +10,7 @@ public final class IntakeConstants {
     public static final int LEFT_MOTOR_ID = 23;
     public static final int RIGHT_MOTOR_ID = 24;
 
-    public static final double ROLLER_RPM = 4000.0;
+    public static final double ROLLER_RPM = 0.0;
     public static final double SLOW_ROLLER_RPM = 0.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
@@ -57,7 +57,7 @@ public final class IntakeConstants {
             DRIVER_TRIGGER_WIGGLE_BASELINE_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_PEAK_ROT =
             DRIVER_TRIGGER_WIGGLE_PEAK_IN * MOTOR_REV_PER_IN;
-    public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.15;
+    public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.2;
 
     public static final double DRIVER_AGITATION_BASELINE_IN = FULL_TRAVEL_IN;
     public static final double DRIVER_AGITATION_PEAK_IN = 12.1;
@@ -80,19 +80,21 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_HALF_RETRACT_POSITION_ROT = 10.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
-    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.4;
+    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.0;
 
     public static final double SMART_RETRACT_NIBBLE_CURRENT_THRESHOLD_AMPS = 4.0;
     public static final int SMART_RETRACT_NIBBLE_DETECT_CYCLES = 2;
     public static final double SMART_RETRACT_NIBBLE_STEP_ROT = 0.50;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_ROT = 7.0;
     public static final double SMART_RETRACT_NIBBLE_BACKOFF_DWELL_SEC = 0.3;
-    public static final double SMART_RETRACT_ROLLER_RPM = 2000.0;
+    public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
+    public static final double SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS = 3.0;
+    public static final double SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS = 2.5;
+    public static final int SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES = 10;
     public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.7;
     public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.5;
     public static final double SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT = EXTENDED_POSITION_ROT;
-    public static final double SMART_RETRACT_WIGGLE_OUT_ROT =
-            DRIVER_TRIGGER_WIGGLE_PEAK_ROT - DRIVER_TRIGGER_WIGGLE_BASELINE_ROT;
+    public static final double SMART_RETRACT_WIGGLE_OUT_ROT = 8.0;
     public static final double SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC = DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC;
 
     private static final LoggedTunableNumber smartRetractRetractedPositionRot =
@@ -140,6 +142,18 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/RollerRpm",
                     SMART_RETRACT_ROLLER_RPM);
+    private static final LoggedTunableNumber smartRetractJamCurrentThresholdAmps =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamCurrentThresholdAmps",
+                    SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS);
+    private static final LoggedTunableNumber smartRetractJamBackoffCurrentThresholdAmps =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
+                    SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS);
+    private static final LoggedTunableNumber smartRetractJamBackoffDetectCycles =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/JamBackoffDetectCycles",
+                    SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES);
     private static final LoggedTunableNumber smartRetractJamFirstShotTimeoutSec =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamFirstShotTimeoutSec",
@@ -206,6 +220,18 @@ public final class IntakeConstants {
 
     public static double smartRetractRollerRpm() {
         return MathUtil.clamp(smartRetractRollerRpm.get(), -ROLLER_MAX_RPM, ROLLER_MAX_RPM);
+    }
+
+    public static double smartRetractJamCurrentThresholdAmps() {
+        return Math.max(0.0, smartRetractJamCurrentThresholdAmps.get());
+    }
+
+    public static double smartRetractJamBackoffCurrentThresholdAmps() {
+        return Math.max(0.0, smartRetractJamBackoffCurrentThresholdAmps.get());
+    }
+
+    public static int smartRetractJamBackoffDetectCycles() {
+        return Math.max(1, (int) Math.round(smartRetractJamBackoffDetectCycles.get()));
     }
 
     public static double smartRetractJamFirstShotTimeoutSec() {

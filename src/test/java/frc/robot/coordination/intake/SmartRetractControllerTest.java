@@ -52,6 +52,15 @@ class SmartRetractControllerTest {
                 "Intake/SmartRetract/RollerRpm",
                 IntakeConstants.SMART_RETRACT_ROLLER_RPM);
         SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamCurrentThresholdAmps",
+                IntakeConstants.SMART_RETRACT_JAM_CURRENT_THRESHOLD_AMPS);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
+                IntakeConstants.SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamBackoffDetectCycles",
+                IntakeConstants.SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES);
+        SmartDashboard.putNumber(
                 "Intake/SmartRetract/JamFirstShotTimeoutSec",
                 IntakeConstants.SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC);
         SmartDashboard.putNumber(
@@ -345,23 +354,26 @@ class SmartRetractControllerTest {
 
     @Test
     void jamRecoveryTriggersWhenNoFirstShotPulseArrives() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamCurrentThresholdAmps", 3.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", 100.0);
         SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
         SmartDashboard.putNumber("Intake/SmartRetract/JamRecoveryExtendPositionRot", IntakeConstants.EXTENDED_POSITION_ROT);
 
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 20.0);
 
         for (int i = 0; i < feedStartDelayCycles(); i++) {
-            controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+            controller.update(session, true, false, MID_POSITION, 20.0, true, false);
             sleepMs(20);
         }
 
-        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        controller.update(session, true, false, MID_POSITION, 20.0, true, false);
         sleepMs(20);
         SmartRetractController.Update jamUpdate =
-                controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+                controller.update(session, true, false, MID_POSITION, 20.0, true, false);
 
         assertTrue(session.jamRecoveryActive(), "Missing the first shot pulse should trigger jam recovery.");
         assertEquals(1, session.jamRecoveryCount(), "Jam recovery should increment its recovery counter.");
+        assertTrue(session.jamDetectionCurrentMet(), "Jam recovery should only arm once the current threshold is met.");
         assertEquals(
                 IntakeConstants.EXTENDED_POSITION_ROT,
                 jamUpdate.commandedLeftTargetRot(),
@@ -371,24 +383,72 @@ class SmartRetractControllerTest {
 
     @Test
     void shotPulsePreventsJamRecoveryUntilInterShotTimeoutExpires() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamCurrentThresholdAmps", 3.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", 100.0);
         SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
         SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.04);
+
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 20.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, false, MID_POSITION, 20.0, true, false);
+            sleepMs(20);
+        }
+
+        controller.update(session, true, true, MID_POSITION, 20.0, true, false);
+        sleepMs(20);
+        controller.update(session, true, false, MID_POSITION, 20.0, true, false);
+        assertFalse(session.jamRecoveryActive(), "A recent shot pulse should reset the jam timer.");
+
+        sleepMs(50);
+        controller.update(session, true, false, MID_POSITION, 20.0, true, false);
+        assertTrue(session.jamRecoveryActive(), "After the inter-shot timeout expires, jam recovery should trigger.");
+    }
+
+    @Test
+    void lowCurrentDoesNotTriggerJamRecoveryWhenIntakeMayBeEmpty() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamCurrentThresholdAmps", 3.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", 2.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
+
+        controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
+
+        for (int i = 0; i < feedStartDelayCycles(); i++) {
+            controller.update(session, true, false, MID_POSITION, 0.5, true, false);
+            sleepMs(20);
+        }
+
+        sleepMs(60);
+        controller.update(session, true, false, MID_POSITION, 0.5, true, false);
+
+        assertFalse(session.jamDetectionCurrentMet(), "Low current should leave jam detection disarmed.");
+        assertFalse(session.jamRecoveryActive(), "Low-current empty-intake feeding should not trigger jam recovery.");
+    }
+
+    @Test
+    void sustainedBackoffCurrentTriggersJamRecoveryWithoutWaitingForShotTimeout() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", 2.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffDetectCycles", 2.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 10.0);
 
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
 
         for (int i = 0; i < feedStartDelayCycles(); i++) {
             controller.update(session, true, false, MID_POSITION, 0.0, true, false);
-            sleepMs(20);
         }
 
-        controller.update(session, true, true, MID_POSITION, 0.0, true, false);
-        sleepMs(20);
-        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
-        assertFalse(session.jamRecoveryActive(), "A recent shot pulse should reset the jam timer.");
+        controller.update(session, true, false, MID_POSITION, 20.0, true, false);
+        assertEquals(1, session.jamBackoffCurrentCycles(), "First overcurrent cycle should arm the backoff counter.");
 
-        sleepMs(50);
-        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
-        assertTrue(session.jamRecoveryActive(), "After the inter-shot timeout expires, jam recovery should trigger.");
+        SmartRetractController.Update jamUpdate =
+                controller.update(session, true, false, MID_POSITION, 20.0, true, false);
+        assertTrue(session.jamRecoveryActive(), "Sustained overcurrent should trigger jam recovery immediately.");
+        assertEquals(0, session.jamBackoffCurrentCycles(), "Jam recovery should clear the overcurrent counter.");
+        assertEquals(
+                IntakeConstants.smartRetractJamRecoveryExtendPositionRot(),
+                jamUpdate.commandedLeftTargetRot(),
+                1e-9,
+                "Current-based backoff should use the jam recovery extend target.");
     }
 
     @Test
@@ -401,12 +461,18 @@ class SmartRetractControllerTest {
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleCurrentThresholdAmps", 8.5);
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleDetectCycles", 3.0);
         SmartDashboard.putNumber("Intake/SmartRetract/NibbleStepRot", 1.25);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamCurrentThresholdAmps", 6.0);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffCurrentThresholdAmps", 2.5);
+        SmartDashboard.putNumber("Intake/SmartRetract/JamBackoffDetectCycles", 4.0);
         SmartDashboard.putNumber("Intake/SmartRetract/JamFirstShotTimeoutSec", 0.04);
         SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.06);
         SmartDashboard.putNumber("Intake/SmartRetract/JamRecoveryExtendPositionRot", 14.0);
 
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, 0.0, 0.0);
         assertEquals(8.5, session.nibbleCurrentThresholdAmps(), 1e-9);
+        assertEquals(6.0, session.jamCurrentThresholdAmps(), 1e-9);
+        assertEquals(2.5, session.jamBackoffCurrentThresholdAmps(), 1e-9);
+        assertEquals(4, session.jamBackoffDetectCycles());
         assertEquals(3.5, session.commandedLeftTargetRot(), 1e-9);
 
         controller.initialize(session, SmartRetractController.Mode.NIBBLE, true, MID_POSITION, 0.0);
@@ -423,12 +489,12 @@ class SmartRetractControllerTest {
         assertEquals(0.0, session.filteredSignalCurrentAmps(), 1e-9);
 
         sleepMs(20);
-        controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+        controller.update(session, true, false, MID_POSITION, 50.0, true, false);
         assertFalse(session.jamRecoveryActive(), "Jam recovery should wait until the tuned timeout expires.");
 
         sleepMs(30);
         SmartRetractController.Update jamUpdate =
-                controller.update(session, true, false, MID_POSITION, 0.0, true, false);
+                controller.update(session, true, false, MID_POSITION, 50.0, true, false);
         assertTrue(session.jamRecoveryActive(), "Jam recovery should trigger once the tuned timeout expires.");
         assertEquals(14.0, jamUpdate.commandedLeftTargetRot(), 1e-9);
 
