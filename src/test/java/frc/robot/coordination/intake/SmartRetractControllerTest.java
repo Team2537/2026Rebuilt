@@ -156,6 +156,24 @@ class SmartRetractControllerTest {
     }
 
     @Test
+    void fullRetractGraceIgnoresInnerStallTimeout() {
+        SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.04);
+        SmartDashboard.putNumber("Intake/SmartRetract/FullRetractGraceSec", 0.10);
+        double nearRetracted = IntakeConstants.smartRetractRetractedPositionRot() + 0.6;
+        initialize(true, nearRetracted, 0.0);
+        latchFeed(nearRetracted, 0.0);
+        update(true, false, IntakeConstants.smartRetractRetractedPositionRot(), 0.0);
+        assertTrue(session.fullRetractReached());
+        assertEquals(SmartRetractController.Phase.FULL_RETRACT_GRACE, session.phase());
+
+        update(true, false, IntakeConstants.smartRetractRetractedPositionRot(), 0.0);
+        update(true, false, IntakeConstants.smartRetractRetractedPositionRot(), 0.0);
+        update(true, false, IntakeConstants.smartRetractRetractedPositionRot(), 0.0);
+        assertEquals(SmartRetractController.Phase.FULL_RETRACT_GRACE, session.phase());
+        assertFalse(session.jamRecoveryActive());
+    }
+
+    @Test
     void lowCurrentPulseGapEntersTailDrainBeforeRecovering() {
         SmartDashboard.putNumber("Intake/SmartRetract/JamInterShotTimeoutSec", 0.04);
         SmartDashboard.putNumber("Intake/SmartRetract/TailDrainGraceSec", 0.06);

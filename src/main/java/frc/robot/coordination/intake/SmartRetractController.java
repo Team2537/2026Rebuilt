@@ -10,6 +10,7 @@ public final class SmartRetractController {
         INACTIVE,
         SEEKING_FLOW,
         FLOWING,
+        FULL_RETRACT_GRACE,
         TAIL_DRAIN,
         OUTER_JAM_RECOVERY,
         INNER_STALL_RECOVERY
@@ -31,6 +32,7 @@ public final class SmartRetractController {
         private int jamBackoffDetectCycles = 0;
         private int jamBackoffCurrentCycles = 0;
         private double lastShotOrFeedTimestampSec = Double.NaN;
+        private double fullRetractGraceUntilSec = Double.NaN;
         private double tailDrainUntilSec = Double.NaN;
         private int jamRecoveryCount = 0;
 
@@ -125,6 +127,7 @@ public final class SmartRetractController {
         session.sawShotPulse = false;
         session.jamBackoffCurrentCycles = 0;
         session.lastShotOrFeedTimestampSec = Double.NaN;
+        session.fullRetractGraceUntilSec = Double.NaN;
         session.tailDrainUntilSec = Double.NaN;
         session.jamRecoveryCount = 0;
         session.seenAboveSmartRetractThreshold = initialLeftPositionRot > smartRetractCompletionThresholdRot();
@@ -175,7 +178,16 @@ public final class SmartRetractController {
         }
 
         boolean inInnerRegion = inputs.leftPositionRot() <= innerStallArmThresholdRot();
-        updateFullRetractReached(session, inputs.leftPositionRot());
+        updateFullRetractReached(session, inputs.leftPositionRot(), nowSec);
+
+        if (session.phase == Phase.FULL_RETRACT_GRACE) {
+            if (Double.isFinite(session.fullRetractGraceUntilSec) && nowSec < session.fullRetractGraceUntilSec) {
+                commandNormalRetract(session);
+                return buildUpdate(session, shouldSpinRoller, inputs.rawSignalCurrentAmps());
+            }
+            session.phase = session.sawShotPulse ? Phase.FLOWING : Phase.SEEKING_FLOW;
+            session.fullRetractGraceUntilSec = Double.NaN;
+        }
 
         if (!inInnerRegion) {
             updateJamBackoffCurrentCycles(session);
@@ -307,6 +319,7 @@ public final class SmartRetractController {
         session.phase = phase;
         session.fullRetractReached = false;
         session.jamBackoffCurrentCycles = 0;
+        session.fullRetractGraceUntilSec = Double.NaN;
         session.tailDrainUntilSec = Double.NaN;
         session.jamRecoveryCount++;
         session.commandedLeftTargetRot = clampSmartRetractTargetRot(extendTargetRot);
@@ -336,13 +349,15 @@ public final class SmartRetractController {
         session.jamBackoffCurrentCycles = 0;
     }
 
-    private static void updateFullRetractReached(Session session, double leftPositionRot) {
+    private static void updateFullRetractReached(Session session, double leftPositionRot, double nowSec) {
         boolean atSmartRetractTarget = leftPositionRot <= smartRetractCompletionThresholdRot();
         if (!atSmartRetractTarget) {
             session.seenAboveSmartRetractThreshold = true;
         }
-        if (atSmartRetractTarget && session.seenAboveSmartRetractThreshold) {
+        if (!session.fullRetractReached && atSmartRetractTarget && session.seenAboveSmartRetractThreshold) {
             session.fullRetractReached = true;
+            session.phase = Phase.FULL_RETRACT_GRACE;
+            session.fullRetractGraceUntilSec = nowSec + IntakeConstants.smartRetractFullRetractGraceSec();
         }
     }
 

@@ -153,6 +153,36 @@ final class FullFunctionalityHarness {
         SmartDashboard.putNumber(
                 "Intake/SmartRetract/StepRot",
                 IntakeConstants.SMART_RETRACT_STEP_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
+                IntakeConstants.SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamBackoffDetectCycles",
+                IntakeConstants.SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamFirstShotTimeoutSec",
+                IntakeConstants.SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamInterShotTimeoutSec",
+                IntakeConstants.SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/JamRecoveryExtendPositionRot",
+                IntakeConstants.SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/InnerStallRecoveryExtendPositionRot",
+                IntakeConstants.SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/FullRetractGraceSec",
+                IntakeConstants.SMART_RETRACT_FULL_RETRACT_GRACE_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/TailDrainGraceSec",
+                IntakeConstants.SMART_RETRACT_TAIL_DRAIN_GRACE_SEC);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/WiggleOutRot",
+                IntakeConstants.SMART_RETRACT_WIGGLE_OUT_ROT);
+        SmartDashboard.putNumber(
+                "Intake/SmartRetract/WiggleSwitchIntervalSec",
+                IntakeConstants.SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC);
     }
 
     static <T> T getPrivateField(Object target, String fieldName, Class<T> type) {

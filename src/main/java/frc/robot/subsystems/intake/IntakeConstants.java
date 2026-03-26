@@ -79,17 +79,18 @@ public final class IntakeConstants {
     public static final double SMART_RETRACT_RETRACTED_POSITION_ROT = 2.0;
     public static final double SMART_RETRACT_CURRENT_FILTER_ALPHA = 0.20;
     public static final int SMART_RETRACT_FEED_ENGAGE_CYCLES = 2;
-    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.0;
+    public static final double SMART_RETRACT_FEED_START_DELAY_SEC = 0.2;
 
-    public static final double SMART_RETRACT_STEP_ROT = 0.50;
+    public static final double SMART_RETRACT_STEP_ROT = 0.6;
     public static final double SMART_RETRACT_ROLLER_RPM = 0.0;
-    public static final double SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS = 2.5;
+    public static final double SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS = 3.0;
     public static final int SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES = 10;
     public static final double SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC = 0.7;
-    public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.5;
+    public static final double SMART_RETRACT_JAM_INTER_SHOT_TIMEOUT_SEC = 0.4;
     public static final double SMART_RETRACT_JAM_RECOVERY_EXTEND_POSITION_ROT = EXTENDED_POSITION_ROT;
-    public static final double SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT = 10.0;
-    public static final double SMART_RETRACT_TAIL_DRAIN_GRACE_SEC = 0.75;
+    public static final double SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT = 15.0;
+    public static final double SMART_RETRACT_FULL_RETRACT_GRACE_SEC = 0.50;
+    public static final double SMART_RETRACT_TAIL_DRAIN_GRACE_SEC = 2.0;
     public static final double SMART_RETRACT_WIGGLE_OUT_ROT = 8.0;
     public static final double SMART_RETRACT_WIGGLE_SWITCH_INTERVAL_SEC = DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC;
 
@@ -142,6 +143,10 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/InnerStallRecoveryExtendPositionRot",
                     SMART_RETRACT_INNER_STALL_RECOVERY_EXTEND_POSITION_ROT);
+    private static final LoggedTunableNumber smartRetractFullRetractGraceSec =
+            new LoggedTunableNumber(
+                    "Intake/SmartRetract/FullRetractGraceSec",
+                    SMART_RETRACT_FULL_RETRACT_GRACE_SEC);
     private static final LoggedTunableNumber smartRetractTailDrainGraceSec =
             new LoggedTunableNumber(
                     "Intake/SmartRetract/TailDrainGraceSec",
@@ -207,6 +212,10 @@ public final class IntakeConstants {
                 smartRetractInnerStallRecoveryExtendPositionRot.get(),
                 smartRetractRetractedPositionRot(),
                 EXTENDED_POSITION_ROT);
+    }
+
+    public static double smartRetractFullRetractGraceSec() {
+        return Math.max(0.0, smartRetractFullRetractGraceSec.get());
     }
 
     public static double smartRetractTailDrainGraceSec() {
