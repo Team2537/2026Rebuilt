@@ -21,17 +21,23 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.RobotState;
 import frc.robot.coordination.shooting.ShotYawController;
 import frc.robot.subsystems.drive.Drive;
+import frc.robot.subsystems.drive.DriveConstants;
+import frc.robot.util.LoggedTunableNumber;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
+import org.littletonrobotics.junction.Logger;
 
 public final class DriveCommands {
     private static final double DEADBAND = 0.1;
     private static final double HEADING_SNAP_TOLERANCE_RAD = Math.toRadians(2.0);
     private static final double HEADING_SNAP_SETTLE_OMEGA_RAD_PER_SEC = 0.5;
     private static final double HEADING_SNAP_SETTLE_TIME_SEC = 0.05;
+    private static final LoggedTunableNumber headingSnapMaxDecelRadPerSecSq = new LoggedTunableNumber(
+            "HeadingSnap/ErrorOmegaCapMaxDecelRadPerSecSq",
+            DriveConstants.DRIVER_DEFAULT_LIMITS.maxAngularAccelerationRadPerSecSq());
     private static final double WHEEL_RADIUS_MAX_VELOCITY = 1.0; // Rad/Sec
     private static final double WHEEL_RADIUS_RAMP_RATE = 0.50; // Rad/Sec^2
 
@@ -173,6 +179,11 @@ public final class DriveCommands {
                             state.targetHeading,
                             0.0,
                             drive.getMaxAngularSpeedRadPerSec());
+                    omega = applyHeadingSnapErrorOmegaCap(
+                            omega,
+                            state.targetHeading,
+                            robotState.getRotation(),
+                            drive.getMaxAngularSpeedRadPerSec());
                     drive.runDriverVelocity(createRequestedSpeeds(drive, linearVelocity, omega));
                 },
                 drive)
@@ -282,6 +293,31 @@ public final class DriveCommands {
         double cardinalStepRad = Math.PI / 2.0;
         double snappedRad = Math.round(heading.getRadians() / cardinalStepRad) * cardinalStepRad;
         return Rotation2d.fromRadians(MathUtil.angleModulus(snappedRad));
+    }
+
+    private static double applyHeadingSnapErrorOmegaCap(
+            double requestedOmegaRadPerSec,
+            Rotation2d targetHeading,
+            Rotation2d currentHeading,
+            double maxOmegaRadPerSec) {
+        double headingErrorRad = MathUtil.angleModulus(targetHeading.minus(currentHeading).getRadians());
+        double maxDecelRadPerSecSq = Math.max(1e-6, headingSnapMaxDecelRadPerSecSq.get());
+        double errorBasedOmegaCapRadPerSec = Math.min(
+                maxOmegaRadPerSec,
+                Math.sqrt(2.0 * maxDecelRadPerSecSq * Math.abs(headingErrorRad)));
+
+        double cappedOmegaRadPerSec = requestedOmegaRadPerSec;
+        if (Math.signum(requestedOmegaRadPerSec) == Math.signum(headingErrorRad) && Math.abs(headingErrorRad) > 1e-6) {
+            cappedOmegaRadPerSec = Math.copySign(
+                    Math.min(Math.abs(requestedOmegaRadPerSec), errorBasedOmegaCapRadPerSec),
+                    requestedOmegaRadPerSec);
+        }
+
+        Logger.recordOutput("HeadingSnap/HeadingErrorDeg", Math.toDegrees(headingErrorRad));
+        Logger.recordOutput("HeadingSnap/ErrorOmegaCapRadPerSec", errorBasedOmegaCapRadPerSec);
+        Logger.recordOutput("HeadingSnap/RawOmegaCommandRadPerSec", requestedOmegaRadPerSec);
+        Logger.recordOutput("HeadingSnap/CappedOmegaCommandRadPerSec", cappedOmegaRadPerSec);
+        return cappedOmegaRadPerSec;
     }
 
     private static class WheelRadiusCharacterizationState {
