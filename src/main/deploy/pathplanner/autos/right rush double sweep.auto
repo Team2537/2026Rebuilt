@@ -7,7 +7,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "right rush hp"
+            "pathName": "right double sweep 1"
           }
         },
         {
@@ -15,18 +15,30 @@
           "data": {
             "commands": [
               {
-                "type": "wait",
-                "data": {
-                  "waitTime": 12.0
-                }
-              },
-              {
                 "type": "named",
                 "data": {
                   "name": "ShooterShootHub"
                 }
+              },
+              {
+                "type": "wait",
+                "data": {
+                  "waitTime": 5.0
+                }
               }
             ]
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "right double sweep 2"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "ShooterShootHub"
           }
         }
       ]

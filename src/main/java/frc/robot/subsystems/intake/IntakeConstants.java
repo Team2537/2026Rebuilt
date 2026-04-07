@@ -10,8 +10,8 @@ public final class IntakeConstants {
     public static final int LEFT_MOTOR_ID = 23;
     public static final int RIGHT_MOTOR_ID = 24;
 
-    public static final double ROLLER_RPM = 0.0;
-    public static final double SLOW_ROLLER_RPM = 0.0;
+    public static final double ROLLER_RPM = 3500.0;
+    public static final double SLOW_ROLLER_RPM = 1000.0;
     public static final double ROLLER_MAX_RPM = 6200.0;
     public static final double STATUS_UPDATE_HZ = 50.0;
 
@@ -52,7 +52,7 @@ public final class IntakeConstants {
     public static final double RETRACTED_POSITION_ROT = 6.75;
     public static final double EXTENDED_POSITION_ROT = FULL_TRAVEL_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_BASELINE_IN = FULL_TRAVEL_IN;
-    public static final double DRIVER_TRIGGER_WIGGLE_PEAK_IN = 12.1;
+    public static final double DRIVER_TRIGGER_WIGGLE_PEAK_IN = 11.8;
     public static final double DRIVER_TRIGGER_WIGGLE_BASELINE_ROT =
             DRIVER_TRIGGER_WIGGLE_BASELINE_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_TRIGGER_WIGGLE_PEAK_ROT =
@@ -60,7 +60,7 @@ public final class IntakeConstants {
     public static final double DRIVER_TRIGGER_WIGGLE_SWITCH_INTERVAL_SEC = 0.2;
 
     public static final double DRIVER_AGITATION_BASELINE_IN = FULL_TRAVEL_IN;
-    public static final double DRIVER_AGITATION_PEAK_IN = 12.1;
+    public static final double DRIVER_AGITATION_PEAK_IN = 11.8;
     public static final double DRIVER_AGITATION_BASELINE_ROT =
             DRIVER_AGITATION_BASELINE_IN * MOTOR_REV_PER_IN;
     public static final double DRIVER_AGITATION_PEAK_ROT =
