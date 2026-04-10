@@ -386,6 +386,15 @@ public class Intake extends SubsystemBase {
                 .withName("IntakeSpinRoller");
     }
 
+    public Command reverseRollerTimedCommand(double durationSec) {
+        return Commands.runEnd(
+                        () -> io.setRollerRpm(-IntakeConstants.ROLLER_RPM),
+                        io::stopRoller,
+                        this)
+                .withTimeout(durationSec)
+                .withName("IntakeReverseRollerTimed");
+    }
+
     public Command wiggleSpinRollerCommand() {
         return createRollerAgitationCommand(driverTriggerAgitationProfile(), "IntakeSpinRoller");
     }

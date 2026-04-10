@@ -74,6 +74,7 @@ public final class RobotContainer {
     private static final String SHOOT_TARGET_OBJECT_NAME = "Shoot Target";
     private static final int APRIL_TAG_TRAJECTORY_SEGMENTS = 10;
     private static final double INTAKE_TRIGGER_DOUBLE_PRESS_WINDOW_SEC = 0.35;
+    private static final double DASHBOARD_INTAKE_REVERSE_DURATION_SEC = 3.0;
 
     private final Drive drive;
     private final Vision vision;
@@ -368,7 +369,7 @@ public final class RobotContainer {
                 driverController.start(),
                 "driver.start.onTrue",
                 intake.homeCommand().withName("DriverIntakeHome"));
-        bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", stopManipulatorsCommand());
+        bindOnTrue(driverController.povDown(), "driver.povDown.onTrue", intake.reverseRollerTimedCommand(3));
         bindOnTrue(
                 driverController.povLeft(),
                 "driver.povLeft.onTrue",
@@ -504,6 +505,11 @@ public final class RobotContainer {
                 DASHBOARD_ACTIONS_PREFIX + "StopManipulators",
                 "dashboard.actions.stopManipulators",
                 stopManipulatorsCommand().withName("DashboardStopManipulators"));
+        putDashboardCommand(
+                DASHBOARD_ACTIONS_PREFIX + "IntakeReverse3Sec",
+                "dashboard.actions.intakeReverse3Sec",
+                intake.reverseRollerTimedCommand(DASHBOARD_INTAKE_REVERSE_DURATION_SEC)
+                        .withName("DashboardIntakeReverse3Sec"));
         putDashboardCommand(
                 DASHBOARD_ACTIONS_PREFIX + "TransferRun",
                 "dashboard.actions.transferRun",
