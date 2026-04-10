@@ -40,7 +40,7 @@ public final class IntakeConstants {
     public static final double INTAKE_STATOR_CURRENT_LIMIT_AMPS_LOW = 15.0;
     public static final double INTAKE_SUPPLY_CURRENT_LIMIT_AMPS_LOW = 15.0;
 
-    public static final double INTAKE_VELOCITY = 100.0;
+    public static final double INTAKE_VELOCITY = 60.0;
     public static final double INTAKE_ACCELERATION = 400.0;
 
     public static final double SLOW_INTAKE_VELOCITY = 20.0;
