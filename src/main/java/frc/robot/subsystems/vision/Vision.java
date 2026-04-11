@@ -13,7 +13,7 @@ import frc.robot.RobotState;
 import frc.robot.RobotType;
 import frc.robot.subsystems.vision.VisionIO.PoseObservation;
 import frc.robot.subsystems.vision.VisionIO.TargetTransform;
-import frc.robot.util.ElasticNotifications;
+import frc.robot.util.Elastic;
 import frc.robot.util.FieldConstants;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -378,7 +378,8 @@ public final class Vision extends SubsystemBase {
         }
         Logger.recordOutput("RobotState/VisionConnected", allCamerasConnected);
         if (!allCamerasConnected && lastAllCamerasConnected) {
-            ElasticNotifications.sendWarning("Vision", "Camera disconnected");
+            Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.ERROR, "Vision",
+                    "Camera disconnected"));
         }
         lastAllCamerasConnected = allCamerasConnected;
 

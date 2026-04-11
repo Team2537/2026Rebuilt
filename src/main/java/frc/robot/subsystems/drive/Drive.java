@@ -47,7 +47,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
 import frc.robot.RobotType;
 import frc.robot.generated.TunerConstants;
-import frc.robot.util.ElasticNotifications;
+import frc.robot.util.Elastic;
 import frc.robot.util.LocalADStarAK;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -300,7 +300,7 @@ public class Drive extends SubsystemBase {
         gyroDisconnectedAlert.set(!gyroConnected && RobotType.MODE != RobotType.Mode.SIMULATION);
         Logger.recordOutput("RobotState/GyroConnected", gyroConnected);
         if (!gyroConnected && lastGyroConnected && RobotType.MODE != RobotType.Mode.SIMULATION) {
-            ElasticNotifications.sendError("Gyro Disconnected", "Using kinematics fallback");
+            Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.ERROR, "Gyro Disconnected", "Using kinematics fallback"));
         }
         lastGyroConnected = gyroConnected;
     }

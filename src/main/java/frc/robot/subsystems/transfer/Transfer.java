@@ -6,7 +6,7 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.util.ElasticNotifications;
+import frc.robot.util.Elastic;
 import org.littletonrobotics.junction.Logger;
 
 public class Transfer extends SubsystemBase {
@@ -47,12 +47,11 @@ public class Transfer extends SubsystemBase {
             double nowSec = Timer.getFPGATimestamp();
             if (nowSec - lastJamNotificationSec >= TransferConstants.JAM_NOTIFY_COOLDOWN_SEC) {
                 lastJamNotificationSec = nowSec;
-                ElasticNotifications.sendWarning(
-                        "Transfer",
+                Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.WARNING, "Transfer Jam",
                         String.format(
                                 "Possible jam detected: %.1fA while commanded %.0f%%",
                                 Math.abs(inputs.supplyCurrentAmps),
-                                commandedPercent * 100.0));
+                                commandedPercent * 100.0)));
             }
         }
 

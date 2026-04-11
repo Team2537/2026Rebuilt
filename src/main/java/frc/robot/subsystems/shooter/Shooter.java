@@ -26,7 +26,7 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
-import frc.robot.util.ElasticNotifications;
+import frc.robot.util.Elastic;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -983,9 +983,7 @@ public class Shooter extends SubsystemBase {
                                             false),
                                     this),
                             Commands.runOnce(
-                                    () -> ElasticNotifications.sendWarning(
-                                            "Shooter",
-                                            "Hood homing timed out; using current hood position until re-homed."),
+                                    () -> Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.WARNING, "Hood homing time out", "Using current hood position until re-homed"));
                                     this)),
                     homingReached::get))
                 .finallyDo(interrupted -> {

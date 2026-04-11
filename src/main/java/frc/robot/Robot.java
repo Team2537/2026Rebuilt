@@ -10,7 +10,7 @@ import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import frc.robot.util.ElasticNotifications;
+import frc.robot.util.Elastic;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,6 +32,10 @@ public final class Robot extends LoggedRobot {
     private PowerDistribution powerDistribution = null;
     private boolean lowBatteryNotified = false;
     private final CANBus canivore = new CANBus(Constants.DRIVETRAIN_CAN_BUS);
+    private Elastic.Notification transmitErrorNotification = new Elastic.Notification(Elastic.NotificationLevel.ERROR,"CAN Communication Error","Transmit error count nonzero");
+    private Elastic.Notification receiveErrorNotification = new Elastic.Notification(Elastic.NotificationLevel.ERROR,"CAN Communication Error","Receive error count nonzero");
+    private Elastic.Notification txFullNotification = new Elastic.Notification(Elastic.NotificationLevel.ERROR,"CAN Communication Error","Tx full count nonzero");
+    private Elastic.Notification offNotification = new Elastic.Notification(Elastic.NotificationLevel.ERROR,"CAN Communication Error","Bus off count nonzero");
 
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
@@ -110,6 +114,19 @@ public final class Robot extends LoggedRobot {
         Logger.recordOutput("CAN/CANivore/RecieveErrorCount", status.REC);
         Logger.recordOutput("CAN/CANivore/TransmitErrorCount", status.TEC);
         Logger.recordOutput("CAN/CANivore/TxFullCount", status.TxFullCount);
+
+        if (status.BusOffCount > 0){
+            Elastic.sendNotification(offNotification);
+        }
+        if (status.TEC > 0) {
+            Elastic.sendNotification(transmitErrorNotification);
+        }
+        if (status.REC > 0) {
+            Elastic.sendNotification(receiveErrorNotification);
+        }
+        if (status.TxFullCount > 0) {
+            Elastic.sendNotification(txFullNotification);
+        }
     }
 
     private void logPowerDistribution() {
