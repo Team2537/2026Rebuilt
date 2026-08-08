@@ -12,13 +12,13 @@ public final class DriveConstants {
         SHOOTING_ON_MOVE
     }
 
-    private static final double DRIVER_MAX_LINEAR_VELOCITY_MPS = 5.0;
-    private static final double DRIVER_MAX_LINEAR_ACCELERATION_MPSSQ = 35.0;
+    private static final double DRIVER_MAX_LINEAR_VELOCITY_MPS = 1.0;
+    private static final double DRIVER_MAX_LINEAR_ACCELERATION_MPSSQ = 10.0;
     private static final double DRIVEBASE_RADIUS_METERS = Drive.DRIVE_BASE_RADIUS;
     private static final double DRIVER_MAX_ANGULAR_VELOCITY_RAD_PER_SEC =
             DRIVER_MAX_LINEAR_VELOCITY_MPS / DRIVEBASE_RADIUS_METERS;
     private static final double DRIVER_MAX_ANGULAR_ACCELERATION_RAD_PER_SEC_SQ =
-            DegreesPerSecondPerSecond.of(1000.0).in(RadiansPerSecondPerSecond);
+            DegreesPerSecondPerSecond.of(700.0).in(RadiansPerSecondPerSecond);
 
     private static final double SLOW_MODE_MAX_LINEAR_VELOCITY_MPS = 2.0;
     private static final double SLOW_MODE_MAX_LINEAR_ACCELERATION_MPSSQ = 35.0;
