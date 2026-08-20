@@ -24,7 +24,7 @@ public final class ShooterConstants {
     public static final double HOOD_SENSOR_TO_MECHANISM_RATIO = 72.0;
     public static final double KICKER_SENSOR_TO_MECHANISM_RATIO = 2.667;
 
-    public static final double SHOOTER_MAX_RPM = 6200.0;
+    public static final double SHOOTER_MAX_RPM = 2300.0;
     public static final double SLOW_SHOOTER_RPM = isReal ? 2000.0 : 500.0;
     public static final double KICKER_MAX_TORQUE_CURRENT_AMPS = 100.0;
     public static final double MAX_OUTPUT_VOLTS = 12.0;
@@ -87,8 +87,8 @@ public final class ShooterConstants {
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_SIM = {1.19, 1.156, 1.163, 1.046, 1.262, 1.275, 1.422};
 
     private static final double[] SHOT_MAP_DISTANCE_METERS_REAL = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0 };
-    private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0 };
-    private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0, 1500.0 };
+    private static final double[] SHOT_MAP_LEFT_RPM_REAL = { 2300.0, 2300.0, 2300.0, 2300.0, 2300.0, 2300.0, 2300.0 };
+    private static final double[] SHOT_MAP_RIGHT_RPM_REAL = { 2300.0, 2300.0, 2300.0, 2300.0, 2300.0, 2300.0, 2300.0 };
     private static final double[] SHOT_MAP_HOOD_ANGLE_DEG_REAL = {7.0, 14.5, 17.5, 22.0, 24.5, 27.0, 30.0};
     private static final double[] SHOT_TIME_IN_AIR_SECONDS_REAL = {1.24, 1.17, 1.15, 1.22, 1.26, 1.38, 1.43};
 
