@@ -983,7 +983,7 @@ public class Shooter extends SubsystemBase {
                                             false),
                                     this),
                             Commands.runOnce(
-                                    () -> Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.WARNING, "Hood homing time out", "Using current hood position until re-homed"));
+                                    () -> Elastic.sendNotification(new Elastic.Notification(Elastic.NotificationLevel.WARNING, "Hood homing time out", "Using current hood position until re-homed")),
                                     this)),
                     homingReached::get))
                 .finallyDo(interrupted -> {
