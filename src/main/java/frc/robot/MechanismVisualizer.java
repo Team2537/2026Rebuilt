@@ -32,19 +32,6 @@ public final class MechanismVisualizer {
       }
     }
   }
-
-  public static void setTurretYaw(Rotation2d yaw) {
-    Pose3d pose =
-        new Pose3d(
-            new Translation3d(0.0, 0.0, TURRET_POSE_Z_METERS),
-            new Rotation3d(0.0, 0.0, yaw.getRadians()));
-    for (int index : TURRET_COMPONENT_INDICES) {
-      if (index >= 0 && index < MECHANISM_POSES.size()) {
-        MECHANISM_POSES.set(index, pose);
-      }
-    }
-  }
-
   public static void updatePoses() {
     Logger.recordOutput("mechanismPoses", MECHANISM_POSES.toArray(Pose3d[]::new));
   }
