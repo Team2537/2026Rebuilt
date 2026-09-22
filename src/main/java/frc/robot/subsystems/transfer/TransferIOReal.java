@@ -1,6 +1,10 @@
 package frc.robot.subsystems.transfer;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration
+
 public class TransferIOReal implements TransferIO{
+private final TalonFX transferMotor = new TalonFX(TransferConstants.TRANSFER_MOTOR_ID);
+
 
     public TransferIOReal(){
     }
@@ -14,6 +18,8 @@ public class TransferIOReal implements TransferIO{
     public void stop(){
     }
     private void configureMotor(){
+        TalonFxConfiguration config = new TalonFxConfiguration();
+
     }
 
 }
