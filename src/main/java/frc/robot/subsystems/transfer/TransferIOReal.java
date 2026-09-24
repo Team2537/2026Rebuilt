@@ -30,7 +30,6 @@ public class TransferIOReal implements TransferIO {
     private final StatusSignal<?> velocity;
     private final StatusSignal<?> appliedVolts;
     private final StatusSignal<?> supplyCurrent;
-    private final StatusSignal<?> temp;
     private double lastTempRefreshSeconds = Double.NEGATIVE_INFINITY;
 
     public TransferIOReal() {
