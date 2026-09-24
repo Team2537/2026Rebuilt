@@ -5,4 +5,5 @@ public final class TransferConstants {
 
     public static final double STATUS_UPDATE_HZ=50.0;
 
+    public TransferConstants(){}
 }
