@@ -3,32 +3,37 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 4.0,
-        "y": 0.47137535358297444
+        "x": 2.7133634578036725,
+        "y": 6.364966730667374
       },
       "prevControl": null,
       "nextControl": {
-        "x": 3.000000000000001,
-        "y": 0.47137535358297455
+        "x": 2.5942733351528386,
+        "y": 7.857314183042213
       },
       "isLocked": false,
-      "linkedName": null
+      "linkedName": "end of left rush event"
     },
     {
       "anchor": {
-        "x": 2.713,
-        "y": 1.7050332693326267
+        "x": 6.035114060225618,
+        "y": 7.413358863264192
       },
       "prevControl": {
-        "x": 2.406229037580819,
-        "y": 1.1297307718211211
+        "x": 5.035114060225618,
+        "y": 7.413358863264192
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "end of right double sweep 1"
+      "linkedName": null
     }
   ],
-  "rotationTargets": [],
+  "rotationTargets": [
+    {
+      "waypointRelativePos": 0.5,
+      "rotationDegrees": 179.7921402908612
+    }
+  ],
   "constraintZones": [],
   "pointTowardsZones": [],
   "eventMarkers": [],
@@ -42,13 +47,13 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -133.43623519201955
+    "rotation": 177.3247937907818
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": -90.0
+    "rotation": 133.43623519202
   },
   "useDefaultConstraints": true
 }
