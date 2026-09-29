@@ -123,11 +123,11 @@ public final class IntakeConstants {
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamBackoffCurrentThresholdAmps",
                     SMART_RETRACT_JAM_BACKOFF_CURRENT_THRESHOLD_AMPS);
-    private static final LoggedTunableNumber smartRetractJamBackoffDetectCycles =
+    private static final LoggedTunableNumber smartRetractJamBackoffDetectCycles = 
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamBackoffDetectCycles",
                     SMART_RETRACT_JAM_BACKOFF_DETECT_CYCLES);
-    private static final LoggedTunableNumber smartRetractJamFirstShotTimeoutSec =
+    private static final LoggedTunableNumber smartRetractJamFirstShotTimeoutSec = 
             new LoggedTunableNumber(
                     "Intake/SmartRetract/JamFirstShotTimeoutSec",
                     SMART_RETRACT_JAM_FIRST_SHOT_TIMEOUT_SEC);

@@ -355,16 +355,21 @@ public final class RobotContainer {
                 driverController.y(),
                 "driver.y.onTrue",
                 createDriverHeadingSnapCommand(DriverRelativeHeading.FORWARD));
+        //asdfasdfasdf
         bindOnTrue(
                 intakeRollerTrigger,
                 "driver.leftTrigger.onTrue",
-                createIntakeTriggerPressCommand());
+                intake.extendCommand());
+        bindOnFalse(
+                intakeRollerTrigger,
+                "driver.leftTrigger.onFalse",
+                intake.retractCommand());
+        //not relevant
         bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.driverTriggerSpinRollerCommand());
         bindWhileTrue(
                 intakeAgitationTrigger,
                 "driver.leftBumper.whileTrue",
                 intake.driverAgitationCommand());
-
         bindOnTrue(
                 driverController.start(),
                 "driver.start.onTrue",
@@ -539,7 +544,7 @@ public final class RobotContainer {
     }
 
     private Command createIntakeTriggerPressCommand() {
-        return Commands.runOnce(this::handleIntakeTriggerPress, intake).withName("DriverIntakeTriggerPress");
+        return Commands.runOnce(()->intake.extendCommand(), intake).withName("DriverIntakeTriggerPress");
     }
 
     private Command createDriverHeadingSnapCommand(DriverRelativeHeading direction) {
@@ -558,14 +563,6 @@ public final class RobotContainer {
                 ? heading.plus(Rotation2d.kPi)
                 : heading;
     }
-
-    private void handleIntakeTriggerPress() {
-        double nowSec = Timer.getFPGATimestamp();
-        boolean isDoublePress = nowSec - lastIntakeTriggerPressSec <= INTAKE_TRIGGER_DOUBLE_PRESS_WINDOW_SEC;
-        lastIntakeTriggerPressSec = isDoublePress ? Double.NEGATIVE_INFINITY : nowSec;
-        intake.setExtended(!isDoublePress);
-    }
-
     private Command stopManipulatorsCommand() {
         return Commands.parallel(shooter.stopCommand(), transfer.stopCommand(), intake.stopAndRetractCommand())
                 .withName("StopManipulators");
