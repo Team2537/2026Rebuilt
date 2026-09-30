@@ -158,7 +158,13 @@ public class IntakeIOReal implements IntakeIO {
             double velocityRotPerSec,
             double accelerationRotPerSecSq,
             double maxVolts) {
-        setIntakePositionInternal(leftTargetRot, velocityRotPerSec, accelerationRotPerSecSq, maxVolts);
+        setIntakeMotionProfile(velocityRotPerSec, accelerationRotPerSecSq);
+        setIntakeVoltageLimit(maxVolts);
+        leftPositionRequest.withVelocity(velocityRotPerSec).withAcceleration(accelerationRotPerSecSq);
+        rightPositionRequest.withVelocity(velocityRotPerSec).withAcceleration(accelerationRotPerSecSq);
+        leftIntakeMotor.setControl(leftPositionRequest.withPosition(leftTargetRot));
+        rightIntakeMotor.setControl(rightPositionRequest.withPosition(applyRightAlignment(leftTargetRot)));
+
     }
 
     @Override
@@ -225,16 +231,6 @@ public class IntakeIOReal implements IntakeIO {
         config.CurrentLimits.SupplyCurrentLimitEnable = true;
         tryUntilOk(5, () -> leftIntakeMotor.getConfigurator().apply(config, 0.25));
     }
-
-    private void setIntakePositionInternal(double leftTargetRot, double velocity, double acceleration, double maxVolts) {
-        setIntakeMotionProfile(velocity, acceleration);
-        setIntakeVoltageLimit(maxVolts);
-        leftPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
-        rightPositionRequest.withVelocity(velocity).withAcceleration(acceleration);
-        leftIntakeMotor.setControl(leftPositionRequest.withPosition(leftTargetRot));
-        rightIntakeMotor.setControl(rightPositionRequest.withPosition(applyRightAlignment(leftTargetRot)));
-    }
-
     private void setIntakeMotionProfile(double velocity, double acceleration) {
         if (lastIntakeVelocity == velocity && lastIntakeAcceleration == acceleration) {
             return;
