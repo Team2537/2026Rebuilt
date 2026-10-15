@@ -360,12 +360,13 @@ public final class RobotContainer {
                 intakeRollerTrigger,
                 "driver.leftTrigger.onTrue",
                 intake.extendCommand());
+        intakeRollerTrigger.whileTrue(intake.spinRoller());
         bindOnFalse(
                 intakeRollerTrigger,
                 "driver.leftTrigger.onFalse",
                 intake.retractCommand());
         //not relevant
-        bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.driverTriggerSpinRollerCommand());
+        //bindWhileTrue(intakeRollerTrigger, "driver.leftTrigger.whileTrue", intake.driverTriggerSpinRollerCommand());
         bindWhileTrue(
                 intakeAgitationTrigger,
                 "driver.leftBumper.whileTrue",

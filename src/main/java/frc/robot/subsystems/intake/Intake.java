@@ -380,9 +380,8 @@ public class Intake extends SubsystemBase {
     }
 
     public Command spinRoller() {
-        return this.runEnd(
-                        () -> io.setRollerRpm(IntakeConstants.ROLLER_RPM),
-                        io::stopRoller)
+        return this.run(
+                        () -> io.setRollerRpm(IntakeConstants.ROLLER_RPM))
                 .withName("IntakeSpinRoller");
     }
 
@@ -399,9 +398,9 @@ public class Intake extends SubsystemBase {
         return createRollerAgitationCommand(driverTriggerAgitationProfile(), "IntakeSpinRoller");
     }
 
-    public Command driverTriggerSpinRollerCommand() {
-        return wiggleSpinRollerCommand();
-    }
+    /*public Command driverTriggerSpinRollerCommand() {
+        return Commands.parallel(wiggleSpinRollerCommand(),spinRoller()).finallyDo(interrupted -> ());
+    }*/
 
     public Command driverAgitationCommand() {
         return createRollerAgitationCommand(driverAgitationProfile(), "IntakeAgitate");
