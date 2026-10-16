@@ -1,5 +1,11 @@
 package frc.robot;
-
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.commands.PathPlannerAuto;
+import com.pathplanner.lib.path.PathPlannerPath;
+import java.io.IOException;
+import org.json.simple.parser.ParseException;
+import java.util.ArrayList;
+import java.util.List;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -65,7 +71,7 @@ public final class RobotContainer {
             this.blueAllianceHeadingDeg = blueAllianceHeadingDeg;
         }
     }
-
+    private String lastPreviewedAuto = "";
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
     private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
@@ -602,4 +608,46 @@ public final class RobotContainer {
                 && Double.isFinite(pose.getY())
                 && Double.isFinite(pose.getRotation().getRadians());
     }
+
+    public void updateAutoPreview() {
+        String selectedName = autoSelector.getSelectedRoutine().name();
+
+        if (selectedName.equals(lastPreviewedAuto)) {
+                return;
+        }
+
+        lastPreviewedAuto = selectedName;
+
+        dashboardField.getObject("Auto Trajectory").setPoses();
+
+        if (!AutoBuilder.getAllAutoNames().contains(selectedName)) {
+            System.out.println(
+            "No matching PathPlanner auto for: " + selectedName
+            );
+            return;
+        }
+
+        try {
+            List<PathPlannerPath> paths =
+            PathPlannerAuto.getPathGroupFromAutoFile(selectedName);
+
+            List<Pose2d> poses = new ArrayList<>();
+
+            for (PathPlannerPath path : paths) {
+                poses.addAll(path.getPathPoses());
+            }
+
+            dashboardField.getObject("Auto Trajectory").setPoses(poses);
+
+            System.out.println("Previewing auto: " + selectedName);
+
+            } catch (IOException | ParseException e) {
+                DriverStation.reportError(
+                "Failed to preview auto " + selectedName + ": "
+                        + e.getMessage(),
+                e.getStackTrace()
+                );
+            }
+        }
+
 }
