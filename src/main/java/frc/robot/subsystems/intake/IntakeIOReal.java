@@ -12,6 +12,7 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.configs.VoltageConfigs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -28,7 +29,9 @@ public class IntakeIOReal implements IntakeIO {
     private final TalonFX leftIntakeMotor = new TalonFX(IntakeConstants.LEFT_MOTOR_ID, MECHANISM_CAN_BUS);
     private final TalonFX rightIntakeMotor = new TalonFX(IntakeConstants.RIGHT_MOTOR_ID, MECHANISM_CAN_BUS);
 
-    private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0.0);
+    private final VelocityVoltage rollerVelocityRequest = new VelocityVoltage(0.0);
+
+    //private final VelocityTorqueCurrentFOC rollerVelocityRequest = new VelocityTorqueCurrentFOC(0.0); 
     private final DynamicMotionMagicVoltage leftPositionRequest =
             new DynamicMotionMagicVoltage(
                     0.0, IntakeConstants.INTAKE_VELOCITY, IntakeConstants.INTAKE_ACCELERATION);

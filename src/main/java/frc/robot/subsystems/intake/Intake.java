@@ -380,8 +380,9 @@ public class Intake extends SubsystemBase {
     }
 
     public Command spinRoller() {
-        return this.run(
-                        () -> io.setRollerRpm(IntakeConstants.ROLLER_RPM))
+        return this.runEnd(
+                        () -> io.setRollerRpm(IntakeConstants.ROLLER_RPM),
+                        () ->io.stopRoller())
                 .withName("IntakeSpinRoller");
     }
 
