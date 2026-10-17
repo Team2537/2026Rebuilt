@@ -2,6 +2,7 @@ package frc.robot.subsystems.intake;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.units.measure.Distance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
@@ -12,6 +13,7 @@ import frc.robot.coordination.intake.SmartRetractController;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import org.littletonrobotics.junction.Logger;
+import static edu.wpi.first.units.Units.*;
 
 public class Intake extends SubsystemBase {
 
@@ -667,5 +669,16 @@ public class Intake extends SubsystemBase {
     private static void recordOscillation(OscillationProfile profile, boolean active, double targetRot) {
         Logger.recordOutput(profile.logStem() + "Active", active);
         Logger.recordOutput(profile.logStem() + "TargetRot", targetRot);
+    }
+
+    public Distance getExtensionLength() {
+        var scalingFactorRadToMeters = 0.0025; // TODO: get real value
+        var leftDistance = Meters.of(Math.abs(inputs.leftPositionRad * scalingFactorRadToMeters));
+        var rightDistance = Meters.of(Math.abs(inputs.rightPositionRad * scalingFactorRadToMeters));
+        return leftDistance.plus(rightDistance).div(2);
+    }
+
+    public double getRollerSpeed() {
+        return inputs.rollerAppliedVolts / 12.0;
     }
 }
