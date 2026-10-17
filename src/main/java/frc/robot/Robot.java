@@ -10,11 +10,12 @@ import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.PowerDistribution;
 import edu.wpi.first.wpilibj.util.WPILibVersion;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+
 import frc.robot.util.Elastic;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
+
 import org.littletonrobotics.junction.LogFileUtil;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
@@ -26,6 +27,7 @@ import com.ctre.phoenix6.CANBus;
 import com.pathplanner.lib.commands.FollowPathCommand;
 
 public final class Robot extends LoggedRobot {
+    
     private static final int POWER_DISTRIBUTION_CAN_ID = 1;
     private static final double LOW_BATTERY_VOLTAGE = 11.5;
     private final RobotContainer robotContainer;
@@ -40,6 +42,7 @@ public final class Robot extends LoggedRobot {
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
 
+        
         Logger.recordMetadata("Type", RobotType.TYPE.toString());
         Logger.recordMetadata("Serial Number", HALUtil.getSerialNumber());
         Logger.recordOutput("Git Dirty", BuildConstants.DIRTY == 1 ? "DIRTY" : "CLEAN");
@@ -169,7 +172,10 @@ public final class Robot extends LoggedRobot {
     }
 
     @Override
-    public void disabledPeriodic() {}
+    public void disabledPeriodic() {
+        robotContainer.updateAutoPreview();
+    }
+
 
     @Override
     public void disabledExit() {}

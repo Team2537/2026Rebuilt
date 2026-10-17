@@ -56,7 +56,7 @@ public final class AutoRoutines {
                         String autoName = fileName.substring(0, fileName.length() - ".auto".length());
                         routines.add(new AutoRoutine(
                                 "pp/" + autoName,
-                                () -> new PathPlannerAuto(autoName).withName("AutoPathPlanner_" + autoName)));
+                                () -> new PathPlannerAuto(autoName).withName(autoName)));
                     });
         } catch (IOException exception) {
             String errorMessage =
