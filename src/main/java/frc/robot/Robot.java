@@ -41,7 +41,7 @@ import com.pathplanner.lib.path.PathPlannerPath;
 public final class Robot extends LoggedRobot {
 
     private String autoName = "", newAutoName = "";
-    private final Field2d field = new Field2d();
+    
     private static final int POWER_DISTRIBUTION_CAN_ID = 1;
     private static final double LOW_BATTERY_VOLTAGE = 11.5;
     private final RobotContainer robotContainer;
@@ -56,7 +56,7 @@ public final class Robot extends LoggedRobot {
     public Robot() {
         HAL.report(tResourceType.kResourceType_Language, tInstances.kLanguage_Java, 0, WPILibVersion.Version);
 
-        SmartDashboard.putData("Auto Field", field);
+        
         Logger.recordMetadata("Type", RobotType.TYPE.toString());
         Logger.recordMetadata("Serial Number", HALUtil.getSerialNumber());
         Logger.recordOutput("Git Dirty", BuildConstants.DIRTY == 1 ? "DIRTY" : "CLEAN");

@@ -72,6 +72,7 @@ public final class RobotContainer {
         }
     }
     private String lastPreviewedAuto = "";
+    private final Field2d autoField = new Field2d();
     private static final int GOD_CONTROLLER_PORT = 5;
     private static final String DASHBOARD_ACTIONS_PREFIX = "Actions/";
     private static final String DASHBOARD_FIELD_TOPIC = "Robot/Field";
@@ -125,6 +126,7 @@ public final class RobotContainer {
         aimingContext = shootingTeleopController.createAimingContext();
         Logger.recordOutput("Mechanism/Poses", new Pose3d[0]);
         SmartDashboard.putData(DASHBOARD_FIELD_TOPIC, dashboardField);
+        SmartDashboard.putData("Auto Field", autoField);
         publishAprilTagPosesAndTrajectories();
 
         AutoNamedCommands.registerAll(drive, shooter, transfer, intake, shootCoordinator);
@@ -610,7 +612,8 @@ public final class RobotContainer {
     }
 
     public void updateAutoPreview() {
-        String selectedName = autoSelector.getSelectedRoutine().name();
+        String selectedName = autoSelector.getSelectedCommand().getName();
+        //System.out.println("Selected Name: " + selectedName);
 
         if (selectedName.equals(lastPreviewedAuto)) {
                 return;
@@ -618,13 +621,15 @@ public final class RobotContainer {
 
         lastPreviewedAuto = selectedName;
 
-        dashboardField.getObject("Auto Trajectory").setPoses();
+        autoField.getObject("Auto Trajectory").setPoses();
 
         if (!AutoBuilder.getAllAutoNames().contains(selectedName)) {
             System.out.println(
             "No matching PathPlanner auto for: " + selectedName
             );
+            System.out.println("All Auto Names: " + AutoBuilder.getAllAutoNames());
             return;
+            
         }
 
         try {
@@ -637,7 +642,8 @@ public final class RobotContainer {
                 poses.addAll(path.getPathPoses());
             }
 
-            dashboardField.getObject("Auto Trajectory").setPoses(poses);
+            autoField.getObject("Auto Trajectory").setPoses(poses);
+            autoField.getObject("Initial Pose").setPose(poses.get(0));
 
             System.out.println("Previewing auto: " + selectedName);
 
