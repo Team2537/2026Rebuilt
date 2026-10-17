@@ -35,6 +35,7 @@ import frc.robot.subsystems.intake.Intake;
 import frc.robot.subsystems.intake.IntakeIO;
 import frc.robot.subsystems.intake.IntakeIOReal;
 import frc.robot.subsystems.intake.IntakeIOSim;
+import frc.robot.subsystems.intake.IntakeMech2D;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.shooter.ShooterIO;
 import frc.robot.subsystems.shooter.ShooterIOReal;
@@ -81,6 +82,8 @@ public final class RobotContainer {
     private final Shooter shooter;
     private final Transfer transfer;
     private final Intake intake;
+    @SuppressWarnings("unused")
+    private final IntakeMech2D intakeMech2d;
     private final ShootCoordinator shootCoordinator;
     private final ShootingTeleopController shootingTeleopController;
     private final ShootingTeleopController.AimingContext aimingContext;
@@ -108,6 +111,7 @@ public final class RobotContainer {
         shooter = createShooter();
         transfer = createTransfer();
         intake = createIntake();
+        intakeMech2d = new IntakeMech2D(intake);
         shootCoordinator = new ShootCoordinator(shooter, transfer);
         shootingTeleopController = new ShootingTeleopController(
                 drive,
